@@ -1,8 +1,10 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:gd_college/constants.dart';
 import 'package:gd_college/widgets/drawer.dart';
-import 'package:image_network/image_network.dart';
+import 'package:gd_college/widgets/pagination_bar.dart';
+import '../../controllers/pagination_controller.dart';
 import '../models/student_model.dart';
 import '../../services/firebase_student_service.dart';
 import 'student_form_screen.dart';
@@ -17,6 +19,7 @@ class StudentListScreen extends StatefulWidget {
 
 class _StudentListScreenState extends State<StudentListScreen> {
   final FirebaseService _service = FirebaseService();
+  late final PaginationController _pagination;
 
   // Filters
   final TextEditingController _searchIdCtrl = TextEditingController();
@@ -24,60 +27,67 @@ class _StudentListScreenState extends State<StudentListScreen> {
   String? _selectedCourse;
   String? _selectedYear;
 
-  final List<StudentModel> _allLoaded = [];   // all pages fetched so far
-  DocumentSnapshot? _lastDoc;
-  bool _isLoading = false;
-  bool _hasMore = true;
-  final ScrollController _scrollController = ScrollController();
-
   bool _filtersVisible = false;
 
   // Sorting
   int _sortColumnIndex = 0;
   bool _sortAscending = true;
 
+  Timer? _debounce;
+
   @override
   void initState() {
     super.initState();
-    _loadNextPage();
-    _scrollController.addListener(() {
-      // Auto-load when user scrolls within 300px of the bottom
-      if (_scrollController.position.pixels >=
-          _scrollController.position.maxScrollExtent - 300) {
-        _loadNextPage();
-      }
-    });
-  }
-
-  Future<void> _loadNextPage() async {
-    if (_isLoading || !_hasMore) return;
-    setState(() => _isLoading = true);
-
-    final result = await _service.fetchStudentsPage(startAfter: _lastDoc);
-
-    setState(() {
-      _allLoaded.addAll(result.students);
-      _lastDoc = result.lastDoc;
-      _hasMore = result.students.length == FirebaseService.pageSize;
-      _isLoading = false;
-    });
-  }
-
-  Future<void> _refresh() async {
-    setState(() {
-      _allLoaded.clear();
-      _lastDoc = null;
-      _hasMore = true;
-    });
-    await _loadNextPage();
+    _pagination = PaginationController(_service);
+    _pagination.addListener(() => setState(() {}));
+    _pagination.loadBrowsePage(1);
   }
 
   @override
   void dispose() {
+    _pagination.dispose();
     _searchIdCtrl.dispose();
     _searchNameCtrl.dispose();
-    _scrollController.dispose();
+    _debounce?.cancel();
     super.dispose();
+  }
+
+  void _onFilterChanged() {
+    setState(() {});
+    _debounce?.cancel();
+
+    if (!_hasActiveFilters) {
+      // Filters cleared — go back to browse mode
+      _pagination.resetToBrowse();
+      return;
+    }
+
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      final query = [_searchNameCtrl.text, _searchIdCtrl.text]
+          .where((s) => s.isNotEmpty)
+          .join(' ');
+      _pagination.runSearch(
+        query: query,
+        course: _selectedCourse,
+        year: _selectedYear,
+      );
+    });
+  }
+
+  List<StudentModel> get _sorted {
+    final list = List<StudentModel>.from(_pagination.students);
+    list.sort((a, b) {
+      int cmp;
+      switch (_sortColumnIndex) {
+        case 0: cmp = int.parse(a.studentId).compareTo(int.parse(b.studentId)); break;
+        case 1: cmp = a.name.compareTo(b.name); break;
+        case 2: cmp = (a.yearOfAdmission ?? 0).compareTo(b.yearOfAdmission ?? 0); break;
+        case 3: cmp = a.nameOfCourse.compareTo(b.nameOfCourse); break;
+        default: cmp = 0;
+      }
+      return _sortAscending ? cmp : -cmp;
+    });
+    return list;
   }
 
   List<StudentModel> _applyFilters(List<StudentModel> all) {
@@ -125,12 +135,11 @@ class _StudentListScreenState extends State<StudentListScreen> {
   }
 
   void _clearFilters() {
-    setState(() {
-      _searchIdCtrl.clear();
-      _searchNameCtrl.clear();
-      _selectedCourse = null;
-      _selectedYear = null;
-    });
+    _searchIdCtrl.clear();
+    _searchNameCtrl.clear();
+    _selectedCourse = null;
+    _selectedYear = null;
+    _onFilterChanged();
   }
 
   bool get _hasActiveFilters =>
@@ -183,6 +192,7 @@ class _StudentListScreenState extends State<StudentListScreen> {
     if (confirm == true && student.docId != null) {
       try {
         await _service.deleteStudent(student.docId!);
+        _pagination.resetToBrowse();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -231,7 +241,6 @@ class _StudentListScreenState extends State<StudentListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _applySort(_applyFilters(_allLoaded));
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
       appBar: AppBar(
@@ -251,6 +260,14 @@ class _StudentListScreenState extends State<StudentListScreen> {
                 setState(() => _filtersVisible = !_filtersVisible),
           ),
           IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh',
+            onPressed: () {
+              _clearFilters();
+              _pagination.resetToBrowse();
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.add_circle_outline),
             tooltip: 'Add Student',
             onPressed: _openAdd,
@@ -258,77 +275,100 @@ class _StudentListScreenState extends State<StudentListScreen> {
         ],
       ),
       drawer: getSideDrawer(context),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        child: Column(
-          children: [
-            // ── Filter Panel ──────────────────────────────────────────
-            AnimatedSize(
-              duration: const Duration(milliseconds: 280),
-              curve: Curves.easeInOut,
-              child: _filtersVisible
-                  ? _FilterPanel(
-                      idCtrl: _searchIdCtrl,
-                      nameCtrl: _searchNameCtrl,
-                      selectedCourse: _selectedCourse,
-                      courses: listOfCourses,
-                      selectedYear: _selectedYear,
-                      allYears: _allLoaded
-                          .map((s) => s.yearOfAdmission?.toString() ?? '')
-                          .where((y) => y.isNotEmpty)
-                          .toSet()
-                          .toList()
-                        ..sort((a, b) => b.compareTo(a)),
-                      hasActiveFilters: _hasActiveFilters,
-                      onChanged: () => setState(() {}),
-                      onCourseChanged: (v) =>
-                          setState(() => _selectedCourse = v),
-                      onYearChanged: (v) =>
-                          setState(() => _selectedYear = v),
-                      onClear: _clearFilters,
-                    )
-                  : const SizedBox.shrink(),
+      body: Column(
+        children: [
+          // ── Filter Panel ──────────────────────────────────────────
+          AnimatedSize(
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeInOut,
+            child: _filtersVisible
+                ? _FilterPanel(
+                    idCtrl: _searchIdCtrl,
+                    nameCtrl: _searchNameCtrl,
+                    selectedCourse: _selectedCourse,
+                    courses: listOfCourses,
+                    selectedYear: _selectedYear,
+                    allYears: _pagination.students
+                        .map((s) => s.yearOfAdmission?.toString() ?? '')
+                        .where((y) => y.isNotEmpty)
+                        .toSet()
+                        .toList()
+                      ..sort((a, b) => b.compareTo(a)),
+                    hasActiveFilters: _hasActiveFilters,
+                    onChanged: _onFilterChanged,
+                    onCourseChanged: (v) {
+                      setState(() => _selectedCourse = v);
+                      _onFilterChanged();
+                    },
+                    onYearChanged: (v) {
+                      setState(() =>
+                      _selectedYear = v == 'All' ? null : v);
+                      _onFilterChanged();
+                    },
+                    onClear: _clearFilters,
+                  )
+                : const SizedBox.shrink(),
+          ),
+
+          // ── Stats Bar ─────────────────────────────────────────────
+          _StatsBar(
+            total: _pagination.totalCount,
+            showing: _pagination.students.length,
+            isSearchMode: _pagination.isSearchMode,
+          ),
+          // Error banner
+          if (_pagination.error != null)
+            Container(
+              color: Colors.red.shade50,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 8),
+              child: Row(children: [
+                const Icon(Icons.error_outline,
+                    color: Colors.red, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                    child: Text(_pagination.error!,
+                        style: const TextStyle(
+                            color: Colors.red, fontSize: 12))),
+                TextButton(
+                  onPressed: () => _pagination.isSearchMode
+                      ? _onFilterChanged()
+                      : _pagination
+                      .loadBrowsePage(_pagination.currentPage),
+                  child: const Text('Retry'),
+                ),
+              ]),
             ),
 
-            // ── Stats Bar ─────────────────────────────────────────────
-            _StatsBar(total: _allLoaded.length, showing: filtered.length),
-
-            // ── Table ─────────────────────────────────────────────────
-            Expanded(
-              child: filtered.isEmpty
-                  ? _EmptyState(hasFilters: _hasActiveFilters)
-                  : _StudentTable(
-                      students: filtered,
-                      sortColumnIndex: _sortColumnIndex,
-                      sortAscending: _sortAscending,
-                      onSort: (col, asc) => setState(() {
-                        _sortColumnIndex = col;
-                        _sortAscending = asc;
-                      }),
-                      onView: _openDetail,
-                      onEdit: _openEdit,
-                      onDelete: _confirmDelete,
-                      scrollController: _scrollController,
-                      footer: _isLoading
-                          ? const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Center(child: CircularProgressIndicator()),
-                      )
-                          : !_hasMore
-                          ? Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Center(
-                          child: Text(
-                            'All ${_allLoaded.length} records loaded',
-                            style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
-                          ),
-                        ),
-                      )
-                          : const SizedBox(),
-                    ),
+          // ── Table ─────────────────────────────────────────────────
+          Expanded(
+            child: _pagination.isLoading &&
+                _pagination.students.isEmpty
+                ? const Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation(
+                    Color(0xFF1A3C6E)),
+              ),
+            )
+                : _pagination.students.isEmpty
+                ? _EmptyState(
+                hasFilters: _hasActiveFilters)
+                : _StudentTable(
+              students: _sorted,
+              sortColumnIndex: _sortColumnIndex,
+              sortAscending: _sortAscending,
+              onSort: (col, asc) => setState(() {
+                _sortColumnIndex = col;
+                _sortAscending = asc;
+              }),
+              onView: _openDetail,
+              onEdit: _openEdit,
+              onDelete: _confirmDelete,
             ),
-          ],
-        ),
+          ),
+
+          PaginationBar(controller: _pagination,)
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openAdd,
@@ -571,32 +611,34 @@ class _FilterDropdown extends StatelessWidget {
 class _StatsBar extends StatelessWidget {
   final int total;
   final int showing;
+  final bool isSearchMode;
 
-  const _StatsBar({required this.total, required this.showing});
+  const _StatsBar({
+    required this.total,
+    required this.showing,
+    required this.isSearchMode,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding:
+      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
         children: [
           _StatChip(
-            label: 'Total',
+            label: isSearchMode ? 'Results' : 'Total',
             value: total.toString(),
-            color: const Color(0xFF1A3C6E),
+            color: isSearchMode
+                ? Colors.amber.shade700
+                : const Color(0xFF1A3C6E),
           ),
-          const SizedBox(width: 10),
-          if (showing != total)
-            _StatChip(
-              label: 'Filtered',
-              value: showing.toString(),
-              color: Colors.amber.shade700,
-            ),
           const Spacer(),
           Text(
-            'Showing $showing of $total records',
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            'Showing $showing records',
+            style:
+            TextStyle(fontSize: 12, color: Colors.grey.shade600),
           ),
         ],
       ),
@@ -646,8 +688,6 @@ class _StudentTable extends StatelessWidget {
   final void Function(StudentModel) onView;
   final void Function(StudentModel) onEdit;
   final void Function(StudentModel) onDelete;
-  final ScrollController scrollController;
-  final Widget footer;
 
   const _StudentTable({
     required this.students,
@@ -657,248 +697,315 @@ class _StudentTable extends StatelessWidget {
     required this.onView,
     required this.onEdit,
     required this.onDelete,
-    required this.scrollController,
-    required this.footer,
   });
 
   @override
   Widget build(BuildContext context) {
     final isNarrow = MediaQuery.of(context).size.width < 600;
 
-    return SingleChildScrollView(
-      controller: scrollController,
-      padding: const EdgeInsets.all(12),
-      child: Column(
+    return Card(
+      elevation: 0,
+      shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      clipBehavior: Clip.antiAlias,
+      child: isNarrow
+          ? _MobileList(
+              students: students,
+              onView: onView,
+              onEdit: onEdit,
+              onDelete: onDelete,
+            )
+          : Column(
         children: [
-          Card(
-            elevation: 0,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            clipBehavior: Clip.antiAlias,
-            child: isNarrow
-                ? _MobileCardList(
-                    scrollController: scrollController,
-                    students: students,
-                    onView: onView,
-                    onEdit: onEdit,
-                    onDelete: onDelete,
-                  )
-                : _DataTable(
-                    students: students,
-                    sortColumnIndex: sortColumnIndex,
-                    sortAscending: sortAscending,
-                    onSort: onSort,
-                    onView: onView,
-                    onEdit: onEdit,
-                    onDelete: onDelete,
-                  ),
+          _TableHeader(
+            sortColumnIndex: sortColumnIndex,
+            sortAscending: sortAscending,
+            onSort: onSort,
           ),
-          footer,
+          const Divider(height: 1),
+          Expanded(
+            child: ListView.separated(
+              itemCount: students.length,
+              separatorBuilder: (_, __) =>
+              const Divider(height: 1),
+              itemBuilder: (_, i) => _TableRow(
+                student: students[i],
+                isEven: i.isEven,
+                onView: () => onView(students[i]),
+                onEdit: () => onEdit(students[i]),
+                onDelete: () => onDelete(students[i]),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-// Desktop-style DataTable
-class _DataTable extends StatelessWidget {
-  final List<StudentModel> students;
+class _TableHeader extends StatelessWidget {
   final int sortColumnIndex;
   final bool sortAscending;
   final void Function(int, bool) onSort;
-  final void Function(StudentModel) onView;
-  final void Function(StudentModel) onEdit;
-  final void Function(StudentModel) onDelete;
 
-  const _DataTable({
-    required this.students,
+  const _TableHeader({
     required this.sortColumnIndex,
     required this.sortAscending,
     required this.onSort,
-    required this.onView,
-    required this.onEdit,
-    required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: DataTable(
-        sortColumnIndex: sortColumnIndex,
-        sortAscending: sortAscending,
-        headingRowColor: WidgetStateProperty.all(
-            const Color(0xFF1A3C6E).withOpacity(0.07)),
-        headingTextStyle: const TextStyle(
-          fontWeight: FontWeight.w700,
-          color: Color(0xFF1A3C6E),
-          fontSize: 13,
+    return Container(
+      color: const Color(0xFF1A3C6E).withOpacity(0.07),
+      padding:
+      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+        _HeaderCell('Student ID', 3, 0, sortColumnIndex,
+            sortAscending, onSort),
+        _HeaderCell(
+            'Name', 4, 1, sortColumnIndex, sortAscending, onSort),
+        _HeaderCell('Adm. Year', 2, 2, sortColumnIndex,
+            sortAscending, onSort),
+        _HeaderCell(
+            'Course', 2, 3, sortColumnIndex, sortAscending, onSort),
+        const Expanded(
+          flex: 4,
+          child: Text('Actions',
+              style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1A3C6E),
+                  fontSize: 13)),
         ),
-        dataTextStyle:
-            const TextStyle(fontSize: 13, color: Colors.black87),
-        columnSpacing: 20,
-        horizontalMargin: 16,
-        dividerThickness: 0.5,
-        columns: [
-          DataColumn(
-            label: const Text('Student ID'),
-            onSort: (i, asc) => onSort(0, asc),
-          ),
-          DataColumn(
-            label: const Text('Name'),
-            onSort: (i, asc) => onSort(1, asc),
-          ),
-          DataColumn(
-            label: const Text('Adm. Year'),
-            numeric: true,
-            onSort: (i, asc) => onSort(2, asc),
-          ),
-          DataColumn(
-            label: const Text('Course'),
-            onSort: (i, asc) => onSort(3, asc),
-          ),
-          const DataColumn(label: Text('Actions')),
-        ],
-        rows: students.asMap().entries.map((entry) {
-          final i = entry.key;
-          final s = entry.value;
-          return DataRow(
-            color: WidgetStateProperty.resolveWith((states) {
-              if (states.contains(WidgetState.hovered)) {
-                return const Color(0xFF1A3C6E).withOpacity(0.04);
-              }
-              return i.isOdd ? Colors.grey.shade50 : Colors.white;
-            }),
-            cells: [
-              DataCell(
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A3C6E).withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    s.studentId.isEmpty ? '—' : s.studentId,
-                    style: const TextStyle(
-                      color: Color(0xFF1A3C6E),
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ),
-              DataCell(
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (s.photoUrl != null) ...[
-                      ImageNetwork(image: s.photoUrl!, height: 50, width: 50, fitWeb: BoxFitWeb.fill, borderRadius: BorderRadius.all(Radius.circular(16),)),
-                      const SizedBox(width: 8),
-                    ] else ...[
-                      CircleAvatar(
-                        radius: 14,
-                        backgroundColor:
-                            const Color(0xFF1A3C6E).withOpacity(0.15),
-                        child: Text(
-                          s.name.isNotEmpty ? s.name[0].toUpperCase() : '?',
-                          style: const TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF1A3C6E),
-                              fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    Flexible(
-                      child: Text(
-                        s.name.isEmpty ? '—' : s.name,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              DataCell(Text(
-                s.yearOfAdmission?.toString() ?? '—',
-                textAlign: TextAlign.right,
-              )),
-              DataCell(_CourseBadge(course: s.nameOfCourse)),
-              DataCell(_ActionButtons(
-                student: s,
-                onView: () => onView(s),
-                onEdit: () => onEdit(s),
-                onDelete: () => onDelete(s),
-              )),
-            ],
-          );
-        }).toList(),
+      ]),
+    );
+  }
+}
+
+class _HeaderCell extends StatelessWidget {
+  final String label;
+  final int flex;
+  final int col;
+  final int sortColumnIndex;
+  final bool sortAscending;
+  final void Function(int, bool) onSort;
+
+  const _HeaderCell(this.label, this.flex, this.col,
+      this.sortColumnIndex, this.sortAscending, this.onSort);
+
+  @override
+  Widget build(BuildContext context) {
+    final active = sortColumnIndex == col;
+    return Expanded(
+      flex: flex,
+      child: GestureDetector(
+        onTap: () => onSort(col, active ? !sortAscending : true),
+        child: Row(children: [
+          Text(label,
+              style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1A3C6E),
+                  fontSize: 13)),
+          if (active)
+            Icon(
+                sortAscending
+                    ? Icons.arrow_upward
+                    : Icons.arrow_downward,
+                size: 12,
+                color: const Color(0xFF1A3C6E)),
+        ]),
       ),
     );
   }
 }
 
-// Mobile card list (for narrow screens)
-class _MobileCardList extends StatelessWidget {
+class _TableRow extends StatelessWidget {
+  final StudentModel student;
+  final bool isEven;
+  final VoidCallback onView;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _TableRow({
+    required this.student,
+    required this.isEven,
+    required this.onView,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  Color _avatarColor(String name) {
+    const colors = [
+      Color(0xFF1A3C6E), Color(0xFF2E7D32), Color(0xFF6A1B9A),
+      Color(0xFF00838F), Color(0xFF558B2F), Color(0xFF4527A0),
+      Color(0xFFAD1457), Color(0xFF00695C), Color(0xFF283593),
+    ];
+    if (name.isEmpty) return colors[0];
+    return colors[name.codeUnitAt(0) % colors.length];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: isEven ? Colors.white : Colors.grey.shade50,
+      padding:
+      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+        // Student ID
+        Expanded(
+          flex: 3,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A3C6E).withOpacity(0.08),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                student.studentId.isEmpty ? '—' : student.studentId,
+                style: const TextStyle(
+                    color: Color(0xFF1A3C6E),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+        ),
+        // Name
+        Expanded(
+          flex: 4,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(children: [
+              CircleAvatar(
+                radius: 13,
+                backgroundColor: _avatarColor(student.name),
+                child: Text(
+                  student.name.isNotEmpty
+                      ? student.name[0].toUpperCase()
+                      : '?',
+                  style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(width: 7),
+              Flexible(
+                child: Text(
+                  student.name.isEmpty ? '—' : student.name,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ),
+            ]),
+          ),
+        ),
+        // Year
+        Expanded(
+          flex: 2,
+          child: Text(
+            student.yearOfAdmission?.toString() ?? '—',
+            style: const TextStyle(fontSize: 13),
+          ),
+        ),
+        // Course
+        Expanded(
+          flex: 2,
+          child: Align(alignment: Alignment.centerLeft,child: _CourseBadge(course: student.nameOfCourse)),
+        ),
+        // Actions
+        Expanded(
+          flex: 4,
+          child: Row(children: [
+            _ActionBtn(
+              label: 'View',
+              icon: Icons.visibility_outlined,
+              color: const Color(0xFF1A3C6E),
+              onPressed: onView,
+            ),
+            const SizedBox(width: 4),
+            _ActionBtn(
+              label: 'Edit',
+              icon: Icons.edit_outlined,
+              color: Colors.amber.shade700,
+              onPressed: student.isLocked ? null : onEdit,
+            ),
+            const SizedBox(width: 4),
+            _ActionBtn(
+              label: 'Delete',
+              icon: Icons.delete_outline,
+              color: Colors.red.shade600,
+              onPressed: onDelete,
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+class _MobileList extends StatelessWidget {
   final List<StudentModel> students;
   final void Function(StudentModel) onView;
   final void Function(StudentModel) onEdit;
   final void Function(StudentModel) onDelete;
-  final ScrollController scrollController;
 
-  const _MobileCardList({
+  const _MobileList({
     required this.students,
     required this.onView,
     required this.onEdit,
     required this.onDelete,
-    required this.scrollController,
   });
+
+  Color _avatarColor(String name) {
+    const colors = [
+      Color(0xFF1A3C6E), Color(0xFF2E7D32), Color(0xFF6A1B9A),
+      Color(0xFF00838F), Color(0xFF558B2F), Color(0xFF4527A0),
+    ];
+    if (name.isEmpty) return colors[0];
+    return colors[name.codeUnitAt(0) % colors.length];
+  }
 
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
-      controller: scrollController,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
       itemCount: students.length,
       separatorBuilder: (_, __) =>
-          const Divider(height: 1, indent: 16, endIndent: 16),
-      itemBuilder: (context, i) {
+      const Divider(height: 1, indent: 16, endIndent: 16),
+      itemBuilder: (_, i) {
         final s = students[i];
         return ListTile(
           contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           leading: CircleAvatar(
-            backgroundColor: const Color(0xFF1A3C6E).withOpacity(0.15),
-            backgroundImage:
-                s.photoUrl != null ? NetworkImage(s.photoUrl!) : null,
-            child: s.photoUrl == null
-                ? Text(
-                    s.name.isNotEmpty ? s.name[0].toUpperCase() : '?',
-                    style: const TextStyle(
-                        color: Color(0xFF1A3C6E),
-                        fontWeight: FontWeight.bold),
-                  )
-                : null,
+            backgroundColor: _avatarColor(s.name),
+            child: Text(
+              s.name.isNotEmpty ? s.name[0].toUpperCase() : '?',
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.bold),
+            ),
           ),
-          title: Text(
-            s.name.isEmpty ? 'Unknown' : s.name,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-          ),
-          subtitle: Wrap(
-            spacing: 6,
-            runSpacing: 4,
-            children: [
-              if (s.studentId.isNotEmpty)
-                _SmallTag(label: s.studentId, color: const Color(0xFF1A3C6E)),
-              if (s.nameOfCourse.isNotEmpty)
-                _SmallTag(label: s.nameOfCourse, color: Colors.teal),
-              if (s.yearOfAdmission != null)
-                _SmallTag(
-                    label: s.yearOfAdmission.toString(),
-                    color: Colors.amber.shade800),
-            ],
-          ),
+          title: Text(s.name.isEmpty ? 'Unknown' : s.name,
+              style: const TextStyle(
+                  fontWeight: FontWeight.w600, fontSize: 14)),
+          subtitle: Wrap(spacing: 6, runSpacing: 4, children: [
+            if (s.studentId.isNotEmpty)
+              _SmallTag(label: s.studentId, color: const Color(0xFF1A3C6E)),
+            if (s.nameOfCourse.isNotEmpty)
+              _SmallTag(label: s.nameOfCourse, color: Colors.teal),
+            if (s.yearOfAdmission != null)
+              _SmallTag(
+                  label: s.yearOfAdmission.toString(),
+                  color: Colors.amber.shade800),
+          ]),
           trailing: PopupMenuButton<String>(
             onSelected: (v) {
               if (v == 'view') onView(s);
@@ -920,7 +1027,7 @@ class _MobileCardList extends StatelessWidget {
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Small helpers ─────────────────────────────────────────────────────────────
 
 class _CourseBadge extends StatelessWidget {
   final String course;
@@ -928,18 +1035,12 @@ class _CourseBadge extends StatelessWidget {
 
   Color get _color {
     switch (course) {
-      case 'B.ED':
-        return Colors.blue.shade700;
-      case 'D.ED':
-        return Colors.green.shade700;
-      case 'M.ED':
-        return Colors.purple.shade700;
-      case 'D.P.ED':
-        return Colors.orange.shade700;
-      case 'SKILL':
-        return Colors.teal.shade700;
-      default:
-        return Colors.grey.shade600;
+      case 'B.ED': return Colors.blue.shade700;
+      case 'D.ED': return Colors.green.shade700;
+      case 'M.ED': return Colors.purple.shade700;
+      case 'D.P.ED': return Colors.orange.shade700;
+      case 'SKILL': return Colors.teal.shade700;
+      default: return Colors.grey.shade600;
     }
   }
 
@@ -955,54 +1056,8 @@ class _CourseBadge extends StatelessWidget {
       child: Text(
         course.isEmpty ? '—' : course,
         style: TextStyle(
-          color: _color,
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-        ),
+            color: _color, fontSize: 11, fontWeight: FontWeight.w600),
       ),
-    );
-  }
-}
-
-class _ActionButtons extends StatelessWidget {
-  final StudentModel student;
-  final VoidCallback onView;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-
-  const _ActionButtons({
-    required this.student,
-    required this.onView,
-    required this.onEdit,
-    required this.onDelete,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _ActionBtn(
-          label: 'View',
-          icon: Icons.visibility_outlined,
-          color: const Color(0xFF1A3C6E),
-          onPressed: onView,
-        ),
-        const SizedBox(width: 4),
-        _ActionBtn(
-          label: 'Edit',
-          icon: Icons.edit_outlined,
-          color: Colors.amber.shade700,
-          onPressed: student.isLocked ? null : onEdit,
-        ),
-        const SizedBox(width: 4),
-        _ActionBtn(
-          label: 'Delete',
-          icon: Icons.delete_outline,
-          color: Colors.red.shade600,
-          onPressed: onDelete,
-        ),
-      ],
     );
   }
 }
@@ -1035,25 +1090,19 @@ class _ActionBtn extends StatelessWidget {
                 : Colors.grey.shade100,
             borderRadius: BorderRadius.circular(6),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon,
                 size: 13,
-                color: onPressed != null ? color : Colors.grey.shade400,
-              ),
-              const SizedBox(width: 3),
-              Text(
-                label,
+                color: onPressed != null ? color : Colors.grey.shade400),
+            const SizedBox(width: 3),
+            Text(label,
                 style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: onPressed != null ? color : Colors.grey.shade400,
-                ),
-              ),
-            ],
-          ),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: onPressed != null
+                        ? color
+                        : Colors.grey.shade400)),
+          ]),
         ),
       ),
     );
@@ -1075,12 +1124,12 @@ class _SmallTag extends StatelessWidget {
       ),
       child: Text(label,
           style: TextStyle(
-              fontSize: 10, color: color, fontWeight: FontWeight.w600)),
+              fontSize: 10,
+              color: color,
+              fontWeight: FontWeight.w600)),
     );
   }
 }
-
-// ── Empty State ───────────────────────────────────────────────────────────────
 
 class _EmptyState extends StatelessWidget {
   final bool hasFilters;
@@ -1089,33 +1138,30 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            hasFilters ? Icons.search_off : Icons.people_outline,
-            size: 64,
-            color: Colors.grey.shade300,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            hasFilters ? 'No students match your filters' : 'No students yet',
-            style: TextStyle(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(
+          hasFilters ? Icons.search_off : Icons.people_outline,
+          size: 64,
+          color: Colors.grey.shade300,
+        ),
+        const SizedBox(height: 16),
+        Text(
+          hasFilters
+              ? 'No students match your search'
+              : 'No students yet',
+          style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
-              color: Colors.grey.shade500,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            hasFilters
-                ? 'Try adjusting your search criteria'
-                : 'Tap the + button to add a student',
-            style:
-                TextStyle(fontSize: 13, color: Colors.grey.shade400),
-          ),
-        ],
-      ),
+              color: Colors.grey.shade500),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          hasFilters
+              ? 'Try different keywords or clear filters'
+              : 'Tap + to add the first student',
+          style: TextStyle(fontSize: 13, color: Colors.grey.shade400),
+        ),
+      ]),
     );
   }
 }

@@ -4,6 +4,7 @@ import 'package:gd_college/screens/login_screen.dart';
 
 import '../staff_management/screens/staff_list_screen.dart';
 import '../student_management/screens/student_list_screen.dart';
+import 'Helper.dart';
 
 getSideDrawer(BuildContext context){
  return Drawer(
@@ -32,6 +33,14 @@ getSideDrawer(BuildContext context){
          onTap: () {
            // Navigator.pop(context);
            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => StaffListScreen()));
+         },
+       ),
+       ListTile(
+         leading: const Icon(Icons.people),
+         title: const Text('Helper'),
+         onTap: () {
+           // Navigator.pop(context);
+           Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => Helper()));
          },
        ),
        ListTile(

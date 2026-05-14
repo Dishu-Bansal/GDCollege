@@ -9,40 +9,122 @@ class FirebaseService {
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
   static const String _collection = 'students';
+  static const int pageSize = 20;
 
-  // ─── CREATE ──────────────────────────────────────────────────────────────
+  // ── N-gram index builder ──────────────────────────────────────────────────
+
+  Set<String> _generateNGrams(String text) {
+    final result = <String>{};
+    final clean = text.toLowerCase().trim();
+    if (clean.isEmpty) return result;
+    for (int i = 0; i < clean.length; i++) {
+      for (int j = i + 1; j <= clean.length; j++) {
+        result.add(clean.substring(i, j));
+      }
+    }
+    return result;
+  }
+
+  Map<String, bool> _buildSearchIndex(StudentModel student) {
+    final ngrams = <String>{};
+    ngrams.addAll(_generateNGrams(student.name));
+    ngrams.addAll(_generateNGrams(student.studentId));
+    ngrams.addAll(_generateNGrams(student.fatherName));
+    ngrams.addAll(_generateNGrams(student.mobileNo1));
+    return {for (final g in ngrams) g: true};
+  }
+
+  // ── Count helpers ─────────────────────────────────────────────────────────
+
+  Future<void> _incrementCount() async {
+    await _firestore.collection('_meta').doc('students').set(
+        {'count': FieldValue.increment(1)}, SetOptions(merge: true));
+  }
+
+  Future<void> _decrementCount() async {
+    await _firestore.collection('_meta').doc('students').set(
+        {'count': FieldValue.increment(-1)}, SetOptions(merge: true));
+  }
+
+  Stream<int> totalCountStream() {
+    return _firestore
+        .collection('_meta')
+        .doc('students')
+        .snapshots()
+        .map((s) => (s.data()?['count'] ?? 0) as int);
+  }
+
+  // ── CREATE ────────────────────────────────────────────────────────────────
 
   Future<String> saveStudent(StudentModel student) async {
     final now = DateTime.now();
     student.createdAt = now;
     student.updatedAt = now;
-    final docRef =
-    await _firestore.collection(_collection).add(student.toFirestore());
+    final data = student.toFirestore();
+    data['_searchIndex'] = _buildSearchIndex(student);
+    final docRef = await _firestore.collection(_collection).add(data);
+    await _incrementCount();
     return docRef.id;
   }
 
-  // ─── UPDATE ──────────────────────────────────────────────────────────────
+  // ── UPDATE ────────────────────────────────────────────────────────────────
 
   Future<void> updateStudent(String docId, StudentModel student) async {
     student.updatedAt = DateTime.now();
     student.documentVersion += 1;
-    await _firestore
-        .collection(_collection)
-        .doc(docId)
-        .update(student.toFirestore());
+    final data = student.toFirestore();
+    data['_searchIndex'] = _buildSearchIndex(student);
+    await _firestore.collection(_collection).doc(docId).update(data);
   }
 
-  // ─── DELETE ──────────────────────────────────────────────────────────────
+  // ── DELETE ────────────────────────────────────────────────────────────────
 
   Future<void> deleteStudent(String docId) async {
     await _firestore.collection(_collection).doc(docId).delete();
+    await _decrementCount();
   }
 
-  // ─── READ (stream) ───────────────────────────────────────────────────────
+  Future<void> migrateExistingStudents() async {
+    print('Starting migration...');
 
-  static const int pageSize = 20;
+    // 1. Get all students
+    final snapshot = await _firestore.collection(_collection).get();
 
-  Future<({List<StudentModel> students, DocumentSnapshot? lastDoc})> fetchStudentsPage({
+    // Using a WriteBatch for better performance and atomicity (max 500 docs per batch)
+    WriteBatch batch = _firestore.batch();
+    int count = 0;
+
+    for (var doc in snapshot.docs) {
+      final data = doc.data();
+
+      // Check if the search index already exists to avoid unnecessary writes
+      if (!data.containsKey('_searchIndex')) {
+        final student = StudentModel.fromFirestore(doc.id, data);
+        await _incrementCount();
+
+        // 2. Generate the index using your existing logic
+        final searchIndex = _buildSearchIndex(student);
+
+        // 3. Update the document
+        batch.update(doc.reference, {'_searchIndex': searchIndex});
+        count++;
+
+        // Firestore batches have a 500-doc limit
+        if (count % 500 == 0) {
+          await batch.commit();
+          batch = _firestore.batch();
+          print('Migrated $count records...');
+        }
+      }
+    }
+
+    // Commit any remaining documents in the last batch
+    await batch.commit();
+    print('Migration complete. Total records updated: $count');
+  }
+  // ── BROWSE (no filters) — cursor-based, 20 at a time ─────────────────────
+
+  Future<({List<StudentModel> students, DocumentSnapshot? lastDoc})> fetchPage({
     DocumentSnapshot? startAfter,
   }) async {
     Query query = _firestore
@@ -56,7 +138,8 @@ class FirebaseService {
 
     final snap = await query.get();
     final students = snap.docs
-        .map((d) => StudentModel.fromFirestore(d.id, d.data() as Map<String, dynamic>))
+        .map((d) => StudentModel.fromFirestore(
+        d.id, d.data() as Map<String, dynamic>))
         .toList();
 
     return (
@@ -65,15 +148,40 @@ class FirebaseService {
     );
   }
 
-  Stream<List<StudentModel>> studentsStream() {
-    return _firestore
-        .collection(_collection)
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-        .map((snap) => snap.docs
+  // ── SEARCH (filters active) — fetch all matches, return full list ─────────
+  // We fetch all matching docs and let the controller paginate client-side.
+  // With n-gram index this is a single indexed Firestore query.
+
+  Future<List<StudentModel>> searchStudents({
+    required String query,
+    String? course,
+    String? year,
+  }) async {
+    final clean = query.toLowerCase().trim();
+
+    Query q = _firestore.collection(_collection);
+
+    if (clean.isNotEmpty) {
+      q = q.where('_searchIndex.$clean', isEqualTo: true);
+    }
+    if (course != null && course != 'All' && course.isNotEmpty) {
+      q = q.where('nameOfCourse', isEqualTo: course);
+    }
+    if (year != null && year.isNotEmpty) {
+      q = q.where('yearOfAdmission', isEqualTo: int.tryParse(year));
+    }
+
+    // If no filter at all somehow reached here, cap at 500 for safety
+    if (clean.isEmpty && (course == null || course == 'All') &&
+        (year == null || year.isEmpty)) {
+      q = q.limit(500);
+    }
+
+    final snap = await q.get();
+    return snap.docs
         .map((d) => StudentModel.fromFirestore(
         d.id, d.data() as Map<String, dynamic>))
-        .toList());
+        .toList();
   }
 
   // ─── FILE UPLOAD ─────────────────────────────────────────────────────────
