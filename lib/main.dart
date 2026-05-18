@@ -15,7 +15,7 @@ class StudentApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Student Registration',
+      title: 'LKLMS Management',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,

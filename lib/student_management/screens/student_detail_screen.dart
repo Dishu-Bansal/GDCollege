@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_network/image_network.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../constants.dart';
 import '../models/student_model.dart';
 import 'student_form_screen.dart';
 import '../../services/firebase_student_service.dart';
@@ -158,7 +159,19 @@ class _HeaderCard extends StatelessWidget {
         child: Row(
           children: [
             // Photo or avatar
-            ImageNetwork(image: student.photoUrl!, height: 100, width: 100, fitWeb: BoxFitWeb.fill, borderRadius: BorderRadius.all(Radius.circular(32),)),
+            student.photoUrl == null ? CircleAvatar(
+              radius: 13,
+              backgroundColor: avatarColor(student.name),
+              child: Text(
+                student.name.isNotEmpty
+                    ? student.name[0].toUpperCase()
+                    : '?',
+                style: const TextStyle(
+                    fontSize: 11,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold),
+              ),
+            ) : ImageNetwork(image: student.photoUrl!, height: 100, width: 100, fitWeb: BoxFitWeb.fill, borderRadius: BorderRadius.all(Radius.circular(32),)),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
@@ -434,6 +447,8 @@ class _MetadataCard extends StatelessWidget {
             if (student.updatedAt != null)
               _MetaRow('Updated',
                   _fmt(student.updatedAt!)),
+            _MetaRow('Created by', student.createdBy ?? ""),
+            _MetaRow('Last Update by', student.lastUpdatedBy ?? "")
           ],
         ),
       ),

@@ -836,16 +836,6 @@ class _TableRow extends StatelessWidget {
     required this.onDelete,
   });
 
-  Color _avatarColor(String name) {
-    const colors = [
-      Color(0xFF1A3C6E), Color(0xFF2E7D32), Color(0xFF6A1B9A),
-      Color(0xFF00838F), Color(0xFF558B2F), Color(0xFF4527A0),
-      Color(0xFFAD1457), Color(0xFF00695C), Color(0xFF283593),
-    ];
-    if (name.isEmpty) return colors[0];
-    return colors[name.codeUnitAt(0) % colors.length];
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -886,7 +876,7 @@ class _TableRow extends StatelessWidget {
             child: Row(children: [
               CircleAvatar(
                 radius: 13,
-                backgroundColor: _avatarColor(student.name),
+                backgroundColor: avatarColor(student.name),
                 child: Text(
                   student.name.isNotEmpty
                       ? student.name[0].toUpperCase()
@@ -905,6 +895,8 @@ class _TableRow extends StatelessWidget {
                   style: const TextStyle(fontSize: 13),
                 ),
               ),
+              const SizedBox(width: 7),
+              student.photoUrl == null ? Text("!", style: TextStyle(color: Colors.red),) : SizedBox()
             ]),
           ),
         ),
@@ -945,6 +937,8 @@ class _TableRow extends StatelessWidget {
               color: Colors.red.shade600,
               onPressed: onDelete,
             ),
+            const SizedBox(width: 4),
+            student.photoUrl == null ? Text("Missing Photo", style: TextStyle(color: Colors.red),) : SizedBox()
           ]),
         ),
       ]),
