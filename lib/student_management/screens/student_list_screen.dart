@@ -79,7 +79,7 @@ class _StudentListScreenState extends State<StudentListScreen> {
     list.sort((a, b) {
       int cmp;
       switch (_sortColumnIndex) {
-        case 0: cmp = int.parse(a.studentId).compareTo(int.parse(b.studentId)); break;
+        case 0: cmp = a.studentId.compareTo(b.studentId); break;
         case 1: cmp = a.name.compareTo(b.name); break;
         case 2: cmp = (a.yearOfAdmission ?? 0).compareTo(b.yearOfAdmission ?? 0); break;
         case 3: cmp = a.nameOfCourse.compareTo(b.nameOfCourse); break;
