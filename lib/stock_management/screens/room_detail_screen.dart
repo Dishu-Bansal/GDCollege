@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:ui_web' as ui_web;
+import 'dart:html' as html;
 import '../models/stock_models.dart';
 import '../../services/stock_service.dart';
 import '../../widgets/stock_widgets.dart';
@@ -137,6 +141,8 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
   Future<void> _uploadMedia() async {
     await showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
           borderRadius:
           BorderRadius.vertical(top: Radius.circular(16))),
@@ -271,7 +277,7 @@ class _ItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLow = item.currentQuantity <= 5;
+    final isLow = item.currentQuantity <= -1;
     final isOut = item.currentQuantity == 0;
 
     return Card(
@@ -1906,7 +1912,7 @@ class _MediaTab extends StatelessWidget {
                 physics: const NeverScrollableScrollPhysics(),
                 gridDelegate:
                 const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
+                  crossAxisCount: 6,
                   mainAxisSpacing: 6,
                   crossAxisSpacing: 6,
                 ),
@@ -1959,6 +1965,8 @@ class _MediaTab extends StatelessWidget {
   Future<void> _upload(BuildContext context) async {
     await showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
           borderRadius:
           BorderRadius.vertical(top: Radius.circular(16))),
@@ -1971,6 +1979,10 @@ class _MediaTab extends StatelessWidget {
     );
   }
 }
+
+// ── Media Tile ───────────────────────────────────────────────────────────────
+// Shows a photo (Image.network) or an inline HTML5 video on web,
+// or a tappable thumbnail on mobile.
 
 class _MediaTile extends StatelessWidget {
   final String url;
@@ -1986,33 +1998,20 @@ class _MediaTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Stack(children: [
-      ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: isVideo
-            ? Container(
-          color: Colors.grey.shade800,
-          child: const Center(
-            child: Icon(Icons.play_circle_outline,
-                color: Colors.white, size: 32),
-          ),
-        )
-            : Image.network(url,
-            fit: BoxFit.cover,
-            width: double.infinity,
-            height: double.infinity,
-            errorBuilder: (_, __, ___) => Container(
-              color: Colors.grey.shade200,
-              child: const Icon(Icons.broken_image,
-                  color: Colors.grey),
-            )),
+      Positioned(
+        width: 200,
+        height: 200,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: isVideo ? _VideoTile(url: url) : _ImageTile(url: url),
+        ),
       ),
       Positioned(
         top: 4,
-        right: 4,
+        left: 175,
         child: GestureDetector(
           onTap: () async {
-            final ok =
-            await confirmDelete(context, label: 'this file');
+            final ok = await confirmDelete(context, label: 'this file');
             if (ok) onDelete();
           },
           child: Container(
@@ -2021,12 +2020,134 @@ class _MediaTile extends StatelessWidget {
               color: Colors.black54,
               borderRadius: BorderRadius.circular(20),
             ),
-            child: const Icon(Icons.close,
-                color: Colors.white, size: 14),
+            child: const Icon(Icons.close, color: Colors.white, size: 14),
           ),
         ),
       ),
     ]);
+  }
+}
+
+// ── Image tile ────────────────────────────────────────────────────────────────
+
+class _ImageTile extends StatelessWidget {
+  final String url;
+  const _ImageTile({required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 100,
+      height: 10,
+      child: Image.network(
+        url,
+        scale: 2,
+        fit: BoxFit.fill,
+        // Headers that satisfy Firebase Storage CORS on web
+        // headers: kIsWeb ? const {'Access-Control-Allow-Origin': '*'} : null,
+        webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+        loadingBuilder: (_, child, progress) {
+          if (progress == null) return child;
+          return Container(
+            color: Colors.grey.shade100,
+            child: Center(
+              child: CircularProgressIndicator(
+                value: progress.expectedTotalBytes != null
+                    ? progress.cumulativeBytesLoaded /
+                    progress.expectedTotalBytes!
+                    : null,
+                strokeWidth: 2,
+              ),
+            ),
+          );
+        },
+        errorBuilder: (_, error, __) => Container(
+          color: Colors.grey.shade200,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.broken_image, color: Colors.grey, size: 24),
+              const SizedBox(height: 4),
+              Text('Load error',
+                  style: TextStyle(
+                      fontSize: 9, color: Colors.grey.shade500)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Video tile ────────────────────────────────────────────────────────────────
+// On web: registers an HTML <video> element and renders it via HtmlElementView.
+// On mobile: shows a thumbnail with a tap-to-open-in-browser button.
+
+class _VideoTile extends StatefulWidget {
+  final String url;
+  const _VideoTile({required this.url});
+
+  @override
+  State<_VideoTile> createState() => _VideoTileState();
+}
+
+class _VideoTileState extends State<_VideoTile> {
+  late final String _viewId;
+
+  @override
+  void initState() {
+    super.initState();
+    if (kIsWeb) {
+      _viewId = 'video-${widget.url.hashCode}-${DateTime.now().microsecondsSinceEpoch}';
+      // Build the <video> element
+      final videoElement = html.VideoElement()
+        ..src = widget.url
+        ..controls = true
+        ..style.width = '100%'
+        ..style.height = '100%'
+        ..style.objectFit = 'cover'
+        ..style.borderRadius = '8px'
+        ..setAttribute('playsinline', '');
+      // Register so Flutter can embed it
+      ui_web.platformViewRegistry.registerViewFactory(
+        _viewId,
+            (_) => videoElement,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!kIsWeb) {
+      // Mobile: show a play button; tapping opens the URL in the browser
+      return GestureDetector(
+        onTap: () async {
+          final uri = Uri.parse(widget.url);
+          // use url_launcher if available; otherwise show a snackbar
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Open video in browser'),
+              action: SnackBarAction(
+                label: 'Open',
+                onPressed: () async {
+                  // launchUrl(uri) if url_launcher is a dependency
+                },
+              ),
+            ),
+          );
+        },
+        child: Container(
+          color: Colors.grey.shade800,
+          child: const Center(
+            child: Icon(Icons.play_circle_outline,
+                color: Colors.white, size: 32),
+          ),
+        ),
+      );
+    }
+
+    // Web: embed the <video> element inline
+    return HtmlElementView(viewType: _viewId);
   }
 }
 

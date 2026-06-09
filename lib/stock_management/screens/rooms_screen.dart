@@ -253,6 +253,10 @@ class _RoomCard extends StatelessWidget {
       BuildContext context, StockService service) async {
     await showModalBottomSheet(
       context: context,
+      // useRootNavigator keeps the sheet alive when the gallery/camera
+      // pushes its own platform route on top.
+      useRootNavigator: true,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
           borderRadius:
           BorderRadius.vertical(top: Radius.circular(16))),
@@ -295,13 +299,19 @@ class _MediaUploadSheetState extends State<MediaUploadSheet> {
     final picker = ImagePicker();
     XFile? file;
 
+    // Pick the file BEFORE touching any state. The gallery/camera pushes its
+    // own platform route; on Android this can dismiss the bottom sheet context.
     if (isVideo) {
       file = await picker.pickVideo(source: source);
     } else {
-      file =
-      await picker.pickImage(source: source, imageQuality: 80);
+      file = await picker.pickImage(source: source, imageQuality: 80);
     }
+
+    // User cancelled
     if (file == null) return;
+
+    // Sheet may have been dismissed while the gallery was open
+    if (!mounted) return;
 
     setState(() {
       _uploading = true;
@@ -311,16 +321,22 @@ class _MediaUploadSheetState extends State<MediaUploadSheet> {
 
     try {
       final url = await widget.service.uploadRoomMedia(
-        localPath: file.path,
+        xfile: file,
         buildingId: widget.building.id!,
         floorId: widget.floor.id!,
         roomId: widget.room.id!,
         isVideo: isVideo,
-        onProgress: (p) => setState(() {
-          _progress = p;
-          _status = '${(p * 100).toStringAsFixed(0)}%';
-        }),
+        onProgress: (p) {
+          if (mounted) {
+            setState(() {
+              _progress = p;
+              _status = '${(p * 100).toStringAsFixed(0)}%';
+            });
+          }
+        },
       );
+
+      if (!mounted) return;
 
       if (url != null) {
         if (isVideo) {
@@ -332,6 +348,8 @@ class _MediaUploadSheetState extends State<MediaUploadSheet> {
         }
       }
 
+      if (!mounted) return;
+
       setState(() {
         _uploading = false;
         _status = 'Done!';
@@ -340,10 +358,12 @@ class _MediaUploadSheetState extends State<MediaUploadSheet> {
       await Future.delayed(const Duration(milliseconds: 600));
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      setState(() {
-        _uploading = false;
-        _status = 'Error: $e';
-      });
+      if (mounted) {
+        setState(() {
+          _uploading = false;
+          _status = 'Error: $e';
+        });
+      }
     }
   }
 

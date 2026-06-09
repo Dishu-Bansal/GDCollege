@@ -167,7 +167,7 @@ class _HeaderCard extends StatelessWidget {
         child: Row(
           children: [
             // Photo or avatar
-            ImageNetwork(image: student.photoUrl!, height: 100, width: 100, fitWeb: BoxFitWeb.fill, borderRadius: BorderRadius.all(Radius.circular(32),)),
+            student.photoUrl == null ? const Icon(Icons.person, size: 64) : ImageNetwork(image: student.photoUrl!, height: 100, width: 100, fitWeb: BoxFitWeb.fill, borderRadius: BorderRadius.all(Radius.circular(32),)),
             const SizedBox(width: 16),
             Expanded(
               child: Column(

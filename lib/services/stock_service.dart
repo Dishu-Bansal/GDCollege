@@ -1,4 +1,6 @@
-import 'dart:io';
+import 'dart:io' as io;
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../stock_management/models/stock_models.dart';
@@ -116,25 +118,48 @@ class StockService {
 
   // ── ROOM MEDIA ────────────────────────────────────────────────────────────
 
+  /// Upload media from an [XFile] (works on both web and mobile).
+  /// On web, dart:io File does not exist, so we read bytes via putData().
+  /// On mobile we use putFile() for streaming efficiency.
   Future<String?> uploadRoomMedia({
-    required String localPath,
+    required XFile xfile,
     required String buildingId,
     required String floorId,
     required String roomId,
     required bool isVideo,
     void Function(double)? onProgress,
   }) async {
-    final ext = localPath.contains('.')
-        ? localPath.substring(localPath.lastIndexOf('.'))
-        : '';
+    // Prefer xfile.name for extension — on web xfile.path is a blob URL.
+    final src = xfile.name.isNotEmpty ? xfile.name : xfile.path;
+    String ext = isVideo ? '.mp4' : '.jpg';
+    if (src.contains('.')) {
+      final candidate = src.substring(src.lastIndexOf('.'));
+      if (candidate.length <= 5) ext = candidate;
+    }
+
     final type = isVideo ? 'videos' : 'photos';
     final fileName = '${DateTime.now().millisecondsSinceEpoch}$ext';
-    final path = 'stock/$buildingId/$floorId/$roomId/$type/$fileName';
+    final storagePath =
+        'stock/$buildingId/$floorId/$roomId/$type/$fileName';
+    final ref = _storage.ref().child(storagePath);
 
-    final ref = _storage.ref().child(path);
-    final task = ref.putFile(File(localPath));
-    task.snapshotEvents.listen(
-            (s) => onProgress?.call(s.bytesTransferred / s.totalBytes));
+    UploadTask task;
+    if (kIsWeb) {
+      final bytes = await xfile.readAsBytes();
+      final metadata = SettableMetadata(
+        contentType: isVideo ? 'video/mp4' : 'image/jpeg',
+      );
+      task = ref.putData(bytes, metadata);
+    } else {
+      task = ref.putFile(io.File(xfile.path));
+    }
+
+    task.snapshotEvents.listen((s) {
+      if (s.totalBytes > 0) {
+        onProgress?.call(s.bytesTransferred / s.totalBytes);
+      }
+    });
+
     final snap = await task;
     return snap.ref.getDownloadURL();
   }
@@ -488,38 +513,50 @@ class StockService {
     String? itemId,
     String? roomId,
   }) {
-    // 1. Start with the collection reference
-    Query q = _assignments;
-
-    // 2. Attach ALL where clauses first
-    q = q.where('status', isEqualTo: 'active');
-
+    // Use a single equality filter to avoid composite index requirements.
+    // Prefer the most selective filter available, then narrow client-side.
+    Query q;
     if (itemId != null) {
-      q = q.where('itemId', isEqualTo: itemId);
-    }
-    if (roomId != null) {
-      q = q.where('roomId', isEqualTo: roomId);
+      q = _assignments.where('itemId', isEqualTo: itemId);
+    } else if (roomId != null) {
+      q = _assignments.where('roomId', isEqualTo: roomId);
+    } else {
+      q = _assignments.where('status', isEqualTo: 'active');
     }
 
-    // 3. Attach the orderBy last
-    q = q.orderBy('assignedAt', descending: true);
+    return q.snapshots().map((s) {
+      final all = s.docs
+          .map((d) => ConsumableAssignment.fromFirestore(
+          d.id, d.data() as Map<String, dynamic>))
+          .toList();
 
-    // 4. Return the mapped snapshot stream
-    return q.snapshots().map((s) => s.docs
-        .map((d) => ConsumableAssignment.fromFirestore(
-        d.id, d.data() as Map<String, dynamic>))
-        .toList());
+      // Filter client-side — no composite index needed
+      var result = all.where((a) => a.status == 'active').toList();
+      if (itemId != null) {
+        result = result.where((a) => a.itemId == itemId).toList();
+      }
+      if (roomId != null) {
+        result = result.where((a) => a.roomId == roomId).toList();
+      }
+
+      // Sort newest first
+      result.sort((a, b) => b.assignedAt.compareTo(a.assignedAt));
+      return result;
+    });
   }
 
   Stream<List<ConsumableAssignment>> allAssignmentsStream() =>
       _assignments
-          .orderBy('assignedAt', descending: true)
           .limit(200)
           .snapshots()
-          .map((s) => s.docs
-          .map((d) => ConsumableAssignment.fromFirestore(
-          d.id, d.data() as Map<String, dynamic>))
-          .toList());
+          .map((s) {
+        final list = s.docs
+            .map((d) => ConsumableAssignment.fromFirestore(
+            d.id, d.data() as Map<String, dynamic>))
+            .toList()
+          ..sort((a, b) => b.assignedAt.compareTo(a.assignedAt));
+        return list;
+      });
 
   /// Assigns consumable stock to a staff member (decreases room quantity).
   Future<void> assignConsumable({
