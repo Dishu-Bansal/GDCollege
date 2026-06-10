@@ -157,6 +157,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
 }
 
 // ── Items Tab ─────────────────────────────────────────────────────────────────
+List<StockItem> items = [];
 
 class _ItemsTab extends StatelessWidget {
   final BuildingModel building;
@@ -179,7 +180,7 @@ class _ItemsTab extends StatelessWidget {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
-        final items = snap.data ?? [];
+        items = snap.data ?? [];
 
         if (items.isEmpty) {
           return const StockEmptyState(
@@ -397,13 +398,13 @@ class _ItemCard extends StatelessWidget {
                   }
                 },
                 itemBuilder: (_) => [
-                  const PopupMenuItem(
-                      value: 'edit',
-                      child: Row(children: [
-                        Icon(Icons.edit_outlined, size: 16),
-                        SizedBox(width: 8),
-                        Text('Edit Item'),
-                      ])),
+                  // const PopupMenuItem(
+                  //     value: 'edit',
+                  //     child: Row(children: [
+                  //       Icon(Icons.edit_outlined, size: 16),
+                  //       SizedBox(width: 8),
+                  //       Text('Edit Item'),
+                  //     ])),
                   const PopupMenuItem(
                       value: 'log',
                       child: Row(children: [
@@ -1643,14 +1644,22 @@ class _ItemFormDialog extends StatefulWidget {
 
 class _ItemFormDialogState extends State<_ItemFormDialog> {
   final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _nameCtrl;
+  final _service = StockService();
+  CatalogItem? _selectedCatalogItem;
+  List<CatalogItem> _catalogSummaries = [];
+  bool _isLoading = true;
+  late TextEditingController? _nameCtrl;
+  late final String itemid;
   late final TextEditingController _priceCtrl;
   late final TextEditingController _qtyCtrl;
+  late final TextEditingController _storeNameCtrl;
+  late final TextEditingController _billCtrl;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
+    _loadCatalog(widget.initial);
     _nameCtrl =
         TextEditingController(text: widget.initial?.name ?? '');
     _priceCtrl = TextEditingController(
@@ -1658,13 +1667,32 @@ class _ItemFormDialogState extends State<_ItemFormDialog> {
     _qtyCtrl = TextEditingController(
         text:
         widget.initial?.currentQuantity.toString() ?? '0');
+    _storeNameCtrl = TextEditingController(
+        text: widget.initial?.store ?? '');
+    _billCtrl = TextEditingController(
+        text: widget.initial?.bill ?? '');
+  }
+
+  Future<void> _loadCatalog(StockItem? initial) async {
+    if (initial != null) {
+      _selectedCatalogItem = await _service.getCatalogItemById(initial!.id!);
+    }
+    final names = await _service.getCatalogItemSummaries();
+    if (mounted) {
+      setState(() {
+        _catalogSummaries = names;
+        _isLoading = false;
+      });
+    }
   }
 
   @override
   void dispose() {
-    _nameCtrl.dispose();
+    _nameCtrl?.dispose();
     _priceCtrl.dispose();
     _qtyCtrl.dispose();
+    _storeNameCtrl.dispose();
+    _billCtrl.dispose();
     super.dispose();
   }
 
@@ -1672,15 +1700,19 @@ class _ItemFormDialogState extends State<_ItemFormDialog> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() => _saving = true);
     await widget.onSave(StockItem(
-      name: _nameCtrl.text.trim(),
+      id: _selectedCatalogItem != null ? _selectedCatalogItem!.id : null,
+      name: _selectedCatalogItem == null ? _nameCtrl!.text.trim() : _selectedCatalogItem!.name,
       unitPrice: double.tryParse(_priceCtrl.text) ?? 0,
       currentQuantity: int.tryParse(_qtyCtrl.text) ?? 0,
+      store: _storeNameCtrl.text.trim(),
+      bill: _billCtrl.text.trim(),
     ));
     if (mounted) Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
     return AlertDialog(
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14)),
@@ -1693,17 +1725,62 @@ class _ItemFormDialogState extends State<_ItemFormDialog> {
       content: Form(
         key: _formKey,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextFormField(
-            controller: _nameCtrl,
-            autofocus: true,
-            decoration: InputDecoration(
-              labelText: 'Item Name *',
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8)),
+        Autocomplete<CatalogItem>(
+        displayStringForOption: (option) => option.name,
+        optionsBuilder: (TextEditingValue textEditingValue) {
+          if (textEditingValue.text.isEmpty) {
+            return const Iterable<CatalogItem>.empty();
+          }
+          return _catalogSummaries.where((option)
+          {
+            return option.name.toLowerCase().contains(
+                textEditingValue.text.toLowerCase()) &&
+                !(items.any((i) => i.id == option.id));
+          });
+        },
+        onSelected: (CatalogItem selection) {
+          // User picked a matching global item!
+          setState(() {
+            _selectedCatalogItem = selection;
+            // Pre-fill the price with the global price for convenience
+            // _priceController.text = selection.unitPrice.toString();
+          });
+        },
+        // This is crucial: It exposes the text controller inside the autocomplete input field
+        fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
+          _nameCtrl = textEditingController; // Bind it to our state
+
+          return TextFormField(
+            controller: textEditingController,
+            focusNode: focusNode,
+            decoration: const InputDecoration(
+              labelText: 'Item Name',
+              hintText: 'Type to search or enter new name',
             ),
-            validator: (v) =>
-            v == null || v.isEmpty ? 'Required' : null,
-          ),
+            onChanged: (text) {
+              // If the user modifies the text after choosing an item from the list,
+              // break the link so it evaluates as a new item or checks matching lists again.
+              if (_selectedCatalogItem != null && text != _selectedCatalogItem!.name) {
+                setState(() {
+                  _selectedCatalogItem = null;
+                });
+              }
+            },
+            validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+          );
+        },
+      ),
+      //TextFormField(
+          //   controller: _nameCtrl,
+          //   autofocus: true,
+          //   decoration: InputDecoration(
+          //     labelText: 'Item Name *',
+          //     border: OutlineInputBorder(
+          //         borderRadius: BorderRadius.circular(8)),
+          //   ),
+          //   validator: (v) =>
+          //   v == null || v.isEmpty ? 'Required' : null,
+          // ),
           const SizedBox(height: 12),
           TextFormField(
             controller: _priceCtrl,
@@ -1727,6 +1804,26 @@ class _ItemFormDialogState extends State<_ItemFormDialog> {
             ],
             decoration: InputDecoration(
               labelText: 'Initial Quantity',
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8)),
+            ),
+          ),
+          TextFormField(
+            controller: _storeNameCtrl,
+            decoration: InputDecoration(
+              labelText: 'Store Name',
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8)),
+            ),
+          ),
+          TextFormField(
+            controller: _billCtrl,
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly
+            ],
+            decoration: InputDecoration(
+              labelText: 'Bill Number',
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8)),
             ),

@@ -23,6 +23,8 @@ class StockService {
       String buildingId, String floorId, String roomId) =>
       _rooms(buildingId, floorId).doc(roomId).collection('items');
 
+  CollectionReference get _itemsCatalog => _db.collection('itemsCatalog');
+
   CollectionReference _logs(
       String buildingId, String floorId, String roomId) =>
       _rooms(buildingId, floorId).doc(roomId).collection('stockLogs');
@@ -208,14 +210,67 @@ class StockService {
           d.id, d.data() as Map<String, dynamic>))
           .toList());
 
-  Future<String> addItem(String buildingId, String floorId,
-      String roomId, StockItem item) async {
+  Future<String> addItem(String buildingId, String floorId, String roomId, StockItem item, ) async {
     item.createdAt = DateTime.now();
     item.updatedAt = DateTime.now();
-    final doc = await _items(buildingId, floorId, roomId)
-        .add(item.toFirestore());
-    return doc.id;
+
+    final batch = _db.batch();
+
+    if(item.id != null) {
+      final _itemCatalog = _itemsCatalog.doc(item.id);
+      batch.update(_itemCatalog, {'lastPrice': item.unitPrice, 'totalQuantity': FieldValue.increment(item.currentQuantity), 'updatedAt': item.updatedAt!.toIso8601String()});
+
+      final _priceHistory = _itemCatalog.collection("priceHistory");
+      batch.set(_priceHistory.doc(), {'price': item.unitPrice, 'quantity':item.currentQuantity,'timestamp': item.updatedAt!.toIso8601String(), 'store':item.store, 'bill':item.bill});
+      final logRef = _logs(buildingId, floorId, roomId).doc();
+      batch.set(
+          logRef,
+          StockLog(
+            itemId: item.id!,
+            itemName: item.name,
+            type: 'increase',
+            quantity: item.currentQuantity,
+            previousQty: 0,
+            newQty: item.currentQuantity,
+            note: "",
+          ).toFirestore());
+      batch.set(_items(buildingId, floorId, roomId).doc(item.id), item.toFirestore());
+      // final doc = await _items(buildingId, floorId, roomId)
+      //     .add(item.toFirestore());
+      await batch.commit();
+      return item.id!;
+    }
+    else
+      {
+        final _itemCatalog = _itemsCatalog.doc();
+        final id = _itemCatalog.id;
+        batch.set(_itemCatalog, CatalogItem(id: id, name:  item.name, lastPrice:  item.unitPrice, totalQuantity:  item.currentQuantity, createdAt:  item.createdAt, updatedAt:  item.updatedAt).toFirestore());
+        final _priceHistory = _itemCatalog.collection("priceHistory");
+        batch.set(_priceHistory.doc(), {'price': item.unitPrice, 'quantity': item.currentQuantity,'timestamp': item.updatedAt!.toIso8601String(), 'store':item.store, 'bill':item.bill});
+        final logRef = _logs(buildingId, floorId, roomId).doc();
+        batch.set(
+            logRef,
+            StockLog(
+              itemId: item.id!,
+              itemName: item.name,
+              type: 'increase',
+              quantity: item.currentQuantity,
+              previousQty: 0,
+              newQty: item.currentQuantity,
+              note: "",
+            ).toFirestore());
+        batch.set(_items(buildingId, floorId, roomId).doc(id), item.toFirestore());
+        // final doc = await _items(buildingId, floorId, roomId)
+        //     .add(item.toFirestore());
+        await batch.commit();
+        return id;
+      }
+    // final doc = await _items(buildingId, floorId, roomId)
+    //     .add(item.toFirestore());
+    //     return doc.id;
+    //   }
   }
+  // Adjust path as needed
 
   Future<void> updateItem(String buildingId, String floorId,
       String roomId, StockItem item) async {
@@ -223,6 +278,36 @@ class StockService {
     await _items(buildingId, floorId, roomId)
         .doc(item.id)
         .update(item.toFirestore());
+  }
+
+  /// Retrieves a single catalog item summary by its ID to prefill edit screens.
+  Future<CatalogItem?> getCatalogItemById(String catalogItemId) async {
+    try {
+      final docSnapshot = await _db.collection('itemsCatalog').doc(catalogItemId).get();
+
+      if (docSnapshot.exists && docSnapshot.data() != null) {
+        return CatalogItem.fromFirestore(docSnapshot.id, docSnapshot.data()!);
+      }
+      return null;
+    } catch (e) {
+      print('Error fetching catalog item details: $e');
+      return null;
+    }
+  }
+
+  /// Retrieves a one-time snapshot of item summaries (id, name, unitPrice)
+  /// from the global items catalog for advanced auto-completes.
+  Future<List<CatalogItem>> getCatalogItemSummaries() async {
+    try {
+      final snapshot = await _db.collection('itemsCatalog').get();
+
+      return snapshot.docs.map((doc) {
+        return CatalogItem.fromFirestore(doc.id, doc.data());
+      }).where((item) => item.name.isNotEmpty).toList();
+    } catch (e) {
+      print('Error fetching catalog item summaries: $e');
+      return [];
+    }
   }
 
   Future<void> deleteItem(String buildingId, String floorId,
@@ -251,6 +336,9 @@ class StockService {
       'currentQuantity': newQty,
       'updatedAt': DateTime.now().toIso8601String(),
     });
+
+    final _itemCatalog = _itemsCatalog.doc(item.id);
+    batch.update(_itemCatalog, {'totalQuantity': FieldValue.increment(delta), 'updatedAt': DateTime.now().toIso8601String()});
 
     final logRef = _logs(buildingId, floorId, roomId).doc();
     batch.set(

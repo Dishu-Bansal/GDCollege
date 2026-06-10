@@ -52,6 +52,15 @@ class FirebaseService {
         .toList());
   }
 
+  Stream<List<StaffModel>> staffNameStream() {
+    return _firestore
+        .collection(_collection)
+        .snapshots()
+        .map((snap) => snap.docs
+        .map((d) => StaffModel.fromFirestore(
+        d.id, d.data() as Map<String, dynamic>))
+        .toList());
+  }
   // ─── FILE UPLOAD ─────────────────────────────────────────────────────────
   /// Upload a file to Firebase Storage and return its download URL.
   Future<String?> uploadFile({

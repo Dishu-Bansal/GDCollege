@@ -109,12 +109,16 @@ class StockItem {
   int currentQuantity;
   DateTime? createdAt;
   DateTime? updatedAt;
+  String store;
+  String bill;
 
   StockItem({
     this.id,
     this.name = '',
     this.unitPrice = 0,
     this.currentQuantity = 0,
+    this.store = '',
+    this.bill = '',
     this.createdAt,
     this.updatedAt,
   });
@@ -131,6 +135,8 @@ class StockItem {
         d['createdAt'] != null ? DateTime.tryParse(d['createdAt']) : null,
         updatedAt:
         d['updatedAt'] != null ? DateTime.tryParse(d['updatedAt']) : null,
+        store: d['store'] ?? '',
+        bill: d['bill'] ?? '',
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -139,8 +145,51 @@ class StockItem {
     'currentQuantity': currentQuantity,
     'createdAt': createdAt?.toIso8601String(),
     'updatedAt': updatedAt?.toIso8601String(),
+    'store': store,
+    'bill': bill,
   };
 }
+
+class CatalogItem {
+  String? id;
+  String name;
+  double lastPrice;
+  int totalQuantity;
+  DateTime? createdAt;
+  DateTime? updatedAt;
+
+  CatalogItem({
+    this.id,
+    this.name = '',
+    this.lastPrice = 0,
+    this.totalQuantity = 0,
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  // double get totalValue => unitPrice * currentQuantity;
+
+  factory CatalogItem.fromFirestore(String id, Map<String, dynamic> d) =>
+      CatalogItem(
+        id: id,
+        name: d['name'] ?? '',
+        lastPrice: (d['lastPrice'] ?? 0).toDouble(),
+        totalQuantity: d['totalQuantity'] ?? 0,
+        createdAt:
+        d['createdAt'] != null ? DateTime.tryParse(d['createdAt']) : null,
+        updatedAt:
+        d['updatedAt'] != null ? DateTime.tryParse(d['updatedAt']) : null,
+      );
+
+  Map<String, dynamic> toFirestore() => {
+    'name': name,
+    'lastPrice': lastPrice,
+    'totalQuantity': totalQuantity,
+    'createdAt': createdAt?.toIso8601String(),
+    'updatedAt': updatedAt?.toIso8601String(),
+  };
+}
+
 
 // ── Stock Log ─────────────────────────────────────────────────────────────────
 class StockLog {
