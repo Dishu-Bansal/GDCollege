@@ -245,8 +245,8 @@ class _IncrementRow extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A3C6E).withOpacity(0.04),
-        border: Border.all(color: const Color(0xFF1A3C6E).withOpacity(0.2)),
+        color: const Color(0xFF1A3C6E).withValues(alpha: 0.04),
+        border: Border.all(color: const Color(0xFF1A3C6E).withValues(alpha: 0.2)),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -264,7 +264,7 @@ class _IncrementRow extends StatelessWidget {
                   color: Colors.white,
                   border: Border.all(
                     color: entry.date != null
-                        ? const Color(0xFF1A3C6E).withOpacity(0.4)
+                        ? const Color(0xFF1A3C6E).withValues(alpha: 0.4)
                         : Colors.grey.shade300,
                   ),
                   borderRadius: BorderRadius.circular(6),
@@ -382,7 +382,7 @@ class _IncrementSummary extends StatelessWidget {
           padding:
           const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A3C6E).withOpacity(0.08),
+            color: const Color(0xFF1A3C6E).withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(20),
           ),
           child: Text(
