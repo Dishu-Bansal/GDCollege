@@ -1,7 +1,6 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:gd_college/constants.dart';
 import 'package:gd_college/widgets/drawer.dart';
-import 'package:image_network/image_network.dart';
 import '../models/staff_model.dart';
 import '../../repositories/staff_repository.dart';
 import '../../providers.dart';
@@ -736,24 +735,18 @@ class _DataTable extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (s.photoUrl != null) ...[
-                      ImageNetwork(image: s.photoUrl!, height: 50, width: 50, fitWeb: BoxFitWeb.fill, borderRadius: BorderRadius.all(Radius.circular(16),)),
-                      const SizedBox(width: 8),
-                    ] else ...[
-                      CircleAvatar(
-                        radius: 14,
-                        backgroundColor:
-                            const Color(0xFF1A3C6E).withOpacity(0.15),
-                        child: Text(
-                          s.name.isNotEmpty ? s.name[0].toUpperCase() : '?',
-                          style: const TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF1A3C6E),
-                              fontWeight: FontWeight.bold),
-                        ),
+                    CircleAvatar(
+                      radius: 13,
+                      backgroundColor: avatarColor(s.name),
+                      child: Text(
+                        s.name.isNotEmpty ? s.name[0].toUpperCase() : '?',
+                        style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold),
                       ),
-                      const SizedBox(width: 8),
-                    ],
+                    ),
+                    const SizedBox(width: 7),
                     Flexible(
                       child: Text(
                         s.name.isEmpty ? '—' : s.name,
@@ -810,17 +803,12 @@ class _MobileCardList extends StatelessWidget {
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           leading: CircleAvatar(
-            backgroundColor: const Color(0xFF1A3C6E).withOpacity(0.15),
-            backgroundImage:
-                s.photoUrl != null ? NetworkImage(s.photoUrl!) : null,
-            child: s.photoUrl == null
-                ? Text(
-                    s.name.isNotEmpty ? s.name[0].toUpperCase() : '?',
-                    style: const TextStyle(
-                        color: Color(0xFF1A3C6E),
-                        fontWeight: FontWeight.bold),
-                  )
-                : null,
+            backgroundColor: avatarColor(s.name),
+            child: Text(
+              s.name.isNotEmpty ? s.name[0].toUpperCase() : '?',
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.bold),
+            ),
           ),
           title: Text(
             s.name.isEmpty ? 'Unknown' : s.name,
