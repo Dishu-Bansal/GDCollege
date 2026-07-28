@@ -11,7 +11,7 @@ class FirebaseStudentRepository implements StudentRepository {
 
   static const String _collection = 'students';
 
-  // â”€â”€ N-gram index builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── N-gram index builder ──────────────────────────────────────────────────
 
   Set<String> _generateNGrams(String text) {
     final result = <String>{};
@@ -34,7 +34,7 @@ class FirebaseStudentRepository implements StudentRepository {
     return {for (final g in ngrams) g: true};
   }
 
-  // â”€â”€ Count helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Count helpers ─────────────────────────────────────────────────────────
 
   Future<void> _incrementCount() async {
     await _firestore.collection('_meta').doc('students').set(
@@ -55,7 +55,7 @@ class FirebaseStudentRepository implements StudentRepository {
         .map((s) => (s.data()?['count'] ?? 0) as int);
   }
 
-  // â”€â”€ CREATE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── CREATE ────────────────────────────────────────────────────────────────
 
   @override
   Future<String> create(StudentModel student) async {
@@ -69,7 +69,7 @@ class FirebaseStudentRepository implements StudentRepository {
     return docRef.id;
   }
 
-  // â”€â”€ UPDATE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── UPDATE ────────────────────────────────────────────────────────────────
 
   @override
   Future<void> update(String docId, StudentModel student) async {
@@ -80,7 +80,7 @@ class FirebaseStudentRepository implements StudentRepository {
     await _firestore.collection(_collection).doc(docId).update(data);
   }
 
-  // â”€â”€ DELETE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── DELETE ────────────────────────────────────────────────────────────────
 
   @override
   Future<void> delete(String docId) async {
@@ -126,7 +126,7 @@ class FirebaseStudentRepository implements StudentRepository {
     await batch.commit();
     print('Migration complete. Total records updated: $count');
   }
-  // â”€â”€ BROWSE (no filters) â€” cursor-based, 20 at a time â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── BROWSE (no filters) — cursor-based, 20 at a time ─────────────────────
 
   @override
   Future<({List<StudentModel> students, DocumentSnapshot? lastDoc})> fetchPage({
@@ -153,7 +153,7 @@ class FirebaseStudentRepository implements StudentRepository {
     );
   }
 
-  // â”€â”€ SEARCH (filters active) â€” fetch all matches, return full list â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── SEARCH (filters active) — fetch all matches, return full list ─────────
   // We fetch all matching docs and let the controller paginate client-side.
   // With n-gram index this is a single indexed Firestore query.
 
@@ -190,7 +190,7 @@ class FirebaseStudentRepository implements StudentRepository {
         .toList();
   }
 
-  // â”€â”€â”€ FILE UPLOAD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── FILE UPLOAD ─────────────────────────────────────────────────────────
   /// Upload a file to Firebase Storage and return its download URL.
   @override
   Future<String?> uploadFile({

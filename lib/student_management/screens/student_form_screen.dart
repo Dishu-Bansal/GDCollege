@@ -95,14 +95,14 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
       if (_isEditMode) {
         // UPDATE path
         docId = widget.existingStudent!.docId!;
-        setState(() => _uploadStatus = 'Uploading new filesâ€¦');
+        setState(() => _uploadStatus = 'Uploading new files…');
         await ref.read(studentRepositoryProvider).uploadFiles(
           _student,
           docId,
           onProgress: (label, p) => setState(
                   () => _uploadStatus = '$label: ${(p * 100).toStringAsFixed(0)}%'),
         );
-        setState(() => _uploadStatus = 'Saving changesâ€¦');
+        setState(() => _uploadStatus = 'Saving changes…');
         await ref.read(studentRepositoryProvider).update(docId, _student);
       } else {
         // 1. Save basic record to get a Firestore ID
@@ -372,11 +372,11 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
       builder: (_) => AlertDialog(
         title: const Text('Help'),
         content: const Text(
-          'â€¢ Fields marked with * are required.\n'
-          'â€¢ Upload photo in JPG or PNG format.\n'
-          'â€¢ Certificates can be PDF, JPG or PNG.\n'
-          'â€¢ Family ID is optional for students from other states.\n'
-          'â€¢ Data is saved securely to Firebase.',
+          '• Fields marked with * are required.\n'
+          '• Upload photo in JPG or PNG format.\n'
+          '• Certificates can be PDF, JPG or PNG.\n'
+          '• Family ID is optional for students from other states.\n'
+          '• Data is saved securely to Firebase.',
         ),
         actions: [
           TextButton(

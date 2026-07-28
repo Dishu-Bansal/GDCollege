@@ -40,12 +40,12 @@ class StudentDetailScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // â”€â”€ Header Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // ── Header Card ──────────────────────────────────────────────
           _HeaderCard(student: student),
 
           const SizedBox(height: 12),
 
-          // â”€â”€ Sections â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // ── Sections ─────────────────────────────────────────────────
           _DetailCard(
             title: 'Personal Information',
             icon: Icons.person_outline,
@@ -112,8 +112,8 @@ class StudentDetailScreen extends StatelessWidget {
               _Field('Year of Admission',
                   student.yearOfAdmission?.toString()),
               _Field('Placement Details', student.placementDetails),
-              _Field('Fee â€“ 1st Year', student.feeDetails1stYear),
-              _Field('Fee â€“ 2nd Year', student.feeDetails2ndYear),
+              _Field('Fee – 1st Year', student.feeDetails1stYear),
+              _Field('Fee – 2nd Year', student.feeDetails2ndYear),
               _Field('Fine', student.fineIfAny),
               _Field('Exam Fee', student.examFee),
             ],
@@ -143,7 +143,7 @@ class _Field {
   _Field(this.label, this.value);
 }
 
-// â”€â”€ Header Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Header Card ───────────────────────────────────────────────────────────────
 
 class _HeaderCard extends StatelessWidget {
   final StudentModel student;
@@ -246,7 +246,7 @@ class _Chip extends StatelessWidget {
   }
 }
 
-// â”€â”€ Detail Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Detail Card ───────────────────────────────────────────────────────────────
 
 class _DetailCard extends StatefulWidget {
   final String title;
@@ -395,7 +395,7 @@ class _FileRow extends StatelessWidget {
           TextButton.icon(
             onPressed: () async {
               await launchUrl(Uri.parse(url));
-              // Open URL â€” use url_launcher in production
+              // Open URL — use url_launcher in production
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text('Open: $url')),
               );
@@ -413,7 +413,7 @@ class _FileRow extends StatelessWidget {
   }
 }
 
-// â”€â”€ Metadata Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Metadata Card ─────────────────────────────────────────────────────────────
 
 class _MetadataCard extends StatelessWidget {
   final StudentModel student;
@@ -438,9 +438,9 @@ class _MetadataCard extends StatelessWidget {
                     color: Colors.grey.shade500,
                     fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            _MetaRow('Doc ID', student.docId ?? 'â€”'),
+            _MetaRow('Doc ID', student.docId ?? '—'),
             _MetaRow('Version', 'v${student.documentVersion}'),
-            _MetaRow('Status', student.isLocked ? 'ðŸ”’ Locked' : 'âœï¸ Editable'),
+            _MetaRow('Status', student.isLocked ? '🔒 Locked' : '✏️ Editable'),
             if (student.createdAt != null)
               _MetaRow('Created',
                   _fmt(student.createdAt!)),

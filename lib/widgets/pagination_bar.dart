@@ -50,7 +50,7 @@ class _PaginationBarState extends State<PaginationBar> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Record range â€” hide on narrow screens
+          // Record range — hide on narrow screens
           if (!isNarrow) ...[
             Text(
               _rangeLabel(ctrl),
@@ -77,7 +77,7 @@ class _PaginationBarState extends State<PaginationBar> {
 
           const SizedBox(width: 6),
 
-          // Current page â€” tap to type a page number
+          // Current page — tap to type a page number
           _editing
               ? SizedBox(
             width: 60,
@@ -187,7 +187,7 @@ class _PaginationBarState extends State<PaginationBar> {
     final end = (start + ctrl.students.length - 1)
         .clamp(start, ctrl.totalCount);
     final label = ctrl.isSearchMode ? 'results' : 'students';
-    return '$startâ€“$end of ${ctrl.totalCount} $label';
+    return '$start–$end of ${ctrl.totalCount} $label';
   }
 }
 

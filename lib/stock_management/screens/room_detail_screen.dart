@@ -57,7 +57,7 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen>
               Text(widget.room.name,
                   style: const TextStyle(fontWeight: FontWeight.w700)),
               Text(
-                  '${widget.building.name}  â€º  ${widget.floor.name}',
+                  '${widget.building.name}  ›  ${widget.floor.name}',
                   style: const TextStyle(
                       fontSize: 11, color: Colors.white70)),
             ]),
@@ -159,7 +159,7 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen>
   }
 }
 
-// â”€â”€ Items Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Items Tab ─────────────────────────────────────────────────────────────────
 List<StockItem> items = [];
 
 class _ItemsTab extends StatelessWidget {
@@ -207,7 +207,7 @@ class _ItemsTab extends StatelessWidget {
               const SizedBox(width: 10),
               _SummaryChip(
                   label:
-                  'â‚¹${totalValue.toStringAsFixed(2)} Total',
+                  '₹${totalValue.toStringAsFixed(2)} Total',
                   icon: Icons.currency_rupee,
                   color: Colors.green.shade700),
             ]),
@@ -314,8 +314,8 @@ class _ItemCard extends StatelessWidget {
                               fontSize: 14)),
                       const SizedBox(height: 2),
                       Text(
-                        'â‚¹${item.unitPrice.toStringAsFixed(2)} / unit  â€¢  '
-                            'Total: â‚¹${item.totalValue.toStringAsFixed(2)}',
+                        '₹${item.unitPrice.toStringAsFixed(2)} / unit  •  '
+                            'Total: ₹${item.totalValue.toStringAsFixed(2)}',
                         style: TextStyle(
                             fontSize: 12,
                             color: Colors.grey.shade600),
@@ -503,7 +503,7 @@ class _ItemCard extends StatelessWidget {
               ),
             ]),
 
-            // Feature: Consumable Assignment â€” show active assignments badge
+            // Feature: Consumable Assignment — show active assignments badge
             _ActiveAssignmentsBadge(
               itemId: item.id!,
               service: service,
@@ -539,7 +539,7 @@ class _ItemCard extends StatelessWidget {
   }
 }
 
-// â”€â”€ Active Assignments Badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Active Assignments Badge ──────────────────────────────────────────────────
 
 class _ActiveAssignmentsBadge extends StatelessWidget {
   final String itemId;
@@ -574,7 +574,7 @@ class _ActiveAssignmentsBadge extends StatelessWidget {
                   size: 13, color: Colors.purple.shade700),
               const SizedBox(width: 5),
               Text(
-                '$totalOut assigned out  â€¢  '
+                '$totalOut assigned out  •  '
                     '${assignments.length} active',
                 style: TextStyle(
                     fontSize: 11,
@@ -629,7 +629,7 @@ class _QtyButton extends StatelessWidget {
   }
 }
 
-// â”€â”€ Adjust quantity bottom sheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Adjust quantity bottom sheet ──────────────────────────────────────────────
 
 class _AdjustSheet extends StatefulWidget {
   final StockItem item;
@@ -839,7 +839,7 @@ class _AdjustSheetState extends State<_AdjustSheet> {
   }
 }
 
-// â”€â”€ Stock Transfer bottom sheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Stock Transfer bottom sheet ───────────────────────────────────────────────
 // Feature: Stock Transfer
 
 class _TransferSheet extends StatefulWidget {
@@ -998,7 +998,7 @@ class _TransferSheetState extends State<_TransferSheet> {
 
           const SizedBox(height: 4),
           Text(
-            'Available: $maxQty  â€¢  From: ${widget.room.name}',
+            'Available: $maxQty  •  From: ${widget.room.name}',
             style: TextStyle(
                 fontSize: 12, color: Colors.grey.shade500),
           ),
@@ -1117,7 +1117,7 @@ class _TransferSheetState extends State<_TransferSheet> {
   }
 }
 
-// â”€â”€ Assign Consumable bottom sheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Assign Consumable bottom sheet ────────────────────────────────────────────
 // Feature: Consumable Assignment
 
 class _AssignSheet extends StatefulWidget {
@@ -1297,7 +1297,7 @@ class _AssignSheetState extends State<_AssignSheet> {
   }
 }
 
-// â”€â”€ Assignments dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Assignments dialog ────────────────────────────────────────────────────────
 
 class _AssignmentsDialog extends StatelessWidget {
   final BuildingModel building;
@@ -1428,7 +1428,7 @@ class _AssignmentTile extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               'Assigned ${_fmtDate(assignment.assignedAt)}  '
-                  'â€¢  Total: ${assignment.quantity}',
+                  '•  Total: ${assignment.quantity}',
               style: TextStyle(
                   fontSize: 11, color: Colors.grey.shade500),
             ),
@@ -1481,7 +1481,7 @@ class _AssignmentTile extends StatelessWidget {
       '${d.day}/${d.month}/${d.year}';
 }
 
-// â”€â”€ Return Consumable bottom sheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Return Consumable bottom sheet ────────────────────────────────────────────
 
 class _ReturnSheet extends StatefulWidget {
   final ConsumableAssignment assignment;
@@ -1575,7 +1575,7 @@ class _ReturnSheetState extends State<_ReturnSheet> {
                           fontSize: 16,
                           color: Colors.green.shade700)),
                   Text(
-                      'From: ${widget.assignment.assignedTo}  â€¢  '
+                      'From: ${widget.assignment.assignedTo}  •  '
                           '${widget.assignment.outstandingQty} outstanding',
                       style: TextStyle(
                           fontSize: 12,
@@ -1633,7 +1633,7 @@ class _ReturnSheetState extends State<_ReturnSheet> {
   }
 }
 
-// â”€â”€ Item form dialog (add / edit) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Item form dialog (add / edit) ─────────────────────────────────────────────
 
 class _ItemFormDialog extends ConsumerStatefulWidget {
   @override
@@ -1791,8 +1791,8 @@ class _ItemFormDialogState extends ConsumerState<_ItemFormDialog> {
             keyboardType: const TextInputType.numberWithOptions(
                 decimal: true),
             decoration: InputDecoration(
-              labelText: 'Unit Price (â‚¹) *',
-              prefixText: 'â‚¹ ',
+              labelText: 'Unit Price (₹) *',
+              prefixText: '₹ ',
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8)),
             ),
@@ -1855,7 +1855,7 @@ class _ItemFormDialogState extends ConsumerState<_ItemFormDialog> {
   }
 }
 
-// â”€â”€ Item log dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Item log dialog ───────────────────────────────────────────────────────────
 
 class _ItemLogDialog extends StatelessWidget {
   final BuildingModel building;
@@ -1926,7 +1926,7 @@ class _ItemLogDialog extends StatelessWidget {
   }
 }
 
-// â”€â”€ Media Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Media Tab ─────────────────────────────────────────────────────────────────
 
 class _MediaTab extends StatelessWidget {
   final BuildingModel building;
@@ -2081,7 +2081,7 @@ class _MediaTab extends StatelessWidget {
   }
 }
 
-// â”€â”€ Media Tile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Media Tile ───────────────────────────────────────────────────────────────
 // Shows a photo (Image.network) or an inline HTML5 video on web,
 // or a tappable thumbnail on mobile.
 
@@ -2129,7 +2129,7 @@ class _MediaTile extends StatelessWidget {
   }
 }
 
-// â”€â”€ Image tile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Image tile ────────────────────────────────────────────────────────────────
 
 class _ImageTile extends StatelessWidget {
   final String url;
@@ -2180,7 +2180,7 @@ class _ImageTile extends StatelessWidget {
   }
 }
 
-// â”€â”€ Video tile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Video tile ────────────────────────────────────────────────────────────────
 // On web: registers an HTML <video> element and renders it via HtmlElementView.
 // On mobile: shows a thumbnail with a tap-to-open-in-browser button.
 
@@ -2252,7 +2252,7 @@ class _VideoTileState extends State<_VideoTile> {
   }
 }
 
-// â”€â”€ Log Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Log Tab ───────────────────────────────────────────────────────────────────
 
 class _LogTab extends StatelessWidget {
   final BuildingModel building;
@@ -2348,7 +2348,7 @@ class _LogTile extends StatelessWidget {
                 const SizedBox(height: 3),
                 Row(children: [
                   Text(
-                    '${log.previousQty} â†’ ${log.newQty}',
+                    '${log.previousQty} → ${log.newQty}',
                     style: TextStyle(
                         fontSize: 11,
                         color: Colors.grey.shade500),
@@ -2386,7 +2386,7 @@ class _LogTile extends StatelessWidget {
   }
 }
 
-// â”€â”€ Inspections Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Inspections Tab ───────────────────────────────────────────────────────────
 // Feature: Inspections
 
 class _InspectionsTab extends StatelessWidget {
@@ -2433,7 +2433,7 @@ class _InspectionsTab extends StatelessWidget {
                 icon: const Icon(Icons.checklist_outlined),
                 label: Text(
                   inProgress.isNotEmpty
-                      ? 'Inspection In Progressâ€¦'
+                      ? 'Inspection In Progress…'
                       : 'Start Inspection',
                 ),
                 style: ElevatedButton.styleFrom(
@@ -2461,7 +2461,7 @@ class _InspectionsTab extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Inspection started ${_fmtDateTime(inProgress.first.startedAt)} â€” tap to continue',
+                      'Inspection started ${_fmtDateTime(inProgress.first.startedAt)} — tap to continue',
                       style: TextStyle(
                           fontSize: 13,
                           color: Colors.amber.shade900,
@@ -2624,8 +2624,8 @@ class _InspectionSummaryTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    '$total items checked  â€¢  $matched matched'
-                        '${discrepancies > 0 ? '  â€¢  $discrepancies discrepancy' : ''}',
+                    '$total items checked  •  $matched matched'
+                        '${discrepancies > 0 ? '  •  $discrepancies discrepancy' : ''}',
                     style: TextStyle(
                         fontSize: 11, color: Colors.grey.shade600),
                   ),
@@ -2655,7 +2655,7 @@ class _InspectionSummaryTile extends StatelessWidget {
   }
 }
 
-// â”€â”€ Inspection Execution Screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Inspection Execution Screen ───────────────────────────────────────────────
 
 class InspectionExecutionScreen extends StatefulWidget {
   final BuildingModel building;
@@ -3056,7 +3056,7 @@ class _InspectionExecutionScreenState
   }
 }
 
-// â”€â”€ Inspection Report Screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Inspection Report Screen ──────────────────────────────────────────────────
 
 class InspectionReportScreen extends StatelessWidget {
   final InspectionModel inspection;
@@ -3096,7 +3096,7 @@ class InspectionReportScreen extends StatelessWidget {
                             fontSize: 16,
                             color: Color(0xFF1A3C6E))),
                     Text(
-                        '${inspection.floorName}  â€º  '
+                        '${inspection.floorName}  ›  '
                             '${inspection.buildingName}',
                         style: TextStyle(
                             fontSize: 12,
@@ -3227,7 +3227,7 @@ class _ChecklistReportTile extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                         fontSize: 13)),
                 Text(
-                  'Expected: ${item.expectedQty}  â€¢  '
+                  'Expected: ${item.expectedQty}  •  '
                       'Actual: ${item.actualQty}',
                   style: TextStyle(
                       fontSize: 11, color: Colors.grey.shade600),

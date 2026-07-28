@@ -25,7 +25,7 @@ class RoomsScreen extends ConsumerWidget {
             children: [
               Text(floor.name,
                   style: const TextStyle(fontWeight: FontWeight.w700)),
-              Text('${building.name}  â€º  Rooms',
+              Text('${building.name}  ›  Rooms',
                   style: const TextStyle(
                       fontSize: 12, color: Colors.white70)),
             ]),
@@ -183,7 +183,7 @@ class _RoomCard extends StatelessWidget {
                               fontSize: 11,
                               color: Colors.grey.shade400)),
                   ]),
-                  // Feature: Media Freshness â€” show overdue label
+                  // Feature: Media Freshness — show overdue label
                   if (overdue)
                     Padding(
                       padding: const EdgeInsets.only(top: 3),
@@ -272,7 +272,7 @@ class _RoomCard extends StatelessWidget {
   }
 }
 
-// â”€â”€ Media upload bottom sheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Media upload bottom sheet ─────────────────────────────────────────────────
 
 class MediaUploadSheet extends StatefulWidget {
   final BuildingModel building;
@@ -317,7 +317,7 @@ class _MediaUploadSheetState extends State<MediaUploadSheet> {
 
     setState(() {
       _uploading = true;
-      _status = 'Uploadingâ€¦';
+      _status = 'Uploading…';
       _progress = 0;
     });
 

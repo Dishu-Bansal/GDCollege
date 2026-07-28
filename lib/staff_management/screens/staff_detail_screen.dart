@@ -39,12 +39,12 @@ class StaffDetailScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // â”€â”€ Header Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // ── Header Card ──────────────────────────────────────────────
           _HeaderCard(student: staff),
 
           const SizedBox(height: 12),
 
-          // â”€â”€ Sections â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // ── Sections ─────────────────────────────────────────────────
           _DetailCard(
             title: 'Personal Information',
             icon: Icons.person_outline,
@@ -151,7 +151,7 @@ class _Field {
   _Field(this.label, this.value);
 }
 
-// â”€â”€ Header Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Header Card ───────────────────────────────────────────────────────────────
 
 class _HeaderCard extends StatelessWidget {
   final StaffModel student;
@@ -242,7 +242,7 @@ class _Chip extends StatelessWidget {
   }
 }
 
-// â”€â”€ Detail Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Detail Card ───────────────────────────────────────────────────────────────
 
 class _DetailCard extends StatefulWidget {
   final String title;
@@ -391,7 +391,7 @@ class _FileRow extends StatelessWidget {
           TextButton.icon(
             onPressed: () async {
               await launchUrl(Uri.parse(url));
-              // Open URL â€” use url_launcher in production
+              // Open URL — use url_launcher in production
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text('Open: $url')),
               );
@@ -409,7 +409,7 @@ class _FileRow extends StatelessWidget {
   }
 }
 
-// â”€â”€ Metadata Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Metadata Card ─────────────────────────────────────────────────────────────
 
 class _MetadataCard extends StatelessWidget {
   final StaffModel staff;
@@ -434,9 +434,9 @@ class _MetadataCard extends StatelessWidget {
                     color: Colors.grey.shade500,
                     fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            _MetaRow('Doc ID', staff.docId ?? 'â€”'),
+            _MetaRow('Doc ID', staff.docId ?? '—'),
             _MetaRow('Version', 'v${staff.documentVersion}'),
-            _MetaRow('Status', staff.isLocked ? 'ðŸ”’ Locked' : 'âœï¸ Editable'),
+            _MetaRow('Status', staff.isLocked ? '🔒 Locked' : '✏️ Editable'),
             if (staff.createdAt != null)
               _MetaRow('Created',
                   _fmt(staff.createdAt!)),

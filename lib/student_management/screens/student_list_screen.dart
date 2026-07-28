@@ -58,7 +58,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
     _debounce?.cancel();
 
     if (!_hasActiveFilters) {
-      // Filters cleared â€” go back to browse mode
+      // Filters cleared — go back to browse mode
       _pagination.resetToBrowse();
       return;
     }
@@ -278,7 +278,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
       drawer: getSideDrawer(context),
       body: Column(
         children: [
-          // â”€â”€ Filter Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // ── Filter Panel ──────────────────────────────────────────
           AnimatedSize(
             duration: const Duration(milliseconds: 280),
             curve: Curves.easeInOut,
@@ -311,7 +311,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
                 : const SizedBox.shrink(),
           ),
 
-          // â”€â”€ Stats Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // ── Stats Bar ─────────────────────────────────────────────
           _StatsBar(
             total: _pagination.totalCount,
             showing: _pagination.students.length,
@@ -341,7 +341,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
               ]),
             ),
 
-          // â”€â”€ Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // ── Table ─────────────────────────────────────────────────
           Expanded(
             child: _pagination.isLoading &&
                 _pagination.students.isEmpty
@@ -382,7 +382,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
   }
 }
 
-// â”€â”€ Filter Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Filter Panel ──────────────────────────────────────────────────────────────
 
 class _FilterPanel extends StatelessWidget {
   final TextEditingController idCtrl;
@@ -607,7 +607,7 @@ class _FilterDropdown extends StatelessWidget {
   }
 }
 
-// â”€â”€ Stats Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Stats Bar ─────────────────────────────────────────────────────────────────
 
 class _StatsBar extends StatelessWidget {
   final int total;
@@ -679,7 +679,7 @@ class _StatChip extends StatelessWidget {
   }
 }
 
-// â”€â”€ Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Table ─────────────────────────────────────────────────────────────────────
 
 class _StudentTable extends StatelessWidget {
   final List<StudentModel> students;
@@ -859,7 +859,7 @@ class _TableRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
-                student.studentId.isEmpty ? 'â€”' : student.studentId,
+                student.studentId.isEmpty ? '—' : student.studentId,
                 style: const TextStyle(
                     color: Color(0xFF1A3C6E),
                     fontWeight: FontWeight.w600,
@@ -891,7 +891,7 @@ class _TableRow extends StatelessWidget {
               const SizedBox(width: 7),
               Flexible(
                 child: Text(
-                  student.name.isEmpty ? 'â€”' : student.name,
+                  student.name.isEmpty ? '—' : student.name,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 13),
                 ),
@@ -905,7 +905,7 @@ class _TableRow extends StatelessWidget {
         Expanded(
           flex: 2,
           child: Text(
-            student.yearOfAdmission?.toString() ?? 'â€”',
+            student.yearOfAdmission?.toString() ?? '—',
             style: const TextStyle(fontSize: 13),
           ),
         ),
@@ -1022,7 +1022,7 @@ class _MobileList extends StatelessWidget {
   }
 }
 
-// â”€â”€ Small helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Small helpers ─────────────────────────────────────────────────────────────
 
 class _CourseBadge extends StatelessWidget {
   final String course;
@@ -1049,7 +1049,7 @@ class _CourseBadge extends StatelessWidget {
         border: Border.all(color: _color.withOpacity(0.3)),
       ),
       child: Text(
-        course.isEmpty ? 'â€”' : course,
+        course.isEmpty ? '—' : course,
         style: TextStyle(
             color: _color, fontSize: 11, fontWeight: FontWeight.w600),
       ),
