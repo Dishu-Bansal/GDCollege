@@ -1,34 +1,34 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+﻿import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import '../services/firebase_student_service.dart';
+import '../repositories/student_repository.dart';
 import '../student_management/models/student_model.dart';
 
 enum PageMode { browse, search }
 
 class PaginationController extends ChangeNotifier {
-  final FirebaseService _service;
+  final StudentRepository _service;
 
   PaginationController(this._service);
 
-  // ── Shared state ──────────────────────────────────────────────────────────
+  // â”€â”€ Shared state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   List<StudentModel> students = [];
   bool isLoading = false;
   String? error;
 
-  // ── Browse state ──────────────────────────────────────────────────────────
+  // â”€â”€ Browse state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   int _browsePage = 1;
   int _browseTotal = 0;
   final Map<int, DocumentSnapshot> _cursors = {};
 
-  // ── Search state ──────────────────────────────────────────────────────────
+  // â”€â”€ Search state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   List<StudentModel> _allSearchResults = [];
   int _searchPage = 1;
 
-  // ── Mode ──────────────────────────────────────────────────────────────────
+  // â”€â”€ Mode â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   PageMode _mode = PageMode.browse;
   bool get isSearchMode => _mode == PageMode.search;
 
-  // ── Derived getters ───────────────────────────────────────────────────────
+  // â”€â”€ Derived getters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   int get currentPage =>
       isSearchMode ? _searchPage : _browsePage;
 
@@ -36,12 +36,12 @@ class PaginationController extends ChangeNotifier {
       isSearchMode ? _allSearchResults.length : _browseTotal;
 
   int get totalPages =>
-      (totalCount / FirebaseService.pageSize).ceil().clamp(1, 999999);
+      (totalCount / StudentRepository.pageSize).ceil().clamp(1, 999999);
 
   bool get hasPrev => currentPage > 1;
   bool get hasNext => currentPage < totalPages;
 
-  // ── Browse ────────────────────────────────────────────────────────────────
+  // â”€â”€ Browse â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   Future<void> loadBrowsePage(int page) async {
     if (isLoading) return;
@@ -112,7 +112,7 @@ class PaginationController extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Search ────────────────────────────────────────────────────────────────
+  // â”€â”€ Search â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   Future<void> runSearch({
     required String query,
@@ -127,7 +127,7 @@ class PaginationController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _allSearchResults = await _service.searchStudents(
+      _allSearchResults = await _service.search(
         query: query,
         course: course,
         year: year,
@@ -151,14 +151,14 @@ class PaginationController extends ChangeNotifier {
   }
 
   List<StudentModel> _pageSlice(int page) {
-    final start = (page - 1) * FirebaseService.pageSize;
-    final end = (start + FirebaseService.pageSize)
+    final start = (page - 1) * StudentRepository.pageSize;
+    final end = (start + StudentRepository.pageSize)
         .clamp(0, _allSearchResults.length);
     if (start >= _allSearchResults.length) return [];
     return _allSearchResults.sublist(start, end);
   }
 
-  // ── Navigation (works for both modes) ────────────────────────────────────
+  // â”€â”€ Navigation (works for both modes) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   void next() {
     if (!hasNext) return;
@@ -182,7 +182,7 @@ class PaginationController extends ChangeNotifier {
     }
   }
 
-  // ── Reset ─────────────────────────────────────────────────────────────────
+  // â”€â”€ Reset â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   void resetToBrowse() {
     _mode = PageMode.browse;

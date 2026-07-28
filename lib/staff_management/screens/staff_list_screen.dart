@@ -1,21 +1,22 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:gd_college/constants.dart';
 import 'package:gd_college/widgets/drawer.dart';
 import 'package:image_network/image_network.dart';
 import '../models/staff_model.dart';
-import '../../services/firebase_staff_service.dart';
+import '../../repositories/staff_repository.dart';
+import '../../providers.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'staff_form_screen.dart';
 import 'staff_detail_screen.dart';
 
-class StaffListScreen extends StatefulWidget {
+class StaffListScreen extends ConsumerStatefulWidget {
   const StaffListScreen({super.key});
-
   @override
-  State<StaffListScreen> createState() => _StaffListScreenState();
+  ConsumerState<StaffListScreen> createState() => _StaffListScreenState();
 }
 
-class _StaffListScreenState extends State<StaffListScreen> {
-  final FirebaseService _service = FirebaseService();
+class _StaffListScreenState extends ConsumerState<StaffListScreen> {
+  
 
   // Filters
   final TextEditingController _searchIdCtrl = TextEditingController();
@@ -126,7 +127,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
 
     if (confirm == true && staff.docId != null) {
       try {
-        await _service.deleteStaff(staff.docId!);
+        await ref.read(staffRepositoryProvider).delete(staff.docId!);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -202,7 +203,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
       ),
       drawer: getSideDrawer(context),
       body: StreamBuilder<List<StaffModel>>(
-        stream: _service.staffStream(),
+        stream: ref.watch(staffRepositoryProvider).watchAll(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
@@ -232,7 +233,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
 
           return Column(
             children: [
-              // ── Filter Panel ──────────────────────────────────────────
+              // â”€â”€ Filter Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
               AnimatedSize(
                 duration: const Duration(milliseconds: 280),
                 curve: Curves.easeInOut,
@@ -260,10 +261,10 @@ class _StaffListScreenState extends State<StaffListScreen> {
                     : const SizedBox.shrink(),
               ),
 
-              // ── Stats Bar ─────────────────────────────────────────────
+              // â”€â”€ Stats Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
               _StatsBar(total: all.length, showing: filtered.length),
 
-              // ── Table ─────────────────────────────────────────────────
+              // â”€â”€ Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
               Expanded(
                 child: filtered.isEmpty
                     ? _EmptyState(hasFilters: _hasActiveFilters)
@@ -295,7 +296,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
   }
 }
 
-// ── Filter Panel ──────────────────────────────────────────────────────────────
+// â”€â”€ Filter Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _FilterPanel extends StatelessWidget {
   final TextEditingController idCtrl;
@@ -520,7 +521,7 @@ class _FilterDropdown extends StatelessWidget {
   }
 }
 
-// ── Stats Bar ─────────────────────────────────────────────────────────────────
+// â”€â”€ Stats Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _StatsBar extends StatelessWidget {
   final int total;
@@ -590,7 +591,7 @@ class _StatChip extends StatelessWidget {
   }
 }
 
-// ── Table ─────────────────────────────────────────────────────────────────────
+// â”€â”€ Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _StaffTable extends StatelessWidget {
   final List<StaffModel> staffs;
@@ -722,7 +723,7 @@ class _DataTable extends StatelessWidget {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    s.staffId.isEmpty ? '—' : s.staffId,
+                    s.staffId.isEmpty ? 'â€”' : s.staffId,
                     style: const TextStyle(
                       color: Color(0xFF1A3C6E),
                       fontWeight: FontWeight.w600,
@@ -755,7 +756,7 @@ class _DataTable extends StatelessWidget {
                     ],
                     Flexible(
                       child: Text(
-                        s.name.isEmpty ? '—' : s.name,
+                        s.name.isEmpty ? 'â€”' : s.name,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -763,7 +764,7 @@ class _DataTable extends StatelessWidget {
                 ),
               ),
               DataCell(Text(
-                s.designation?.toString() ?? '—',
+                s.designation?.toString() ?? 'â€”',
                 textAlign: TextAlign.right,
               )),
               DataCell(_CourseBadge(course: s.course.toString())),
@@ -860,7 +861,7 @@ class _MobileCardList extends StatelessWidget {
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _CourseBadge extends StatelessWidget {
   final String course;
@@ -893,7 +894,7 @@ class _CourseBadge extends StatelessWidget {
         border: Border.all(color: _color.withOpacity(0.3)),
       ),
       child: Text(
-        course.isEmpty ? '—' : course,
+        course.isEmpty ? 'â€”' : course,
         style: TextStyle(
           color: _color,
           fontSize: 11,
@@ -1020,7 +1021,7 @@ class _SmallTag extends StatelessWidget {
   }
 }
 
-// ── Empty State ───────────────────────────────────────────────────────────────
+// â”€â”€ Empty State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _EmptyState extends StatelessWidget {
   final bool hasFilters;

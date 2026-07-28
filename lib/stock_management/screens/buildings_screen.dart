@@ -1,18 +1,20 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:gd_college/widgets/drawer.dart';
 import '../models/stock_models.dart';
-import '../../services/stock_service.dart';
+import '../../repositories/stock_repository.dart';
+import '../../providers.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../widgets/stock_widgets.dart';
 import 'floors_screen.dart';
 
-class BuildingsScreen extends StatelessWidget {
+class BuildingsScreen extends ConsumerWidget {
   const BuildingsScreen({super.key});
 
   static const _kPrimary = Color(0xFF1A3C6E);
 
   @override
-  Widget build(BuildContext context) {
-    final service = StockService();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final service = ref.watch(stockRepositoryProvider);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
@@ -29,7 +31,7 @@ class BuildingsScreen extends StatelessWidget {
         ],
       ),
       body: StreamBuilder<List<BuildingModel>>(
-        stream: service.buildingsStream(),
+        stream: service.watchBuildings(),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -65,7 +67,7 @@ class BuildingsScreen extends StatelessWidget {
   }
 
   Future<void> _addBuilding(
-      BuildContext context, StockService service) async {
+      BuildContext context, StockRepository service) async {
     final name = await showNameDialog(context,
         title: 'Add Building', hint: 'e.g. Main Block, Hostel A');
     if (name != null) await service.addBuilding(name);
@@ -74,7 +76,7 @@ class BuildingsScreen extends StatelessWidget {
 
 class _BuildingCard extends StatelessWidget {
   final BuildingModel building;
-  final StockService service;
+  final StockRepository service;
 
   const _BuildingCard(
       {required this.building, required this.service});
@@ -87,10 +89,10 @@ class _BuildingCard extends StatelessWidget {
       shape:
       RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       clipBehavior: Clip.antiAlias,
-      // Feature: Media Freshness — stream all rooms under this building's
+      // Feature: Media Freshness â€” stream all rooms under this building's
       // floors to determine if any room is overdue.
       child: StreamBuilder<List<FloorModel>>(
-        stream: service.floorsStream(building.id!),
+        stream: service.watchFloors(building.id!),
         builder: (context, floorSnap) {
           final floors = floorSnap.data ?? [];
           return _BuildingCardContent(
@@ -106,7 +108,7 @@ class _BuildingCard extends StatelessWidget {
 
 class _BuildingCardContent extends StatelessWidget {
   final BuildingModel building;
-  final StockService service;
+  final StockRepository service;
   final List<FloorModel> floors;
 
   const _BuildingCardContent({
@@ -216,12 +218,12 @@ class _BuildingCardContent extends StatelessWidget {
 }
 
 /// Watches room streams across multiple floors and reports whether any room
-/// has overdue media. This is purely client-side — no extra Firestore queries
+/// has overdue media. This is purely client-side â€” no extra Firestore queries
 /// beyond what is already streamed.
 class _MultiFloorRoomWatcher extends StatelessWidget {
   final BuildingModel building;
   final List<FloorModel> floors;
-  final StockService service;
+  final StockRepository service;
   final Widget Function(bool hasOverdue) builder;
 
   const _MultiFloorRoomWatcher({
@@ -251,7 +253,7 @@ class _FloorRoomWatcher extends StatelessWidget {
   final BuildingModel building;
   final List<FloorModel> floors;
   final int index;
-  final StockService service;
+  final StockRepository service;
   final bool accumulatedOverdue;
   final Widget Function(bool) builder;
 
@@ -269,7 +271,7 @@ class _FloorRoomWatcher extends StatelessWidget {
     if (index >= floors.length) return builder(accumulatedOverdue);
 
     return StreamBuilder<List<RoomModel>>(
-      stream: service.roomsStream(building.id!, floors[index].id!),
+      stream: service.watchRooms(building.id!, floors[index].id!),
       builder: (context, snap) {
         final rooms = snap.data ?? [];
         final floorOverdue = rooms.any((r) => r.isMediaOverdue);

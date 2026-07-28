@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../controllers/pagination_controller.dart';
-import '../services/firebase_student_service.dart';
+import '../repositories/student_repository.dart';
 
 class PaginationBar extends StatefulWidget {
   final PaginationController controller;
@@ -50,7 +50,7 @@ class _PaginationBarState extends State<PaginationBar> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Record range — hide on narrow screens
+          // Record range â€” hide on narrow screens
           if (!isNarrow) ...[
             Text(
               _rangeLabel(ctrl),
@@ -77,7 +77,7 @@ class _PaginationBarState extends State<PaginationBar> {
 
           const SizedBox(width: 6),
 
-          // Current page — tap to type a page number
+          // Current page â€” tap to type a page number
           _editing
               ? SizedBox(
             width: 60,
@@ -183,11 +183,11 @@ class _PaginationBarState extends State<PaginationBar> {
   String _rangeLabel(PaginationController ctrl) {
     if (ctrl.totalCount == 0) return 'No records';
     final start =
-        (ctrl.currentPage - 1) * FirebaseService.pageSize + 1;
+        (ctrl.currentPage - 1) * StudentRepository.pageSize + 1;
     final end = (start + ctrl.students.length - 1)
         .clamp(start, ctrl.totalCount);
     final label = ctrl.isSearchMode ? 'results' : 'students';
-    return '$start–$end of ${ctrl.totalCount} $label';
+    return '$startâ€“$end of ${ctrl.totalCount} $label';
   }
 }
 

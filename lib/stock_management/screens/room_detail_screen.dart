@@ -1,15 +1,19 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:ui_web' as ui_web;
 import 'dart:html' as html;
 import '../models/stock_models.dart';
-import '../../services/stock_service.dart';
+import '../../repositories/stock_repository.dart';
+import '../../providers.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../widgets/stock_widgets.dart';
 import 'rooms_screen.dart' show MediaUploadSheet;
 
-class RoomDetailScreen extends StatefulWidget {
+class RoomDetailScreen extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<RoomDetailScreen> createState() => _RoomDetailScreenState();
   final BuildingModel building;
   final FloorModel floor;
   final RoomModel room;
@@ -21,14 +25,13 @@ class RoomDetailScreen extends StatefulWidget {
     required this.room,
   });
 
-  @override
-  State<RoomDetailScreen> createState() => _RoomDetailScreenState();
+
 }
 
-class _RoomDetailScreenState extends State<RoomDetailScreen>
+class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
-  final StockService _service = StockService();
+  StockRepository get _service => ref.watch(stockRepositoryProvider);
 
   @override
   void initState() {
@@ -54,7 +57,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
               Text(widget.room.name,
                   style: const TextStyle(fontWeight: FontWeight.w700)),
               Text(
-                  '${widget.building.name}  ›  ${widget.floor.name}',
+                  '${widget.building.name}  â€º  ${widget.floor.name}',
                   style: const TextStyle(
                       fontSize: 11, color: Colors.white70)),
             ]),
@@ -156,14 +159,14 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
   }
 }
 
-// ── Items Tab ─────────────────────────────────────────────────────────────────
+// â”€â”€ Items Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 List<StockItem> items = [];
 
 class _ItemsTab extends StatelessWidget {
   final BuildingModel building;
   final FloorModel floor;
   final RoomModel room;
-  final StockService service;
+  final StockRepository service;
 
   const _ItemsTab({
     required this.building,
@@ -175,7 +178,7 @@ class _ItemsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<StockItem>>(
-      stream: service.itemsStream(building.id!, floor.id!, room.id!),
+      stream: service.watchItems(building.id!, floor.id!, room.id!),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -204,7 +207,7 @@ class _ItemsTab extends StatelessWidget {
               const SizedBox(width: 10),
               _SummaryChip(
                   label:
-                  '₹${totalValue.toStringAsFixed(2)} Total',
+                  'â‚¹${totalValue.toStringAsFixed(2)} Total',
                   icon: Icons.currency_rupee,
                   color: Colors.green.shade700),
             ]),
@@ -266,7 +269,7 @@ class _ItemCard extends StatelessWidget {
   final BuildingModel building;
   final FloorModel floor;
   final RoomModel room;
-  final StockService service;
+  final StockRepository service;
 
   const _ItemCard({
     required this.item,
@@ -311,8 +314,8 @@ class _ItemCard extends StatelessWidget {
                               fontSize: 14)),
                       const SizedBox(height: 2),
                       Text(
-                        '₹${item.unitPrice.toStringAsFixed(2)} / unit  •  '
-                            'Total: ₹${item.totalValue.toStringAsFixed(2)}',
+                        'â‚¹${item.unitPrice.toStringAsFixed(2)} / unit  â€¢  '
+                            'Total: â‚¹${item.totalValue.toStringAsFixed(2)}',
                         style: TextStyle(
                             fontSize: 12,
                             color: Colors.grey.shade600),
@@ -500,7 +503,7 @@ class _ItemCard extends StatelessWidget {
               ),
             ]),
 
-            // Feature: Consumable Assignment — show active assignments badge
+            // Feature: Consumable Assignment â€” show active assignments badge
             _ActiveAssignmentsBadge(
               itemId: item.id!,
               service: service,
@@ -536,11 +539,11 @@ class _ItemCard extends StatelessWidget {
   }
 }
 
-// ── Active Assignments Badge ──────────────────────────────────────────────────
+// â”€â”€ Active Assignments Badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _ActiveAssignmentsBadge extends StatelessWidget {
   final String itemId;
-  final StockService service;
+  final StockRepository service;
 
   const _ActiveAssignmentsBadge(
       {required this.itemId, required this.service});
@@ -548,7 +551,7 @@ class _ActiveAssignmentsBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<ConsumableAssignment>>(
-      stream: service.assignmentsStream(itemId: itemId),
+      stream: service.watchAssignments(itemId: itemId),
       builder: (context, snap) {
         final assignments = snap.data ?? [];
         if (assignments.isEmpty) return const SizedBox.shrink();
@@ -571,7 +574,7 @@ class _ActiveAssignmentsBadge extends StatelessWidget {
                   size: 13, color: Colors.purple.shade700),
               const SizedBox(width: 5),
               Text(
-                '$totalOut assigned out  •  '
+                '$totalOut assigned out  â€¢  '
                     '${assignments.length} active',
                 style: TextStyle(
                     fontSize: 11,
@@ -626,7 +629,7 @@ class _QtyButton extends StatelessWidget {
   }
 }
 
-// ── Adjust quantity bottom sheet ──────────────────────────────────────────────
+// â”€â”€ Adjust quantity bottom sheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _AdjustSheet extends StatefulWidget {
   final StockItem item;
@@ -836,7 +839,7 @@ class _AdjustSheetState extends State<_AdjustSheet> {
   }
 }
 
-// ── Stock Transfer bottom sheet ───────────────────────────────────────────────
+// â”€â”€ Stock Transfer bottom sheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Feature: Stock Transfer
 
 class _TransferSheet extends StatefulWidget {
@@ -844,7 +847,7 @@ class _TransferSheet extends StatefulWidget {
   final FloorModel floor;
   final RoomModel room;
   final StockItem item;
-  final StockService service;
+  final StockRepository service;
 
   const _TransferSheet({
     required this.building,
@@ -878,7 +881,7 @@ class _TransferSheetState extends State<_TransferSheet> {
   }
 
   Future<void> _loadBuildings() async {
-    widget.service.buildingsStream().first.then((b) {
+    widget.service.watchBuildings().first.then((b) {
       if (mounted) setState(() => _buildings = b);
     });
   }
@@ -892,7 +895,7 @@ class _TransferSheetState extends State<_TransferSheet> {
       _rooms = [];
     });
     if (b == null) return;
-    final floors = await widget.service.floorsStream(b.id!).first;
+    final floors = await widget.service.watchFloors(b.id!).first;
     if (mounted) setState(() => _floors = floors);
   }
 
@@ -904,7 +907,7 @@ class _TransferSheetState extends State<_TransferSheet> {
     });
     if (f == null || _toBuilding == null) return;
     final rooms = await widget.service
-        .roomsStream(_toBuilding!.id!, f.id!)
+        .watchRooms(_toBuilding!.id!, f.id!)
         .first;
     if (mounted) {
       setState(() {
@@ -995,7 +998,7 @@ class _TransferSheetState extends State<_TransferSheet> {
 
           const SizedBox(height: 4),
           Text(
-            'Available: $maxQty  •  From: ${widget.room.name}',
+            'Available: $maxQty  â€¢  From: ${widget.room.name}',
             style: TextStyle(
                 fontSize: 12, color: Colors.grey.shade500),
           ),
@@ -1114,7 +1117,7 @@ class _TransferSheetState extends State<_TransferSheet> {
   }
 }
 
-// ── Assign Consumable bottom sheet ────────────────────────────────────────────
+// â”€â”€ Assign Consumable bottom sheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Feature: Consumable Assignment
 
 class _AssignSheet extends StatefulWidget {
@@ -1122,7 +1125,7 @@ class _AssignSheet extends StatefulWidget {
   final FloorModel floor;
   final RoomModel room;
   final StockItem item;
-  final StockService service;
+  final StockRepository service;
 
   const _AssignSheet({
     required this.building,
@@ -1294,14 +1297,14 @@ class _AssignSheetState extends State<_AssignSheet> {
   }
 }
 
-// ── Assignments dialog ────────────────────────────────────────────────────────
+// â”€â”€ Assignments dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _AssignmentsDialog extends StatelessWidget {
   final BuildingModel building;
   final FloorModel floor;
   final RoomModel room;
   final StockItem item;
-  final StockService service;
+  final StockRepository service;
 
   const _AssignmentsDialog({
     required this.building,
@@ -1337,7 +1340,7 @@ class _AssignmentsDialog extends StatelessWidget {
           const Divider(height: 1),
           Expanded(
             child: StreamBuilder<List<ConsumableAssignment>>(
-              stream: service.assignmentsStream(itemId: item.id),
+              stream: service.watchAssignments(itemId: item.id),
               builder: (context, snap) {
                 final assignments = snap.data ?? [];
                 if (assignments.isEmpty) {
@@ -1375,7 +1378,7 @@ class _AssignmentTile extends StatelessWidget {
   final FloorModel floor;
   final RoomModel room;
   final StockItem item;
-  final StockService service;
+  final StockRepository service;
 
   const _AssignmentTile({
     required this.assignment,
@@ -1425,7 +1428,7 @@ class _AssignmentTile extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               'Assigned ${_fmtDate(assignment.assignedAt)}  '
-                  '•  Total: ${assignment.quantity}',
+                  'â€¢  Total: ${assignment.quantity}',
               style: TextStyle(
                   fontSize: 11, color: Colors.grey.shade500),
             ),
@@ -1478,7 +1481,7 @@ class _AssignmentTile extends StatelessWidget {
       '${d.day}/${d.month}/${d.year}';
 }
 
-// ── Return Consumable bottom sheet ────────────────────────────────────────────
+// â”€â”€ Return Consumable bottom sheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _ReturnSheet extends StatefulWidget {
   final ConsumableAssignment assignment;
@@ -1486,7 +1489,7 @@ class _ReturnSheet extends StatefulWidget {
   final FloorModel floor;
   final RoomModel room;
   final StockItem item;
-  final StockService service;
+  final StockRepository service;
 
   const _ReturnSheet({
     required this.assignment,
@@ -1572,7 +1575,7 @@ class _ReturnSheetState extends State<_ReturnSheet> {
                           fontSize: 16,
                           color: Colors.green.shade700)),
                   Text(
-                      'From: ${widget.assignment.assignedTo}  •  '
+                      'From: ${widget.assignment.assignedTo}  â€¢  '
                           '${widget.assignment.outstandingQty} outstanding',
                       style: TextStyle(
                           fontSize: 12,
@@ -1630,21 +1633,22 @@ class _ReturnSheetState extends State<_ReturnSheet> {
   }
 }
 
-// ── Item form dialog (add / edit) ─────────────────────────────────────────────
+// â”€â”€ Item form dialog (add / edit) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-class _ItemFormDialog extends StatefulWidget {
+class _ItemFormDialog extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_ItemFormDialog> createState() => _ItemFormDialogState();
   final StockItem? initial;
   final Future<void> Function(StockItem) onSave;
 
   const _ItemFormDialog({this.initial, required this.onSave});
 
-  @override
-  State<_ItemFormDialog> createState() => _ItemFormDialogState();
+
 }
 
-class _ItemFormDialogState extends State<_ItemFormDialog> {
+class _ItemFormDialogState extends ConsumerState<_ItemFormDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _service = StockService();
+  StockRepository get _service => ref.watch(stockRepositoryProvider);
   CatalogItem? _selectedCatalogItem;
   List<CatalogItem> _catalogSummaries = [];
   bool _isLoading = true;
@@ -1787,8 +1791,8 @@ class _ItemFormDialogState extends State<_ItemFormDialog> {
             keyboardType: const TextInputType.numberWithOptions(
                 decimal: true),
             decoration: InputDecoration(
-              labelText: 'Unit Price (₹) *',
-              prefixText: '₹ ',
+              labelText: 'Unit Price (â‚¹) *',
+              prefixText: 'â‚¹ ',
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8)),
             ),
@@ -1851,14 +1855,14 @@ class _ItemFormDialogState extends State<_ItemFormDialog> {
   }
 }
 
-// ── Item log dialog ───────────────────────────────────────────────────────────
+// â”€â”€ Item log dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _ItemLogDialog extends StatelessWidget {
   final BuildingModel building;
   final FloorModel floor;
   final RoomModel room;
   final StockItem item;
-  final StockService service;
+  final StockRepository service;
 
   const _ItemLogDialog({
     required this.building,
@@ -1894,7 +1898,7 @@ class _ItemLogDialog extends StatelessWidget {
           const Divider(height: 1),
           Expanded(
             child: StreamBuilder<List<StockLog>>(
-              stream: service.logsStream(
+              stream: service.watchLogs(
                   building.id!, floor.id!, room.id!,
                   itemId: item.id),
               builder: (context, snap) {
@@ -1922,13 +1926,13 @@ class _ItemLogDialog extends StatelessWidget {
   }
 }
 
-// ── Media Tab ─────────────────────────────────────────────────────────────────
+// â”€â”€ Media Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _MediaTab extends StatelessWidget {
   final BuildingModel building;
   final FloorModel floor;
   final RoomModel room;
-  final StockService service;
+  final StockRepository service;
 
   const _MediaTab({
     required this.building,
@@ -1941,7 +1945,7 @@ class _MediaTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return StreamBuilder<List<RoomModel>>(
       stream: service
-          .roomsStream(building.id!, floor.id!)
+          .watchRooms(building.id!, floor.id!)
           .map((rooms) =>
           rooms.where((r) => r.id == room.id).toList()),
       builder: (context, snap) {
@@ -2077,7 +2081,7 @@ class _MediaTab extends StatelessWidget {
   }
 }
 
-// ── Media Tile ───────────────────────────────────────────────────────────────
+// â”€â”€ Media Tile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Shows a photo (Image.network) or an inline HTML5 video on web,
 // or a tappable thumbnail on mobile.
 
@@ -2125,7 +2129,7 @@ class _MediaTile extends StatelessWidget {
   }
 }
 
-// ── Image tile ────────────────────────────────────────────────────────────────
+// â”€â”€ Image tile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _ImageTile extends StatelessWidget {
   final String url;
@@ -2176,7 +2180,7 @@ class _ImageTile extends StatelessWidget {
   }
 }
 
-// ── Video tile ────────────────────────────────────────────────────────────────
+// â”€â”€ Video tile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // On web: registers an HTML <video> element and renders it via HtmlElementView.
 // On mobile: shows a thumbnail with a tap-to-open-in-browser button.
 
@@ -2248,13 +2252,13 @@ class _VideoTileState extends State<_VideoTile> {
   }
 }
 
-// ── Log Tab ───────────────────────────────────────────────────────────────────
+// â”€â”€ Log Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _LogTab extends StatelessWidget {
   final BuildingModel building;
   final FloorModel floor;
   final RoomModel room;
-  final StockService service;
+  final StockRepository service;
 
   const _LogTab({
     required this.building,
@@ -2267,7 +2271,7 @@ class _LogTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return StreamBuilder<List<StockLog>>(
       stream:
-      service.logsStream(building.id!, floor.id!, room.id!),
+      service.watchLogs(building.id!, floor.id!, room.id!),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -2344,7 +2348,7 @@ class _LogTile extends StatelessWidget {
                 const SizedBox(height: 3),
                 Row(children: [
                   Text(
-                    '${log.previousQty} → ${log.newQty}',
+                    '${log.previousQty} â†’ ${log.newQty}',
                     style: TextStyle(
                         fontSize: 11,
                         color: Colors.grey.shade500),
@@ -2382,14 +2386,14 @@ class _LogTile extends StatelessWidget {
   }
 }
 
-// ── Inspections Tab ───────────────────────────────────────────────────────────
+// â”€â”€ Inspections Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Feature: Inspections
 
 class _InspectionsTab extends StatelessWidget {
   final BuildingModel building;
   final FloorModel floor;
   final RoomModel room;
-  final StockService service;
+  final StockRepository service;
 
   const _InspectionsTab({
     required this.building,
@@ -2401,7 +2405,7 @@ class _InspectionsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<InspectionModel>>(
-      stream: service.inspectionsStream(
+      stream: service.watchInspections(
           building.id!, floor.id!, room.id!),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
@@ -2429,7 +2433,7 @@ class _InspectionsTab extends StatelessWidget {
                 icon: const Icon(Icons.checklist_outlined),
                 label: Text(
                   inProgress.isNotEmpty
-                      ? 'Inspection In Progress…'
+                      ? 'Inspection In Progressâ€¦'
                       : 'Start Inspection',
                 ),
                 style: ElevatedButton.styleFrom(
@@ -2457,7 +2461,7 @@ class _InspectionsTab extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Inspection started ${_fmtDateTime(inProgress.first.startedAt)} — tap to continue',
+                      'Inspection started ${_fmtDateTime(inProgress.first.startedAt)} â€” tap to continue',
                       style: TextStyle(
                           fontSize: 13,
                           color: Colors.amber.shade900,
@@ -2497,7 +2501,7 @@ class _InspectionsTab extends StatelessWidget {
   Future<void> _startInspection(BuildContext context) async {
     // Fetch current items to snapshot
     final items = await service
-        .itemsStream(building.id!, floor.id!, room.id!)
+        .watchItems(building.id!, floor.id!, room.id!)
         .first;
 
     if (items.isEmpty) {
@@ -2518,7 +2522,7 @@ class _InspectionsTab extends StatelessWidget {
 
     // Fetch the newly created inspection and open it
     final inspections = await service
-        .inspectionsStream(building.id!, floor.id!, room.id!)
+        .watchInspections(building.id!, floor.id!, room.id!)
         .first;
     final inspection =
         inspections.where((i) => i.id == id).firstOrNull;
@@ -2620,8 +2624,8 @@ class _InspectionSummaryTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    '$total items checked  •  $matched matched'
-                        '${discrepancies > 0 ? '  •  $discrepancies discrepancy' : ''}',
+                    '$total items checked  â€¢  $matched matched'
+                        '${discrepancies > 0 ? '  â€¢  $discrepancies discrepancy' : ''}',
                     style: TextStyle(
                         fontSize: 11, color: Colors.grey.shade600),
                   ),
@@ -2651,14 +2655,14 @@ class _InspectionSummaryTile extends StatelessWidget {
   }
 }
 
-// ── Inspection Execution Screen ───────────────────────────────────────────────
+// â”€â”€ Inspection Execution Screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class InspectionExecutionScreen extends StatefulWidget {
   final BuildingModel building;
   final FloorModel floor;
   final RoomModel room;
   final InspectionModel inspection;
-  final StockService service;
+  final StockRepository service;
 
   const InspectionExecutionScreen({
     super.key,
@@ -3052,7 +3056,7 @@ class _InspectionExecutionScreenState
   }
 }
 
-// ── Inspection Report Screen ──────────────────────────────────────────────────
+// â”€â”€ Inspection Report Screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class InspectionReportScreen extends StatelessWidget {
   final InspectionModel inspection;
@@ -3092,7 +3096,7 @@ class InspectionReportScreen extends StatelessWidget {
                             fontSize: 16,
                             color: Color(0xFF1A3C6E))),
                     Text(
-                        '${inspection.floorName}  ›  '
+                        '${inspection.floorName}  â€º  '
                             '${inspection.buildingName}',
                         style: TextStyle(
                             fontSize: 12,
@@ -3223,7 +3227,7 @@ class _ChecklistReportTile extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                         fontSize: 13)),
                 Text(
-                  'Expected: ${item.expectedQty}  •  '
+                  'Expected: ${item.expectedQty}  â€¢  '
                       'Actual: ${item.actualQty}',
                   style: TextStyle(
                       fontSize: 11, color: Colors.grey.shade600),

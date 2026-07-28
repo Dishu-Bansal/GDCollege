@@ -3,9 +3,9 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../staff_management/models/staff_model.dart';
-import '../student_management/models/student_model.dart';
+import '../repositories/staff_repository.dart';
 
-class FirebaseService {
+class FirebaseStaffRepository implements StaffRepository {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
@@ -13,7 +13,8 @@ class FirebaseService {
 
   // ─── CREATE ──────────────────────────────────────────────────────────────
 
-  Future<String> saveStaff(StaffModel staff) async {
+  @override
+  Future<String> create(StaffModel staff) async {
     final now = DateTime.now();
     staff.createdAt = now;
     staff.updatedAt = now;
@@ -24,7 +25,8 @@ class FirebaseService {
 
   // ─── UPDATE ──────────────────────────────────────────────────────────────
 
-  Future<void> updateStaff(String docId, StaffModel staff) async {
+  @override
+  Future<void> update(String docId, StaffModel staff) async {
     staff.updatedAt = DateTime.now();
     staff.documentVersion += 1;
     await _firestore
@@ -35,13 +37,15 @@ class FirebaseService {
 
   // ─── DELETE ──────────────────────────────────────────────────────────────
 
-  Future<void> deleteStaff(String docId) async {
+  @override
+  Future<void> delete(String docId) async {
     await _firestore.collection(_collection).doc(docId).delete();
   }
 
   // ─── READ (stream) ───────────────────────────────────────────────────────
 
-  Stream<List<StaffModel>> staffStream() {
+  @override
+  Stream<List<StaffModel>> watchAll() {
     return _firestore
         .collection(_collection)
         .orderBy('createdAt', descending: true)
@@ -52,7 +56,8 @@ class FirebaseService {
         .toList());
   }
 
-  Stream<List<StaffModel>> staffNameStream() {
+  @override
+  Stream<List<StaffModel>> watchNames() {
     return _firestore
         .collection(_collection)
         .snapshots()
@@ -63,6 +68,7 @@ class FirebaseService {
   }
   // ─── FILE UPLOAD ─────────────────────────────────────────────────────────
   /// Upload a file to Firebase Storage and return its download URL.
+  @override
   Future<String?> uploadFile({
     required Uint8List localPath,
     required String storagePath,
@@ -110,8 +116,9 @@ class FirebaseService {
   //       .update(student.toFirestore());
   // }
 
-  /// Upload all pending files for a student and populate URL fields.
-  Future<void> uploadStaffFiles(
+  /// Upload all pending files for a staff and populate URL fields.
+  @override
+  Future<void> uploadFiles(
     StaffModel staff,
     String staffId, {
     void Function(String label, double progress)? onProgress,

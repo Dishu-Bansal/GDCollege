@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:gd_college/constants.dart';
@@ -6,19 +6,20 @@ import 'package:gd_college/widgets/drawer.dart';
 import 'package:gd_college/widgets/pagination_bar.dart';
 import '../../controllers/pagination_controller.dart';
 import '../models/student_model.dart';
-import '../../services/firebase_student_service.dart';
+import '../../repositories/student_repository.dart';
+import '../../providers.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'student_form_screen.dart';
 import 'student_detail_screen.dart';
 
-class StudentListScreen extends StatefulWidget {
+class StudentListScreen extends ConsumerStatefulWidget {
   const StudentListScreen({super.key});
-
   @override
-  State<StudentListScreen> createState() => _StudentListScreenState();
+  ConsumerState<StudentListScreen> createState() => _StudentListScreenState();
 }
 
-class _StudentListScreenState extends State<StudentListScreen> {
-  final FirebaseService _service = FirebaseService();
+class _StudentListScreenState extends ConsumerState<StudentListScreen> {
+  
   late final PaginationController _pagination;
 
   // Filters
@@ -38,7 +39,7 @@ class _StudentListScreenState extends State<StudentListScreen> {
   @override
   void initState() {
     super.initState();
-    _pagination = PaginationController(_service);
+    _pagination = PaginationController(ref.watch(studentRepositoryProvider));
     _pagination.addListener(() => setState(() {}));
     _pagination.loadBrowsePage(1);
   }
@@ -57,7 +58,7 @@ class _StudentListScreenState extends State<StudentListScreen> {
     _debounce?.cancel();
 
     if (!_hasActiveFilters) {
-      // Filters cleared — go back to browse mode
+      // Filters cleared â€” go back to browse mode
       _pagination.resetToBrowse();
       return;
     }
@@ -191,7 +192,7 @@ class _StudentListScreenState extends State<StudentListScreen> {
 
     if (confirm == true && student.docId != null) {
       try {
-        await _service.deleteStudent(student.docId!);
+        await ref.read(studentRepositoryProvider).delete(student.docId!);
         _pagination.resetToBrowse();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -277,7 +278,7 @@ class _StudentListScreenState extends State<StudentListScreen> {
       drawer: getSideDrawer(context),
       body: Column(
         children: [
-          // ── Filter Panel ──────────────────────────────────────────
+          // â”€â”€ Filter Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           AnimatedSize(
             duration: const Duration(milliseconds: 280),
             curve: Curves.easeInOut,
@@ -310,7 +311,7 @@ class _StudentListScreenState extends State<StudentListScreen> {
                 : const SizedBox.shrink(),
           ),
 
-          // ── Stats Bar ─────────────────────────────────────────────
+          // â”€â”€ Stats Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           _StatsBar(
             total: _pagination.totalCount,
             showing: _pagination.students.length,
@@ -340,7 +341,7 @@ class _StudentListScreenState extends State<StudentListScreen> {
               ]),
             ),
 
-          // ── Table ─────────────────────────────────────────────────
+          // â”€â”€ Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           Expanded(
             child: _pagination.isLoading &&
                 _pagination.students.isEmpty
@@ -381,7 +382,7 @@ class _StudentListScreenState extends State<StudentListScreen> {
   }
 }
 
-// ── Filter Panel ──────────────────────────────────────────────────────────────
+// â”€â”€ Filter Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _FilterPanel extends StatelessWidget {
   final TextEditingController idCtrl;
@@ -606,7 +607,7 @@ class _FilterDropdown extends StatelessWidget {
   }
 }
 
-// ── Stats Bar ─────────────────────────────────────────────────────────────────
+// â”€â”€ Stats Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _StatsBar extends StatelessWidget {
   final int total;
@@ -678,7 +679,7 @@ class _StatChip extends StatelessWidget {
   }
 }
 
-// ── Table ─────────────────────────────────────────────────────────────────────
+// â”€â”€ Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _StudentTable extends StatelessWidget {
   final List<StudentModel> students;
@@ -858,7 +859,7 @@ class _TableRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
-                student.studentId.isEmpty ? '—' : student.studentId,
+                student.studentId.isEmpty ? 'â€”' : student.studentId,
                 style: const TextStyle(
                     color: Color(0xFF1A3C6E),
                     fontWeight: FontWeight.w600,
@@ -890,7 +891,7 @@ class _TableRow extends StatelessWidget {
               const SizedBox(width: 7),
               Flexible(
                 child: Text(
-                  student.name.isEmpty ? '—' : student.name,
+                  student.name.isEmpty ? 'â€”' : student.name,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 13),
                 ),
@@ -904,7 +905,7 @@ class _TableRow extends StatelessWidget {
         Expanded(
           flex: 2,
           child: Text(
-            student.yearOfAdmission?.toString() ?? '—',
+            student.yearOfAdmission?.toString() ?? 'â€”',
             style: const TextStyle(fontSize: 13),
           ),
         ),
@@ -1021,7 +1022,7 @@ class _MobileList extends StatelessWidget {
   }
 }
 
-// ── Small helpers ─────────────────────────────────────────────────────────────
+// â”€â”€ Small helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _CourseBadge extends StatelessWidget {
   final String course;
@@ -1048,7 +1049,7 @@ class _CourseBadge extends StatelessWidget {
         border: Border.all(color: _color.withOpacity(0.3)),
       ),
       child: Text(
-        course.isEmpty ? '—' : course,
+        course.isEmpty ? 'â€”' : course,
         style: TextStyle(
             color: _color, fontSize: 11, fontWeight: FontWeight.w600),
       ),
