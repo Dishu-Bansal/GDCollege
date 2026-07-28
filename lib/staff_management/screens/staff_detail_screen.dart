@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:image_network/image_network.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/staff_model.dart';
 import 'staff_form_screen.dart';
-import '../../services/firebase_staff_service.dart';
+import '../../repositories/staff_repository.dart';
 
 class StaffDetailScreen extends StatelessWidget {
   final StaffModel staff;

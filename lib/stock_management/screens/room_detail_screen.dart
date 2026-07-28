@@ -1,15 +1,19 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:ui_web' as ui_web;
 import 'dart:html' as html;
 import '../models/stock_models.dart';
-import '../../services/stock_service.dart';
+import '../../repositories/stock_repository.dart';
+import '../../providers.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../widgets/stock_widgets.dart';
 import 'rooms_screen.dart' show MediaUploadSheet;
 
-class RoomDetailScreen extends StatefulWidget {
+class RoomDetailScreen extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<RoomDetailScreen> createState() => _RoomDetailScreenState();
   final BuildingModel building;
   final FloorModel floor;
   final RoomModel room;
@@ -21,14 +25,13 @@ class RoomDetailScreen extends StatefulWidget {
     required this.room,
   });
 
-  @override
-  State<RoomDetailScreen> createState() => _RoomDetailScreenState();
+
 }
 
-class _RoomDetailScreenState extends State<RoomDetailScreen>
+class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
-  final StockService _service = StockService();
+  StockRepository get _service => ref.read(stockRepositoryProvider);
 
   @override
   void initState() {
@@ -163,7 +166,7 @@ class _ItemsTab extends StatelessWidget {
   final BuildingModel building;
   final FloorModel floor;
   final RoomModel room;
-  final StockService service;
+  final StockRepository service;
 
   const _ItemsTab({
     required this.building,
@@ -175,7 +178,7 @@ class _ItemsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<StockItem>>(
-      stream: service.itemsStream(building.id!, floor.id!, room.id!),
+      stream: service.watchItems(building.id!, floor.id!, room.id!),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -266,7 +269,7 @@ class _ItemCard extends StatelessWidget {
   final BuildingModel building;
   final FloorModel floor;
   final RoomModel room;
-  final StockService service;
+  final StockRepository service;
 
   const _ItemCard({
     required this.item,
@@ -540,7 +543,7 @@ class _ItemCard extends StatelessWidget {
 
 class _ActiveAssignmentsBadge extends StatelessWidget {
   final String itemId;
-  final StockService service;
+  final StockRepository service;
 
   const _ActiveAssignmentsBadge(
       {required this.itemId, required this.service});
@@ -548,7 +551,7 @@ class _ActiveAssignmentsBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<ConsumableAssignment>>(
-      stream: service.assignmentsStream(itemId: itemId),
+      stream: service.watchAssignments(itemId: itemId),
       builder: (context, snap) {
         final assignments = snap.data ?? [];
         if (assignments.isEmpty) return const SizedBox.shrink();
@@ -844,7 +847,7 @@ class _TransferSheet extends StatefulWidget {
   final FloorModel floor;
   final RoomModel room;
   final StockItem item;
-  final StockService service;
+  final StockRepository service;
 
   const _TransferSheet({
     required this.building,
@@ -878,7 +881,7 @@ class _TransferSheetState extends State<_TransferSheet> {
   }
 
   Future<void> _loadBuildings() async {
-    widget.service.buildingsStream().first.then((b) {
+    widget.service.watchBuildings().first.then((b) {
       if (mounted) setState(() => _buildings = b);
     });
   }
@@ -892,7 +895,7 @@ class _TransferSheetState extends State<_TransferSheet> {
       _rooms = [];
     });
     if (b == null) return;
-    final floors = await widget.service.floorsStream(b.id!).first;
+    final floors = await widget.service.watchFloors(b.id!).first;
     if (mounted) setState(() => _floors = floors);
   }
 
@@ -904,7 +907,7 @@ class _TransferSheetState extends State<_TransferSheet> {
     });
     if (f == null || _toBuilding == null) return;
     final rooms = await widget.service
-        .roomsStream(_toBuilding!.id!, f.id!)
+        .watchRooms(_toBuilding!.id!, f.id!)
         .first;
     if (mounted) {
       setState(() {
@@ -1122,7 +1125,7 @@ class _AssignSheet extends StatefulWidget {
   final FloorModel floor;
   final RoomModel room;
   final StockItem item;
-  final StockService service;
+  final StockRepository service;
 
   const _AssignSheet({
     required this.building,
@@ -1301,7 +1304,7 @@ class _AssignmentsDialog extends StatelessWidget {
   final FloorModel floor;
   final RoomModel room;
   final StockItem item;
-  final StockService service;
+  final StockRepository service;
 
   const _AssignmentsDialog({
     required this.building,
@@ -1337,7 +1340,7 @@ class _AssignmentsDialog extends StatelessWidget {
           const Divider(height: 1),
           Expanded(
             child: StreamBuilder<List<ConsumableAssignment>>(
-              stream: service.assignmentsStream(itemId: item.id),
+              stream: service.watchAssignments(itemId: item.id),
               builder: (context, snap) {
                 final assignments = snap.data ?? [];
                 if (assignments.isEmpty) {
@@ -1375,7 +1378,7 @@ class _AssignmentTile extends StatelessWidget {
   final FloorModel floor;
   final RoomModel room;
   final StockItem item;
-  final StockService service;
+  final StockRepository service;
 
   const _AssignmentTile({
     required this.assignment,
@@ -1486,7 +1489,7 @@ class _ReturnSheet extends StatefulWidget {
   final FloorModel floor;
   final RoomModel room;
   final StockItem item;
-  final StockService service;
+  final StockRepository service;
 
   const _ReturnSheet({
     required this.assignment,
@@ -1632,19 +1635,20 @@ class _ReturnSheetState extends State<_ReturnSheet> {
 
 // ── Item form dialog (add / edit) ─────────────────────────────────────────────
 
-class _ItemFormDialog extends StatefulWidget {
+class _ItemFormDialog extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_ItemFormDialog> createState() => _ItemFormDialogState();
   final StockItem? initial;
   final Future<void> Function(StockItem) onSave;
 
   const _ItemFormDialog({this.initial, required this.onSave});
 
-  @override
-  State<_ItemFormDialog> createState() => _ItemFormDialogState();
+
 }
 
-class _ItemFormDialogState extends State<_ItemFormDialog> {
+class _ItemFormDialogState extends ConsumerState<_ItemFormDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _service = StockService();
+  StockRepository get _service => ref.read(stockRepositoryProvider);
   CatalogItem? _selectedCatalogItem;
   List<CatalogItem> _catalogSummaries = [];
   bool _isLoading = true;
@@ -1858,7 +1862,7 @@ class _ItemLogDialog extends StatelessWidget {
   final FloorModel floor;
   final RoomModel room;
   final StockItem item;
-  final StockService service;
+  final StockRepository service;
 
   const _ItemLogDialog({
     required this.building,
@@ -1894,7 +1898,7 @@ class _ItemLogDialog extends StatelessWidget {
           const Divider(height: 1),
           Expanded(
             child: StreamBuilder<List<StockLog>>(
-              stream: service.logsStream(
+              stream: service.watchLogs(
                   building.id!, floor.id!, room.id!,
                   itemId: item.id),
               builder: (context, snap) {
@@ -1928,7 +1932,7 @@ class _MediaTab extends StatelessWidget {
   final BuildingModel building;
   final FloorModel floor;
   final RoomModel room;
-  final StockService service;
+  final StockRepository service;
 
   const _MediaTab({
     required this.building,
@@ -1941,7 +1945,7 @@ class _MediaTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return StreamBuilder<List<RoomModel>>(
       stream: service
-          .roomsStream(building.id!, floor.id!)
+          .watchRooms(building.id!, floor.id!)
           .map((rooms) =>
           rooms.where((r) => r.id == room.id).toList()),
       builder: (context, snap) {
@@ -2254,7 +2258,7 @@ class _LogTab extends StatelessWidget {
   final BuildingModel building;
   final FloorModel floor;
   final RoomModel room;
-  final StockService service;
+  final StockRepository service;
 
   const _LogTab({
     required this.building,
@@ -2267,7 +2271,7 @@ class _LogTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return StreamBuilder<List<StockLog>>(
       stream:
-      service.logsStream(building.id!, floor.id!, room.id!),
+      service.watchLogs(building.id!, floor.id!, room.id!),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -2389,7 +2393,7 @@ class _InspectionsTab extends StatelessWidget {
   final BuildingModel building;
   final FloorModel floor;
   final RoomModel room;
-  final StockService service;
+  final StockRepository service;
 
   const _InspectionsTab({
     required this.building,
@@ -2401,7 +2405,7 @@ class _InspectionsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<InspectionModel>>(
-      stream: service.inspectionsStream(
+      stream: service.watchInspections(
           building.id!, floor.id!, room.id!),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
@@ -2497,7 +2501,7 @@ class _InspectionsTab extends StatelessWidget {
   Future<void> _startInspection(BuildContext context) async {
     // Fetch current items to snapshot
     final items = await service
-        .itemsStream(building.id!, floor.id!, room.id!)
+        .watchItems(building.id!, floor.id!, room.id!)
         .first;
 
     if (items.isEmpty) {
@@ -2518,7 +2522,7 @@ class _InspectionsTab extends StatelessWidget {
 
     // Fetch the newly created inspection and open it
     final inspections = await service
-        .inspectionsStream(building.id!, floor.id!, room.id!)
+        .watchInspections(building.id!, floor.id!, room.id!)
         .first;
     final inspection =
         inspections.where((i) => i.id == id).firstOrNull;
@@ -2658,7 +2662,7 @@ class InspectionExecutionScreen extends StatefulWidget {
   final FloorModel floor;
   final RoomModel room;
   final InspectionModel inspection;
-  final StockService service;
+  final StockRepository service;
 
   const InspectionExecutionScreen({
     super.key,

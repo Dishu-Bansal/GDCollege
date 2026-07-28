@@ -1,11 +1,13 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/stock_models.dart';
-import '../../services/stock_service.dart';
+import '../../repositories/stock_repository.dart';
+import '../../providers.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../widgets/stock_widgets.dart';
 import 'room_detail_screen.dart';
 
-class RoomsScreen extends StatelessWidget {
+class RoomsScreen extends ConsumerWidget {
   final BuildingModel building;
   final FloorModel floor;
 
@@ -13,8 +15,8 @@ class RoomsScreen extends StatelessWidget {
       {super.key, required this.building, required this.floor});
 
   @override
-  Widget build(BuildContext context) {
-    final service = StockService();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final service = ref.watch(stockRepositoryProvider);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
@@ -36,7 +38,7 @@ class RoomsScreen extends StatelessWidget {
         ],
       ),
       body: StreamBuilder<List<RoomModel>>(
-        stream: service.roomsStream(building.id!, floor.id!),
+        stream: service.watchRooms(building.id!, floor.id!),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -74,7 +76,7 @@ class RoomsScreen extends StatelessWidget {
   }
 
   Future<void> _addRoom(
-      BuildContext context, StockService service) async {
+      BuildContext context, StockRepository service) async {
     final name = await showNameDialog(context,
         title: 'Add Room',
         hint: 'e.g. Room 101, Lab A, Store Room');
@@ -88,7 +90,7 @@ class _RoomCard extends StatelessWidget {
   final RoomModel room;
   final BuildingModel building;
   final FloorModel floor;
-  final StockService service;
+  final StockRepository service;
 
   const _RoomCard({
     required this.room,
@@ -250,7 +252,7 @@ class _RoomCard extends StatelessWidget {
   }
 
   Future<void> _showMediaOptions(
-      BuildContext context, StockService service) async {
+      BuildContext context, StockRepository service) async {
     await showModalBottomSheet(
       context: context,
       // useRootNavigator keeps the sheet alive when the gallery/camera
@@ -276,7 +278,7 @@ class MediaUploadSheet extends StatefulWidget {
   final BuildingModel building;
   final FloorModel floor;
   final RoomModel room;
-  final StockService service;
+  final StockRepository service;
 
   MediaUploadSheet({
     required this.building,

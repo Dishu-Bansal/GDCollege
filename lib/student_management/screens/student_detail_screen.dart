@@ -1,10 +1,10 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:image_network/image_network.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../constants.dart';
 import '../models/student_model.dart';
 import 'student_form_screen.dart';
-import '../../services/firebase_student_service.dart';
+import '../../repositories/student_repository.dart';
 
 class StudentDetailScreen extends StatelessWidget {
   final StudentModel student;

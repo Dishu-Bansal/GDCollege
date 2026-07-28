@@ -1,6 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../models/staff_model.dart';
-import '../../../services/firebase_staff_service.dart';
+import '../../../repositories/staff_repository.dart';
+import '../../../providers.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../widgets/step_indicator.dart';
 import '../../../staff_management/steps/step1_personal_info.dart';
 import '../../../staff_management/steps/step2_address.dart';
@@ -8,19 +10,18 @@ import '../../../staff_management/steps/step3_ids_certificates.dart';
 import '../../../staff_management/steps/step4_education.dart';
 import '../../../staff_management/steps/step5_course_fees.dart';
 
-class StaffFormScreen extends StatefulWidget {
+class StaffFormScreen extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<StaffFormScreen> createState() => _StaffFormScreenState();
   /// Pass an existing student to enter edit mode; leave null for create mode.
   final StaffModel? existingStaff;
 
   const StaffFormScreen({super.key, this.existingStaff});
-
-  @override
-  State<StaffFormScreen> createState() => _StaffFormScreenState();
 }
 
-class _StaffFormScreenState extends State<StaffFormScreen> {
+class _StaffFormScreenState extends ConsumerState<StaffFormScreen> {
   final PageController _pageController = PageController();
-  final FirebaseService _firebaseService = FirebaseService();
+  
   late final StaffModel _staff;
 
   bool get _isEditMode => widget.existingStaff != null;
@@ -95,21 +96,21 @@ class _StaffFormScreenState extends State<StaffFormScreen> {
         // UPDATE path
         docId = widget.existingStaff!.docId!;
         setState(() => _uploadStatus = 'Uploading new files…');
-        await _firebaseService.uploadStaffFiles(
+        await ref.read(staffRepositoryProvider).uploadFiles(
           _staff,
           docId,
           onProgress: (label, p) => setState(
                   () => _uploadStatus = '$label: ${(p * 100).toStringAsFixed(0)}%'),
         );
         setState(() => _uploadStatus = 'Saving changes…');
-        await _firebaseService.updateStaff(docId, _staff);
+        await ref.read(staffRepositoryProvider).update(docId, _staff);
       } else {
         // 1. Save basic record to get a Firestore ID
-        final docId = await _firebaseService.saveStaff(_staff);
+        final docId = await ref.read(staffRepositoryProvider).create(_staff);
 
         // 2. Upload files
         setState(() => _uploadStatus = 'Uploading files...');
-        await _firebaseService.uploadStaffFiles(
+        await ref.read(staffRepositoryProvider).uploadFiles(
           _staff,
           docId,
           onProgress: (label, progress) {
@@ -120,7 +121,7 @@ class _StaffFormScreenState extends State<StaffFormScreen> {
 
         // 3. Update record with file URLs
         setState(() => _uploadStatus = 'Saving final data...');
-        await _firebaseService.updateStaff(docId, _staff);
+        await ref.read(staffRepositoryProvider).update(docId, _staff);
       }
       if (mounted) {
         setState(() => _isSubmitting = false);

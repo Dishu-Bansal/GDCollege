@@ -1,16 +1,18 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../models/stock_models.dart';
-import '../../services/stock_service.dart';
+import '../../repositories/stock_repository.dart';
+import '../../providers.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../widgets/stock_widgets.dart';
 import 'rooms_screen.dart';
 
-class FloorsScreen extends StatelessWidget {
+class FloorsScreen extends ConsumerWidget {
   final BuildingModel building;
   const FloorsScreen({super.key, required this.building});
 
   @override
-  Widget build(BuildContext context) {
-    final service = StockService();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final service = ref.watch(stockRepositoryProvider);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
@@ -32,7 +34,7 @@ class FloorsScreen extends StatelessWidget {
         ],
       ),
       body: StreamBuilder<List<FloorModel>>(
-        stream: service.floorsStream(building.id!),
+        stream: service.watchFloors(building.id!),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -69,7 +71,7 @@ class FloorsScreen extends StatelessWidget {
   }
 
   Future<void> _addFloor(
-      BuildContext context, StockService service) async {
+      BuildContext context, StockRepository service) async {
     final name = await showNameDialog(context,
         title: 'Add Floor',
         hint: 'e.g. Ground Floor, 1st Floor');
@@ -80,7 +82,7 @@ class FloorsScreen extends StatelessWidget {
 class _FloorCard extends StatelessWidget {
   final FloorModel floor;
   final BuildingModel building;
-  final StockService service;
+  final StockRepository service;
 
   const _FloorCard({
     required this.floor,
@@ -95,9 +97,9 @@ class _FloorCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       shape:
       RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      // Feature: Media Freshness — watch rooms on this floor to detect overdue
+      // Feature: Media Freshness â€” watch rooms on this floor to detect overdue
       child: StreamBuilder<List<RoomModel>>(
-        stream: service.roomsStream(building.id!, floor.id!),
+        stream: service.watchRooms(building.id!, floor.id!),
         builder: (context, snap) {
           final rooms = snap.data ?? [];
           final hasOverdue = rooms.any((r) => r.isMediaOverdue);
@@ -116,7 +118,7 @@ class _FloorCard extends StatelessWidget {
 class _FloorCardTile extends StatelessWidget {
   final FloorModel floor;
   final BuildingModel building;
-  final StockService service;
+  final StockRepository service;
   final bool hasOverdue;
 
   const _FloorCardTile({

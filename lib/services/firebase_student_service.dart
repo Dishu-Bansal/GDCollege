@@ -1,15 +1,15 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../student_management/models/student_model.dart';
+import '../repositories/student_repository.dart';
 
-class FirebaseService {
+class FirebaseStudentRepository implements StudentRepository {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
   static const String _collection = 'students';
-  static const int pageSize = 20;
 
   // ── N-gram index builder ──────────────────────────────────────────────────
 
@@ -46,7 +46,8 @@ class FirebaseService {
         {'count': FieldValue.increment(-1)}, SetOptions(merge: true));
   }
 
-  Stream<int> totalCountStream() {
+  @override
+  Stream<int> watchTotalCount() {
     return _firestore
         .collection('_meta')
         .doc('students')
@@ -56,7 +57,8 @@ class FirebaseService {
 
   // ── CREATE ────────────────────────────────────────────────────────────────
 
-  Future<String> saveStudent(StudentModel student) async {
+  @override
+  Future<String> create(StudentModel student) async {
     final now = DateTime.now();
     student.createdAt = now;
     student.updatedAt = now;
@@ -69,7 +71,8 @@ class FirebaseService {
 
   // ── UPDATE ────────────────────────────────────────────────────────────────
 
-  Future<void> updateStudent(String docId, StudentModel student) async {
+  @override
+  Future<void> update(String docId, StudentModel student) async {
     student.updatedAt = DateTime.now();
     student.documentVersion += 1;
     final data = student.toFirestore();
@@ -79,7 +82,8 @@ class FirebaseService {
 
   // ── DELETE ────────────────────────────────────────────────────────────────
 
-  Future<void> deleteStudent(String docId) async {
+  @override
+  Future<void> delete(String docId) async {
     await _firestore.collection(_collection).doc(docId).delete();
     await _decrementCount();
   }
@@ -124,13 +128,14 @@ class FirebaseService {
   }
   // ── BROWSE (no filters) — cursor-based, 20 at a time ─────────────────────
 
+  @override
   Future<({List<StudentModel> students, DocumentSnapshot? lastDoc})> fetchPage({
     DocumentSnapshot? startAfter,
   }) async {
     Query query = _firestore
         .collection(_collection)
         .orderBy('createdAt', descending: true)
-        .limit(pageSize);
+        .limit(StudentRepository.pageSize);
 
     if (startAfter != null) {
       query = query.startAfterDocument(startAfter);
@@ -152,7 +157,8 @@ class FirebaseService {
   // We fetch all matching docs and let the controller paginate client-side.
   // With n-gram index this is a single indexed Firestore query.
 
-  Future<List<StudentModel>> searchStudents({
+  @override
+  Future<List<StudentModel>> search({
     required String query,
     String? course,
     String? year,
@@ -186,6 +192,7 @@ class FirebaseService {
 
   // ─── FILE UPLOAD ─────────────────────────────────────────────────────────
   /// Upload a file to Firebase Storage and return its download URL.
+  @override
   Future<String?> uploadFile({
     required Uint8List localPath,
     required String storagePath,
@@ -234,7 +241,8 @@ class FirebaseService {
   // }
 
   /// Upload all pending files for a student and populate URL fields.
-  Future<void> uploadStudentFiles(
+  @override
+  Future<void> uploadFiles(
     StudentModel student,
     String studentId, {
     void Function(String label, double progress)? onProgress,

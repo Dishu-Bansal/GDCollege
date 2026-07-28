@@ -1,21 +1,22 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:gd_college/constants.dart';
 import 'package:gd_college/widgets/drawer.dart';
 import 'package:image_network/image_network.dart';
 import '../models/staff_model.dart';
-import '../../services/firebase_staff_service.dart';
+import '../../repositories/staff_repository.dart';
+import '../../providers.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'staff_form_screen.dart';
 import 'staff_detail_screen.dart';
 
-class StaffListScreen extends StatefulWidget {
+class StaffListScreen extends ConsumerStatefulWidget {
   const StaffListScreen({super.key});
-
   @override
-  State<StaffListScreen> createState() => _StaffListScreenState();
+  ConsumerState<StaffListScreen> createState() => _StaffListScreenState();
 }
 
-class _StaffListScreenState extends State<StaffListScreen> {
-  final FirebaseService _service = FirebaseService();
+class _StaffListScreenState extends ConsumerState<StaffListScreen> {
+  
 
   // Filters
   final TextEditingController _searchIdCtrl = TextEditingController();
@@ -126,7 +127,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
 
     if (confirm == true && staff.docId != null) {
       try {
-        await _service.deleteStaff(staff.docId!);
+        await ref.read(staffRepositoryProvider).delete(staff.docId!);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -202,7 +203,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
       ),
       drawer: getSideDrawer(context),
       body: StreamBuilder<List<StaffModel>>(
-        stream: _service.staffStream(),
+        stream: ref.watch(staffRepositoryProvider).watchAll(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(

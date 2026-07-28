@@ -1,6 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../models/student_model.dart';
-import '../../../services/firebase_student_service.dart';
+import '../../../repositories/student_repository.dart';
+import '../../../providers.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../widgets/step_indicator.dart';
 import '../../../student_management/steps/step1_personal_info.dart';
 import '../../../student_management/steps/step2_address.dart';
@@ -8,19 +10,18 @@ import '../../../student_management/steps/step3_ids_certificates.dart';
 import '../../../student_management/steps/step4_education.dart';
 import '../../../student_management/steps/step5_course_fees.dart';
 
-class StudentFormScreen extends StatefulWidget {
+class StudentFormScreen extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<StudentFormScreen> createState() => _StudentFormScreenState();
   /// Pass an existing student to enter edit mode; leave null for create mode.
   final StudentModel? existingStudent;
 
   const StudentFormScreen({super.key, this.existingStudent});
-
-  @override
-  State<StudentFormScreen> createState() => _StudentFormScreenState();
 }
 
-class _StudentFormScreenState extends State<StudentFormScreen> {
+class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
   final PageController _pageController = PageController();
-  final FirebaseService _firebaseService = FirebaseService();
+  
   late final StudentModel _student;
 
   bool get _isEditMode => widget.existingStudent != null;
@@ -95,21 +96,21 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
         // UPDATE path
         docId = widget.existingStudent!.docId!;
         setState(() => _uploadStatus = 'Uploading new files…');
-        await _firebaseService.uploadStudentFiles(
+        await ref.read(studentRepositoryProvider).uploadFiles(
           _student,
           docId,
           onProgress: (label, p) => setState(
                   () => _uploadStatus = '$label: ${(p * 100).toStringAsFixed(0)}%'),
         );
         setState(() => _uploadStatus = 'Saving changes…');
-        await _firebaseService.updateStudent(docId, _student);
+        await ref.read(studentRepositoryProvider).update(docId, _student);
       } else {
         // 1. Save basic record to get a Firestore ID
-        final docId = await _firebaseService.saveStudent(_student);
+        final docId = await ref.read(studentRepositoryProvider).create(_student);
 
         // 2. Upload files
         setState(() => _uploadStatus = 'Uploading files...');
-        await _firebaseService.uploadStudentFiles(
+        await ref.read(studentRepositoryProvider).uploadFiles(
           _student,
           docId,
           onProgress: (label, progress) {
@@ -120,7 +121,7 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
 
         // 3. Update record with file URLs
         setState(() => _uploadStatus = 'Saving final data...');
-        await _firebaseService.updateStudent(docId, _student);
+        await ref.read(studentRepositoryProvider).update(docId, _student);
       }
       if (mounted) {
         setState(() => _isSubmitting = false);

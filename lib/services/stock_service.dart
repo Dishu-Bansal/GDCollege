@@ -4,8 +4,9 @@ import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../stock_management/models/stock_models.dart';
+import '../repositories/stock_repository.dart';
 
-class StockService {
+class FirebaseStockRepository implements StockRepository {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
@@ -40,7 +41,8 @@ class StockService {
 
   // ── BUILDINGS ─────────────────────────────────────────────────────────────
 
-  Stream<List<BuildingModel>> buildingsStream() => _buildings
+  @override
+  Stream<List<BuildingModel>> watchBuildings() => _buildings
       .orderBy('createdAt', descending: false)
       .snapshots()
       .map((s) => s.docs
@@ -48,6 +50,7 @@ class StockService {
       BuildingModel.fromFirestore(d.id, d.data() as Map<String, dynamic>))
       .toList());
 
+  @override
   Future<String> addBuilding(String name) async {
     final doc = await _buildings.add(BuildingModel(
       name: name,
@@ -56,15 +59,18 @@ class StockService {
     return doc.id;
   }
 
+  @override
   Future<void> updateBuilding(String id, String name) =>
       _buildings.doc(id).update({'name': name});
 
+  @override
   Future<void> deleteBuilding(String id) =>
       _buildings.doc(id).delete();
 
   // ── FLOORS ────────────────────────────────────────────────────────────────
 
-  Stream<List<FloorModel>> floorsStream(String buildingId) =>
+  @override
+  Stream<List<FloorModel>> watchFloors(String buildingId) =>
       _floors(buildingId)
           .orderBy('createdAt', descending: false)
           .snapshots()
@@ -73,6 +79,7 @@ class StockService {
           d.id, d.data() as Map<String, dynamic>))
           .toList());
 
+  @override
   Future<String> addFloor(String buildingId, String name) async {
     final doc = await _floors(buildingId).add(FloorModel(
       name: name,
@@ -82,15 +89,18 @@ class StockService {
     return doc.id;
   }
 
+  @override
   Future<void> updateFloor(String buildingId, String floorId, String name) =>
       _floors(buildingId).doc(floorId).update({'name': name});
 
+  @override
   Future<void> deleteFloor(String buildingId, String floorId) =>
       _floors(buildingId).doc(floorId).delete();
 
   // ── ROOMS ─────────────────────────────────────────────────────────────────
 
-  Stream<List<RoomModel>> roomsStream(String buildingId, String floorId) =>
+  @override
+  Stream<List<RoomModel>> watchRooms(String buildingId, String floorId) =>
       _rooms(buildingId, floorId)
           .orderBy('createdAt', descending: false)
           .snapshots()
@@ -99,6 +109,7 @@ class StockService {
           d.id, d.data() as Map<String, dynamic>))
           .toList());
 
+  @override
   Future<String> addRoom(
       String buildingId, String floorId, String name) async {
     final doc = await _rooms(buildingId, floorId).add(RoomModel(
@@ -110,19 +121,21 @@ class StockService {
     return doc.id;
   }
 
+  @override
   Future<void> updateRoom(
       String buildingId, String floorId, String roomId, String name) =>
       _rooms(buildingId, floorId).doc(roomId).update({'name': name});
 
+  @override
   Future<void> deleteRoom(
       String buildingId, String floorId, String roomId) =>
       _rooms(buildingId, floorId).doc(roomId).delete();
 
   // ── ROOM MEDIA ────────────────────────────────────────────────────────────
 
-  /// Upload media from an [XFile] (works on both web and mobile).
   /// On web, dart:io File does not exist, so we read bytes via putData().
   /// On mobile we use putFile() for streaming efficiency.
+  @override
   Future<String?> uploadRoomMedia({
     required XFile xfile,
     required String buildingId,
@@ -166,6 +179,7 @@ class StockService {
     return snap.ref.getDownloadURL();
   }
 
+  @override
   Future<void> addRoomPhoto(String buildingId, String floorId,
       String roomId, String url) async {
     await _rooms(buildingId, floorId).doc(roomId).update({
@@ -175,6 +189,7 @@ class StockService {
     });
   }
 
+  @override
   Future<void> addRoomVideo(String buildingId, String floorId,
       String roomId, String url) async {
     await _rooms(buildingId, floorId).doc(roomId).update({
@@ -184,6 +199,7 @@ class StockService {
     });
   }
 
+  @override
   Future<void> removeRoomPhoto(String buildingId, String floorId,
       String roomId, String url) async {
     await _rooms(buildingId, floorId).doc(roomId).update({
@@ -191,6 +207,7 @@ class StockService {
     });
   }
 
+  @override
   Future<void> removeRoomVideo(String buildingId, String floorId,
       String roomId, String url) async {
     await _rooms(buildingId, floorId).doc(roomId).update({
@@ -200,7 +217,8 @@ class StockService {
 
   // ── ITEMS ─────────────────────────────────────────────────────────────────
 
-  Stream<List<StockItem>> itemsStream(
+  @override
+  Stream<List<StockItem>> watchItems(
       String buildingId, String floorId, String roomId) =>
       _items(buildingId, floorId, roomId)
           .orderBy('createdAt', descending: false)
@@ -210,6 +228,7 @@ class StockService {
           d.id, d.data() as Map<String, dynamic>))
           .toList());
 
+  @override
   Future<String> addItem(String buildingId, String floorId, String roomId, StockItem item, ) async {
     item.createdAt = DateTime.now();
     item.updatedAt = DateTime.now();
@@ -272,6 +291,7 @@ class StockService {
   }
   // Adjust path as needed
 
+  @override
   Future<void> updateItem(String buildingId, String floorId,
       String roomId, StockItem item) async {
     item.updatedAt = DateTime.now();
@@ -281,6 +301,7 @@ class StockService {
   }
 
   /// Retrieves a single catalog item summary by its ID to prefill edit screens.
+  @override
   Future<CatalogItem?> getCatalogItemById(String catalogItemId) async {
     try {
       final docSnapshot = await _db.collection('itemsCatalog').doc(catalogItemId).get();
@@ -297,6 +318,7 @@ class StockService {
 
   /// Retrieves a one-time snapshot of item summaries (id, name, unitPrice)
   /// from the global items catalog for advanced auto-completes.
+  @override
   Future<List<CatalogItem>> getCatalogItemSummaries() async {
     try {
       final snapshot = await _db.collection('itemsCatalog').get();
@@ -310,12 +332,14 @@ class StockService {
     }
   }
 
+  @override
   Future<void> deleteItem(String buildingId, String floorId,
       String roomId, String itemId) =>
       _items(buildingId, floorId, roomId).doc(itemId).delete();
 
   // ── QUANTITY ADJUSTMENT (writes item + log atomically) ────────────────────
 
+  @override
   Future<void> adjustQuantity({
     required String buildingId,
     required String floorId,
@@ -358,7 +382,8 @@ class StockService {
 
   // ── LOGS ──────────────────────────────────────────────────────────────────
 
-  Stream<List<StockLog>> logsStream(
+  @override
+  Stream<List<StockLog>> watchLogs(
       String buildingId, String floorId, String roomId,
       {String? itemId}) {
     Query q = _logs(buildingId, floorId, roomId)
@@ -373,7 +398,8 @@ class StockService {
 
   // ── INSPECTIONS ───────────────────────────────────────────────────────────
 
-  Stream<List<InspectionModel>> inspectionsStream(
+  @override
+  Stream<List<InspectionModel>> watchInspections(
       String buildingId, String floorId, String roomId) =>
       _inspections(buildingId, floorId, roomId)
           .orderBy('startedAt', descending: true)
@@ -385,6 +411,7 @@ class StockService {
           .toList());
 
   /// Creates a new in-progress inspection, snapshotting current item quantities.
+  @override
   Future<String> startInspection({
     required BuildingModel building,
     required FloorModel floor,
@@ -418,6 +445,7 @@ class StockService {
   }
 
   /// Saves updated checklist progress (called while editing).
+  @override
   Future<void> updateInspectionChecklist({
     required String buildingId,
     required String floorId,
@@ -437,6 +465,7 @@ class StockService {
   }
 
   /// Completes an inspection.  Optionally syncs quantities to actual counts.
+  @override
   Future<void> completeInspection({
     required BuildingModel building,
     required FloorModel floor,
@@ -493,6 +522,7 @@ class StockService {
   // ── STOCK TRANSFER ────────────────────────────────────────────────────────
 
   /// Atomically moves [quantity] units of [item] from one room to another.
+  @override
   Future<void> transferItem({
     required BuildingModel fromBuilding,
     required FloorModel fromFloor,
@@ -597,7 +627,8 @@ class StockService {
 
   // ── CONSUMABLE ASSIGNMENTS ────────────────────────────────────────────────
 
-  Stream<List<ConsumableAssignment>> assignmentsStream({
+  @override
+  Stream<List<ConsumableAssignment>> watchAssignments({
     String? itemId,
     String? roomId,
   }) {
@@ -633,7 +664,8 @@ class StockService {
     });
   }
 
-  Stream<List<ConsumableAssignment>> allAssignmentsStream() =>
+  @override
+  Stream<List<ConsumableAssignment>> watchAllAssignments() =>
       _assignments
           .limit(200)
           .snapshots()
@@ -647,6 +679,7 @@ class StockService {
       });
 
   /// Assigns consumable stock to a staff member (decreases room quantity).
+  @override
   Future<void> assignConsumable({
     required BuildingModel building,
     required FloorModel floor,
@@ -705,6 +738,7 @@ class StockService {
   }
 
   /// Returns consumable stock from a staff member (increases room quantity).
+  @override
   Future<void> returnConsumable({
     required BuildingModel building,
     required FloorModel floor,

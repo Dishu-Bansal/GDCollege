@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:gd_college/constants.dart';
@@ -6,19 +6,20 @@ import 'package:gd_college/widgets/drawer.dart';
 import 'package:gd_college/widgets/pagination_bar.dart';
 import '../../controllers/pagination_controller.dart';
 import '../models/student_model.dart';
-import '../../services/firebase_student_service.dart';
+import '../../repositories/student_repository.dart';
+import '../../providers.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'student_form_screen.dart';
 import 'student_detail_screen.dart';
 
-class StudentListScreen extends StatefulWidget {
+class StudentListScreen extends ConsumerStatefulWidget {
   const StudentListScreen({super.key});
-
   @override
-  State<StudentListScreen> createState() => _StudentListScreenState();
+  ConsumerState<StudentListScreen> createState() => _StudentListScreenState();
 }
 
-class _StudentListScreenState extends State<StudentListScreen> {
-  final FirebaseService _service = FirebaseService();
+class _StudentListScreenState extends ConsumerState<StudentListScreen> {
+  
   late final PaginationController _pagination;
 
   // Filters
@@ -38,7 +39,7 @@ class _StudentListScreenState extends State<StudentListScreen> {
   @override
   void initState() {
     super.initState();
-    _pagination = PaginationController(_service);
+    _pagination = PaginationController(ref.read(studentRepositoryProvider));
     _pagination.addListener(() => setState(() {}));
     _pagination.loadBrowsePage(1);
   }
@@ -191,7 +192,7 @@ class _StudentListScreenState extends State<StudentListScreen> {
 
     if (confirm == true && student.docId != null) {
       try {
-        await _service.deleteStudent(student.docId!);
+        await ref.read(studentRepositoryProvider).delete(student.docId!);
         _pagination.resetToBrowse();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

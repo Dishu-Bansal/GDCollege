@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:gd_college/student_management/screens/student_list_screen.dart';
+import 'package:gd_college/screens/home_screen.dart';
 import 'package:path/path.dart';
 
 import '../models/user_session.dart';
@@ -119,7 +119,7 @@ class _LoginPageState extends State<LoginPage> {
                                 // Success! Move to Home
                                 Navigator.pushReplacement(context, MaterialPageRoute(
                                   builder: (_) =>
-                                      StudentListScreen(),
+                                      const HomeScreen(),
                                 ),);
                               } else {
                                 // Show error (like "Invalid Password") in a Snackbar
