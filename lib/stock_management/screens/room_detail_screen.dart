@@ -31,7 +31,7 @@ class RoomDetailScreen extends ConsumerStatefulWidget {
 class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
-  StockRepository get _service => ref.watch(stockRepositoryProvider);
+  StockRepository get _service => ref.read(stockRepositoryProvider);
 
   @override
   void initState() {
@@ -1648,7 +1648,7 @@ class _ItemFormDialog extends ConsumerStatefulWidget {
 
 class _ItemFormDialogState extends ConsumerState<_ItemFormDialog> {
   final _formKey = GlobalKey<FormState>();
-  StockRepository get _service => ref.watch(stockRepositoryProvider);
+  StockRepository get _service => ref.read(stockRepositoryProvider);
   CatalogItem? _selectedCatalogItem;
   List<CatalogItem> _catalogSummaries = [];
   bool _isLoading = true;

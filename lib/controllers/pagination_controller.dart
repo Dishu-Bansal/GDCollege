@@ -10,7 +10,7 @@ class PaginationController extends ChangeNotifier {
 
   PaginationController(this._service);
 
-  // â”€â”€ Shared state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Shared state
   List<StudentModel> students = [];
   bool isLoading = false;
   String? error;

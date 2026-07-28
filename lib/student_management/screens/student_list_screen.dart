@@ -39,7 +39,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
   @override
   void initState() {
     super.initState();
-    _pagination = PaginationController(ref.watch(studentRepositoryProvider));
+    _pagination = PaginationController(ref.read(studentRepositoryProvider));
     _pagination.addListener(() => setState(() {}));
     _pagination.loadBrowsePage(1);
   }
