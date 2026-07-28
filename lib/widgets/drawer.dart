@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:gd_college/models/user_session.dart';
+import 'package:gd_college/screens/home_screen.dart';
 import 'package:gd_college/screens/login_screen.dart';
 
 import '../staff_management/screens/staff_list_screen.dart';
@@ -14,46 +15,59 @@ getSideDrawer(BuildContext context){
      children: [
        const DrawerHeader(
          decoration: BoxDecoration(color: Colors.blue),
-         child: Text(
-           'Menu',
-           style: TextStyle(color: Colors.white, fontSize: 24),
+         child: Column(
+           crossAxisAlignment: CrossAxisAlignment.start,
+           mainAxisAlignment: MainAxisAlignment.end,
+           children: [
+             Text(
+               'Lala Kundan Lal',
+               style: TextStyle(color: Colors.white70, fontSize: 14),
+             ),
+             Text(
+               'Memorial Society',
+               style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+             ),
+           ],
          ),
        ),
        ListTile(
          leading: const Icon(Icons.home),
+         title: const Text('Home'),
+         onTap: () {
+           Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
+         },
+       ),
+       ListTile(
+         leading: const Icon(Icons.people_alt),
          title: const Text('Student Management'),
          onTap: () {
-           // Close the drawer and navigate
-           // Navigator.pop(context);
            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => StudentListScreen()));
          },
        ),
        ListTile(
-         leading: const Icon(Icons.people),
+         leading: const Icon(Icons.badge),
          title: const Text('Staff Management'),
          onTap: () {
-           // Navigator.pop(context);
            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => StaffListScreen()));
          },
        ),
        ListTile(
-         leading: const Icon(Icons.people),
+         leading: const Icon(Icons.inventory_2),
          title: const Text('Stock Management'),
          onTap: () {
-           // Navigator.pop(context);
            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => BuildingsScreen()));
          },
        ),
+       const Divider(),
        ListTile(
-         leading: const Icon(Icons.people),
+         leading: const Icon(Icons.help_outline),
          title: const Text('Helper'),
          onTap: () {
-           // Navigator.pop(context);
            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => Helper()));
          },
        ),
        ListTile(
-         leading: const Icon(Icons.settings),
+         leading: const Icon(Icons.logout),
          title: const Text('Log Out'),
          onTap: () async {
            await UserSession().logOut();
