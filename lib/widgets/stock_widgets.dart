@@ -107,7 +107,7 @@ class StockSectionHeader extends StatelessWidget {
       Container(
         padding: const EdgeInsets.all(7),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A3C6E).withOpacity(0.1),
+          color: const Color(0xFF1A3C6E).withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(icon, size: 16, color: const Color(0xFF1A3C6E)),

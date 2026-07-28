@@ -31,7 +31,7 @@ class StepIndicator extends StatelessWidget {
                     height: 2,
                     color: isCompleted
                         ? Colors.amber
-                        : Colors.white.withOpacity(0.3),
+                        : Colors.white.withValues(alpha: 0.3),
                   ),
                 );
               } else {
@@ -62,7 +62,7 @@ class StepIndicator extends StatelessWidget {
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
               value: currentStep / totalSteps,
-              backgroundColor: Colors.white.withOpacity(0.2),
+              backgroundColor: Colors.white.withValues(alpha: 0.2),
               valueColor: const AlwaysStoppedAnimation<Color>(Colors.amber),
               minHeight: 5,
             ),
@@ -96,7 +96,7 @@ class _StepCircle extends StatelessWidget {
             ? Colors.amber
             : isActive
                 ? Colors.white
-                : Colors.white.withOpacity(0.2),
+                : Colors.white.withValues(alpha: 0.2),
         border: isActive
             ? Border.all(color: Colors.amber, width: 3)
             : null,
@@ -111,7 +111,7 @@ class _StepCircle extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                   color: isActive
                       ? const Color(0xFF1A3C6E)
-                      : Colors.white.withOpacity(0.7),
+                      : Colors.white.withValues(alpha: 0.7),
                 ),
               ),
       ),

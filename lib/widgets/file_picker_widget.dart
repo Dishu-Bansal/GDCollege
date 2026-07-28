@@ -112,11 +112,11 @@ class FilePicker extends StatelessWidget {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: hasFile
-                    ? const Color(0xFF1A3C6E).withOpacity(0.05)
+                    ? const Color(0xFF1A3C6E).withValues(alpha: 0.05)
                     : Colors.grey.shade50,
                 border: Border.all(
                   color: hasFile
-                      ? const Color(0xFF1A3C6E).withOpacity(0.4)
+                      ? const Color(0xFF1A3C6E).withValues(alpha: 0.4)
                       : Colors.grey.shade300,
                   width: hasFile ? 1.5 : 1,
                 ),
@@ -141,7 +141,7 @@ class FilePicker extends StatelessWidget {
                       height: 40,
                       decoration: BoxDecoration(
                         color: hasFile
-                            ? const Color(0xFF1A3C6E).withOpacity(0.15)
+                            ? const Color(0xFF1A3C6E).withValues(alpha: 0.15)
                             : Colors.grey.shade200,
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -276,9 +276,9 @@ class MultiFilePicker extends StatelessWidget {
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: const Color(0xFF1A3C6E).withOpacity(0.05),
+                color: const Color(0xFF1A3C6E).withValues(alpha: 0.05),
                 border: Border.all(
-                    color: const Color(0xFF1A3C6E).withOpacity(0.3)),
+                    color: const Color(0xFF1A3C6E).withValues(alpha: 0.3)),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
