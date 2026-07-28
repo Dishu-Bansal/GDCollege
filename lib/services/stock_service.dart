@@ -251,7 +251,7 @@ class StockService {
         batch.set(
             logRef,
             StockLog(
-              itemId: item.id!,
+              itemId: id,
               itemName: item.name,
               type: 'increase',
               quantity: item.currentQuantity,
