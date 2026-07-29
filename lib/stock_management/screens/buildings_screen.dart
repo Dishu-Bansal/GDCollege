@@ -420,13 +420,6 @@ class _GlobalLogTile extends StatelessWidget {
                         style: const TextStyle(
                             fontWeight: FontWeight.w600, fontSize: 13)),
                   ),
-                  Text(
-                    '${isIncrease ? '+' : '-'}${log.quantity}',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: color,
-                        fontSize: 14),
-                  ),
                 ]),
                 const SizedBox(height: 3),
                 Row(children: [
@@ -469,6 +462,24 @@ class _GlobalLogTile extends StatelessWidget {
                       fontSize: 10, color: Colors.grey.shade400),
                 ),
               ]),
+        ),
+        const SizedBox(width: 10),
+        Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            '${isIncrease ? '+' : '-'}${log.quantity}',
+            style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: color,
+                fontSize: 18),
+          ),
         ),
       ]),
     );
