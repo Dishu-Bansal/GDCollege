@@ -91,12 +91,47 @@ class FirebaseStudentRepository implements StudentRepository {
 
   @override
   Future<void> update(String docId, StudentModel student) async {
+    // Fetch old data before writing, for audit comparison
+    final oldSnap = await _firestore.collection(_collection).doc(docId).get();
+    final oldData = (oldSnap.data() as Map<String, dynamic>?) ?? {};
+
     student.updatedAt = DateTime.now();
     student.documentVersion += 1;
     final data = student.toFirestore();
     data['_searchIndex'] = _buildSearchIndex(student);
     await _firestore.collection(_collection).doc(docId).update(data);
-    await _writeLog(docId, student.name, 'update', 'Student updated');
+
+    final detail = _buildUpdateDetail(oldData, data);
+    await _writeLog(docId, student.name, 'update', detail);
+  }
+
+  static const _fieldLabels = {
+    'name': 'Name', 'fatherName': 'Father', 'motherName': 'Mother',
+    'dob': 'DOB', 'gender': 'Gender', 'caste': 'Caste',
+    'address': 'Address', 'village': 'Village', 'district': 'District',
+    'state': 'State', 'pin': 'PIN', 'mobileNo1': 'Mobile 1', 'mobileNo2': 'Mobile 2',
+    'aadharNumber': 'Aadhar', 'panCard': 'PAN', 'familyId': 'Family ID',
+    'nameOfCourse': 'Course', 'yearOfAdmission': 'Year',
+    'feeDetails1stYear': '1st Year Fee', 'feeDetails2ndYear': '2nd Year Fee',
+    'fineIfAny': 'Fine', 'examFee': 'Exam Fee', 'placementDetails': 'Placement',
+    'tenthUrl': '10th Cert', 'twelfthUrl': '12th Cert',
+    'graduationUrl': 'Graduation', 'postGraduationUrl': 'Post Grad', 'diplomaUrl': 'Diploma',
+    'photoUrl': 'Photo', 'aadharUrl': 'Aadhar File', 'panUrl': 'PAN File',
+    'scCertificateUrl': 'SC Cert', 'bcCertificateUrl': 'BC Cert', 'sportsCertificateUrl': 'Sports Cert',
+  };
+
+  String _buildUpdateDetail(Map<String, dynamic> oldData, Map<String, dynamic> newData) {
+    final changes = <String>[];
+    for (final entry in _fieldLabels.entries) {
+      final key = entry.key;
+      // Normalize: treat null, '', 0 as equivalent empty values
+      final oldVal = oldData[key];
+      final newVal = newData[key];
+      final oldNorm = (oldVal == null || oldVal == '' || oldVal == 0) ? null : oldVal.toString();
+      final newNorm = (newVal == null || newVal == '' || newVal == 0) ? null : newVal.toString();
+      if (oldNorm != newNorm) changes.add(entry.value);
+    }
+    return changes.isEmpty ? 'No changes detected' : 'Updated: ${changes.join(', ')}';
   }
 
   // ── DELETE ────────────────────────────────────────────────────────────────

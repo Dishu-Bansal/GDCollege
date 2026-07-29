@@ -45,13 +45,47 @@ class FirebaseStaffRepository implements StaffRepository {
 
   @override
   Future<void> update(String docId, StaffModel staff) async {
+    // Fetch old data before writing, for audit comparison
+    final oldSnap = await _firestore.collection(_collection).doc(docId).get();
+    final oldData = (oldSnap.data() as Map<String, dynamic>?) ?? {};
+
     staff.updatedAt = DateTime.now();
     staff.documentVersion += 1;
-    await _firestore
-        .collection(_collection)
-        .doc(docId)
-        .update(staff.toFirestore());
-    await _writeLog(docId, staff.name, 'update', 'Staff updated');
+    final data = staff.toFirestore();
+    await _firestore.collection(_collection).doc(docId).update(data);
+
+    final detail = _buildUpdateDetail(oldData, data);
+    await _writeLog(docId, staff.name, 'update', detail);
+  }
+
+  static const _fieldLabels = {
+    'name': 'Name', 'fatherName': 'Father', 'motherName': 'Mother',
+    'dob': 'DOB', 'gender': 'Gender', 'caste': 'Caste',
+    'address': 'Address', 'village': 'Village', 'district': 'District',
+    'state': 'State', 'pin': 'PIN', 'mobileNo1': 'Mobile 1', 'mobileNo2': 'Mobile 2',
+    'aadharNumber': 'Aadhar', 'panCard': 'PAN', 'familyId': 'Family ID',
+    'designation': 'Designation', 'course': 'Course', 'salary': 'Salary',
+    'dateOfJoining': 'Joining Date', 'dateOfRelieving': 'Relieving Date',
+    'tenthUrl': '10th Cert', 'twelfthUrl': '12th Cert',
+    'graduationUrl': 'Graduation', 'postGraduationUrl': 'Post Grad', 'diplomaUrl': 'Diploma',
+    'netUrl': 'NET', 'phdUrl': 'PhD',
+    'photoUrl': 'Photo', 'aadharUrl': 'Aadhar File', 'panUrl': 'PAN File',
+    'scCertificateUrl': 'SC Cert', 'bcCertificateUrl': 'BC Cert', 'sportsCertificateUrl': 'Sports Cert',
+    'appointmentLetterUrl': 'Appt Letter', 'joiningLetterUrl': 'Joining Letter',
+    'universityApprovalUrl': 'Univ Approval', 'resignationLetterUrl': 'Resignation Letter',
+  };
+
+  String _buildUpdateDetail(Map<String, dynamic> oldData, Map<String, dynamic> newData) {
+    final changes = <String>[];
+    for (final entry in _fieldLabels.entries) {
+      final key = entry.key;
+      final oldVal = oldData[key];
+      final newVal = newData[key];
+      final oldNorm = (oldVal == null || oldVal == '' || oldVal == 0) ? null : oldVal.toString();
+      final newNorm = (newVal == null || newVal == '' || newVal == 0) ? null : newVal.toString();
+      if (oldNorm != newNorm) changes.add(entry.value);
+    }
+    return changes.isEmpty ? 'No changes detected' : 'Updated: ${changes.join(', ')}';
   }
 
   // ─── DELETE ──────────────────────────────────────────────────────────────
