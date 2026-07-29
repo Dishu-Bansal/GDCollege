@@ -4,12 +4,29 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../staff_management/models/staff_model.dart';
 import '../repositories/staff_repository.dart';
+import '../models/audit_log.dart';
+import '../models/user_session.dart';
 
 class FirebaseStaffRepository implements StaffRepository {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
   static const String _collection = 'staff';
+
+  // ── Audit log helpers ──────────────────────────────────────────────────────
+
+  CollectionReference _staffLogs(String staffId) =>
+      _firestore.collection('staff').doc(staffId).collection('staffLogs');
+
+  Future<void> _writeLog(String staffId, String staffName, String action, String detail) async {
+    await _staffLogs(staffId).add(AuditLog(
+      personId: staffId,
+      personName: staffName,
+      action: action,
+      changedBy: UserSession().currentUser?.email ?? '',
+      detail: detail,
+    ).toFirestore());
+  }
 
   // ─── CREATE ──────────────────────────────────────────────────────────────
 
@@ -20,6 +37,7 @@ class FirebaseStaffRepository implements StaffRepository {
     staff.updatedAt = now;
     final docRef =
     await _firestore.collection(_collection).add(staff.toFirestore());
+    await _writeLog(docRef.id, staff.name, 'create', 'Staff created');
     return docRef.id;
   }
 
@@ -33,14 +51,41 @@ class FirebaseStaffRepository implements StaffRepository {
         .collection(_collection)
         .doc(docId)
         .update(staff.toFirestore());
+    await _writeLog(docId, staff.name, 'update', 'Staff updated');
   }
 
   // ─── DELETE ──────────────────────────────────────────────────────────────
 
   @override
   Future<void> delete(String docId) async {
+    // Write log before deleting
+    final doc = await _firestore.collection(_collection).doc(docId).get();
+    final name = (doc.data() as Map<String, dynamic>)?['name'] ?? '';
+    await _writeLog(docId, name, 'delete', 'Staff deleted');
     await _firestore.collection(_collection).doc(docId).delete();
   }
+
+  // ── Audit log readers ─────────────────────────────────────────────────────
+
+  @override
+  Stream<List<AuditLog>> watchStaffLogs(String staffId) =>
+      _staffLogs(staffId)
+          .orderBy('timestamp', descending: true)
+          .limit(100)
+          .snapshots()
+          .map((s) => s.docs
+              .map((d) => AuditLog.fromFirestore(d.id, d.data() as Map<String, dynamic>))
+              .toList());
+
+  @override
+  Stream<List<AuditLog>> watchAllStaffLogs() =>
+      _firestore.collectionGroup('staffLogs')
+          .orderBy('timestamp', descending: true)
+          .limit(300)
+          .snapshots()
+          .map((s) => s.docs
+              .map((d) => AuditLog.fromFirestore(d.id, d.data() as Map<String, dynamic>))
+              .toList());
 
   // ─── READ (stream) ───────────────────────────────────────────────────────
 

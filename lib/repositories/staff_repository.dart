@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import '../staff_management/models/staff_model.dart';
+import '../models/audit_log.dart';
 
 abstract class StaffRepository {
   Stream<List<StaffModel>> watchAll();
@@ -20,4 +21,8 @@ abstract class StaffRepository {
     required String storagePath,
     void Function(double progress)? onProgress,
   });
+
+  // ── Logs ──
+  Stream<List<AuditLog>> watchStaffLogs(String staffId);
+  Stream<List<AuditLog>> watchAllStaffLogs();
 }

@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../stock_management/models/stock_models.dart';
 import '../repositories/stock_repository.dart';
+import '../models/user_session.dart';
 
 class FirebaseStockRepository implements StockRepository {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -255,6 +256,7 @@ class FirebaseStockRepository implements StockRepository {
             note: "",
             buildingName: buildingName,
             floorName: floorName,
+            changedBy: UserSession().currentUser?.email ?? '',
             roomName: roomName,
           ).toFirestore());
       batch.set(_items(buildingId, floorId, roomId).doc(item.id), item.toFirestore());
@@ -281,6 +283,7 @@ class FirebaseStockRepository implements StockRepository {
               note: "",
               buildingName: buildingName,
               floorName: floorName,
+              changedBy: UserSession().currentUser?.email ?? '',
               roomName: roomName,
             ).toFirestore());
         batch.set(_items(buildingId, floorId, roomId).doc(id), item.toFirestore());
@@ -385,6 +388,7 @@ class FirebaseStockRepository implements StockRepository {
           note: note,
           buildingName: buildingName,
           floorName: floorName,
+          changedBy: UserSession().currentUser?.email ?? '',
           roomName: roomName,
         ).toFirestore());
 
@@ -566,6 +570,7 @@ class FirebaseStockRepository implements StockRepository {
           timestamp: now,
           buildingName: building.name,
           floorName: floor.name,
+          changedBy: UserSession().currentUser?.email ?? '',
           roomName: room.name,
         ).toFirestore());
       }
@@ -638,6 +643,7 @@ class FirebaseStockRepository implements StockRepository {
       timestamp: now,
       buildingName: fromBuilding.name,
       floorName: fromFloor.name,
+      changedBy: UserSession().currentUser?.email ?? '',
       roomName: fromRoom.name,
     ).toFirestore());
 
@@ -656,6 +662,7 @@ class FirebaseStockRepository implements StockRepository {
       timestamp: now,
       buildingName: toBuilding.name,
       floorName: toFloor.name,
+      changedBy: UserSession().currentUser?.email ?? '',
       roomName: toRoom.name,
     ).toFirestore());
 
@@ -777,6 +784,7 @@ class FirebaseStockRepository implements StockRepository {
       timestamp: now,
       buildingName: building.name,
       floorName: floor.name,
+      changedBy: UserSession().currentUser?.email ?? '',
       roomName: room.name,
     ).toFirestore());
 
@@ -838,6 +846,7 @@ class FirebaseStockRepository implements StockRepository {
       timestamp: now,
       buildingName: building.name,
       floorName: floor.name,
+      changedBy: UserSession().currentUser?.email ?? '',
       roomName: room.name,
     ).toFirestore());
 

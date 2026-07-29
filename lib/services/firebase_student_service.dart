@@ -4,12 +4,29 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../student_management/models/student_model.dart';
 import '../repositories/student_repository.dart';
+import '../models/audit_log.dart';
+import '../models/user_session.dart';
 
 class FirebaseStudentRepository implements StudentRepository {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
   static const String _collection = 'students';
+
+  // ── Audit log helpers ──────────────────────────────────────────────────────
+
+  CollectionReference _studentLogs(String studentId) =>
+      _firestore.collection('students').doc(studentId).collection('studentLogs');
+
+  Future<void> _writeLog(String studentId, String studentName, String action, String detail) async {
+    await _studentLogs(studentId).add(AuditLog(
+      personId: studentId,
+      personName: studentName,
+      action: action,
+      changedBy: UserSession().currentUser?.email ?? '',
+      detail: detail,
+    ).toFirestore());
+  }
 
   // ── N-gram index builder ──────────────────────────────────────────────────
 
@@ -66,6 +83,7 @@ class FirebaseStudentRepository implements StudentRepository {
     data['_searchIndex'] = _buildSearchIndex(student);
     final docRef = await _firestore.collection(_collection).add(data);
     await _incrementCount();
+    await _writeLog(docRef.id, student.name, 'create', 'Student created');
     return docRef.id;
   }
 
@@ -78,15 +96,42 @@ class FirebaseStudentRepository implements StudentRepository {
     final data = student.toFirestore();
     data['_searchIndex'] = _buildSearchIndex(student);
     await _firestore.collection(_collection).doc(docId).update(data);
+    await _writeLog(docId, student.name, 'update', 'Student updated');
   }
 
   // ── DELETE ────────────────────────────────────────────────────────────────
 
   @override
   Future<void> delete(String docId) async {
+    // Write log before deleting
+    final doc = await _firestore.collection(_collection).doc(docId).get();
+    final name = (doc.data() as Map<String, dynamic>)?['name'] ?? '';
+    await _writeLog(docId, name, 'delete', 'Student deleted');
     await _firestore.collection(_collection).doc(docId).delete();
     await _decrementCount();
   }
+
+  // ── Audit log readers ─────────────────────────────────────────────────────
+
+  @override
+  Stream<List<AuditLog>> watchStudentLogs(String studentId) =>
+      _studentLogs(studentId)
+          .orderBy('timestamp', descending: true)
+          .limit(100)
+          .snapshots()
+          .map((s) => s.docs
+              .map((d) => AuditLog.fromFirestore(d.id, d.data() as Map<String, dynamic>))
+              .toList());
+
+  @override
+  Stream<List<AuditLog>> watchAllStudentLogs() =>
+      _firestore.collectionGroup('studentLogs')
+          .orderBy('timestamp', descending: true)
+          .limit(300)
+          .snapshots()
+          .map((s) => s.docs
+              .map((d) => AuditLog.fromFirestore(d.id, d.data() as Map<String, dynamic>))
+              .toList());
 
   Future<void> migrateExistingStudents() async {
     print('Starting migration...');

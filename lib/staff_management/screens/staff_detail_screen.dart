@@ -1,17 +1,45 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_network/image_network.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/staff_model.dart';
 import 'staff_form_screen.dart';
 import '../../repositories/staff_repository.dart';
+import '../../providers.dart';
+import '../../models/audit_log.dart';
 
-class StaffDetailScreen extends StatelessWidget {
+class StaffDetailScreen extends ConsumerStatefulWidget {
   final StaffModel staff;
 
   const StaffDetailScreen({super.key, required this.staff});
 
   @override
+  ConsumerState<StaffDetailScreen> createState() =>
+      _StaffDetailScreenState();
+}
+
+class _StaffDetailScreenState extends ConsumerState<StaffDetailScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabs;
+
+  StaffRepository get _service => ref.read(staffRepositoryProvider);
+
+  @override
+  void initState() {
+    super.initState();
+    _tabs = TabController(length: 2, vsync: this);
+    _tabs.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final staff = widget.staff;
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
       appBar: AppBar(
@@ -35,113 +63,304 @@ class StaffDetailScreen extends StatelessWidget {
               },
             ),
         ],
+        bottom: TabBar(
+          controller: _tabs,
+          indicatorColor: Colors.amber,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white60,
+          tabs: const [
+            Tab(icon: Icon(Icons.person_outlined, size: 18), text: 'Details'),
+            Tab(icon: Icon(Icons.history, size: 18), text: 'Log'),
+          ],
+        ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: TabBarView(
+        controller: _tabs,
         children: [
-          // ── Header Card ──────────────────────────────────────────────
-          _HeaderCard(student: staff),
-
-          const SizedBox(height: 12),
-
-          // ── Sections ─────────────────────────────────────────────────
-          _DetailCard(
-            title: 'Personal Information',
-            icon: Icons.person_outline,
-            fields: [
-              _Field('Father\'s Name', staff.fatherName),
-              _Field('Mother\'s Name', staff.motherName),
-              _Field('Date of Birth',
-                  staff.dob != null
-                      ? '${staff.dob!.day}/${staff.dob!.month}/${staff.dob!.year}'
-                      : null),
-              _Field('Gender', staff.gender),
-              _Field('Caste', staff.caste),
-            ],
-          ),
-
-          _DetailCard(
-            title: 'Address & Contact',
-            icon: Icons.location_on_outlined,
-            fields: [
-              _Field('Address', staff.address),
-              _Field('Village / Town', staff.village),
-              _Field('District', staff.district),
-              _Field('State', staff.state),
-              _Field('PIN Code', staff.pin),
-              _Field('Mobile No. 1', staff.mobileNo1),
-              _Field('Mobile No. 2', staff.mobileNo2),
-            ],
-          ),
-
-          _DetailCard(
-            title: 'Identity & Certificates',
-            icon: Icons.badge_outlined,
-            fields: [
-              _Field('Aadhar Number',
-                  _maskAadhar(staff.aadharNumber)),
-              _Field('PAN Card', staff.panCard),
-              _Field('Family ID', staff.familyId),
-            ],
-            fileUrls: {
-              'Aadhar Card': staff.aadharUrl,
-              'PAN card': staff.panUrl,
-              'SC Certificate': staff.scCertificateUrl,
-              'BC Certificate': staff.bcCertificateUrl,
-            },
-          ),
-
-          _DetailCard(
-            title: 'Educational Qualifications',
-            icon: Icons.school_outlined,
-            fileUrls: {
-              '10th': staff.tenthUrl,
-              '12th': staff.twelfthUrl,
-              'Graduation': staff.graduationUrl,
-              'Post Graduation': staff.postGraduationUrl,
-              'Diploma': staff.diplomaUrl,
-              'PHD': staff.phdUrl,
-              'NET': staff.netUrl,
-
-              // Expand the list into numbered keys
-              ...staff.experienceCertificateUrls.asMap().map((index, url) => MapEntry(
-                'Experience Certificate ${index + 1}',
-                url,
-              )),
-            },
-          ),
-
-          _DetailCard(
-            title: 'Course & Fees',
-            icon: Icons.menu_book_outlined,
-            fields: [
-              _Field('staff ID', staff.staffId),
-              _Field('Salary', staff.salary),
-              _Field('Designation', staff.designation),
-              _Field('Course', staff.course),
-              _Field('Increments', staff.increments.map((entry) => entry.amount + " on " + entry.date.toString() + "\n").join()),
-            ],
-            fileUrls: {
-              'Joining Letter': staff.joiningLetterUrl,
-              'Appointment Letter': staff.appointmentLetterUrl,
-              'University Approval': staff.universityApprovalUrl,
-              'Resignation Letter': staff.resignationLetterUrl,
-              for (int i = 0; i < staff.otherFileUrls.length; i++)
-                'File ${i + 1}': staff.otherFileUrls[i],
-            },
-          ),
-
-          _MetadataCard(staff: staff),
-
-          const SizedBox(height: 20),
+          _DetailsTab(staff: staff, service: _service),
+          if (staff.docId != null)
+            _StaffLogTab(service: _service, staffId: staff.docId!)
+          else
+            const Center(child: Text('Staff record not yet saved')),
         ],
       ),
     );
   }
+}
 
-  String _maskAadhar(String n) {
+// ── Details Tab ───────────────────────────────────────────────────────────────
+
+class _DetailsTab extends StatelessWidget {
+  final StaffModel staff;
+  final StaffRepository service;
+  const _DetailsTab({required this.staff, required this.service});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // ── Header Card ──────────────────────────────────────────────
+        _HeaderCard(student: staff),
+
+        const SizedBox(height: 12),
+
+        // ── Sections ─────────────────────────────────────────────────
+        _DetailCard(
+          title: 'Personal Information',
+          icon: Icons.person_outline,
+          fields: [
+            _Field('Father\'s Name', staff.fatherName),
+            _Field('Mother\'s Name', staff.motherName),
+            _Field('Date of Birth',
+                staff.dob != null
+                    ? '${staff.dob!.day}/${staff.dob!.month}/${staff.dob!.year}'
+                    : null),
+            _Field('Gender', staff.gender),
+            _Field('Caste', staff.caste),
+          ],
+        ),
+
+        _DetailCard(
+          title: 'Address & Contact',
+          icon: Icons.location_on_outlined,
+          fields: [
+            _Field('Address', staff.address),
+            _Field('Village / Town', staff.village),
+            _Field('District', staff.district),
+            _Field('State', staff.state),
+            _Field('PIN Code', staff.pin),
+            _Field('Mobile No. 1', staff.mobileNo1),
+            _Field('Mobile No. 2', staff.mobileNo2),
+          ],
+        ),
+
+        _DetailCard(
+          title: 'Identity & Certificates',
+          icon: Icons.badge_outlined,
+          fields: [
+            _Field('Aadhar Number',
+                _maskAadhar(staff.aadharNumber)),
+            _Field('PAN Card', staff.panCard),
+            _Field('Family ID', staff.familyId),
+          ],
+          fileUrls: {
+            'Aadhar Card': staff.aadharUrl,
+            'PAN card': staff.panUrl,
+            'SC Certificate': staff.scCertificateUrl,
+            'BC Certificate': staff.bcCertificateUrl,
+          },
+        ),
+
+        _DetailCard(
+          title: 'Educational Qualifications',
+          icon: Icons.school_outlined,
+          fileUrls: {
+            '10th': staff.tenthUrl,
+            '12th': staff.twelfthUrl,
+            'Graduation': staff.graduationUrl,
+            'Post Graduation': staff.postGraduationUrl,
+            'Diploma': staff.diplomaUrl,
+            'PHD': staff.phdUrl,
+            'NET': staff.netUrl,
+
+            // Expand the list into numbered keys
+            ...staff.experienceCertificateUrls.asMap().map((index, url) => MapEntry(
+              'Experience Certificate ${index + 1}',
+              url,
+            )),
+          },
+        ),
+
+        _DetailCard(
+          title: 'Course & Fees',
+          icon: Icons.menu_book_outlined,
+          fields: [
+            _Field('staff ID', staff.staffId),
+            _Field('Salary', staff.salary),
+            _Field('Designation', staff.designation),
+            _Field('Course', staff.course),
+            _Field('Increments', staff.increments.map((entry) => entry.amount + " on " + entry.date.toString() + "\n").join()),
+          ],
+          fileUrls: {
+            'Joining Letter': staff.joiningLetterUrl,
+            'Appointment Letter': staff.appointmentLetterUrl,
+            'University Approval': staff.universityApprovalUrl,
+            'Resignation Letter': staff.resignationLetterUrl,
+            for (int i = 0; i < staff.otherFileUrls.length; i++)
+              'File ${i + 1}': staff.otherFileUrls[i],
+          },
+        ),
+
+        _MetadataCard(staff: staff),
+
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  static String _maskAadhar(String n) {
     if (n.length < 4) return n;
     return 'XXXX XXXX ${n.substring(n.length - 4)}';
+  }
+}
+
+// ── Staff Log Tab ─────────────────────────────────────────────────────────────
+
+class _StaffLogTab extends StatelessWidget {
+  final StaffRepository service;
+  final String staffId;
+  const _StaffLogTab({required this.service, required this.staffId});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<AuditLog>>(
+      stream: service.watchStaffLogs(staffId),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snap.hasError) {
+          return Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              const SizedBox(height: 12),
+              Text('Unable to load logs.\n${snap.error}',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey.shade600)),
+            ]),
+          );
+        }
+        final logs = snap.data ?? [];
+        if (logs.isEmpty) {
+          return Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.history, size: 64, color: Colors.grey.shade300),
+              const SizedBox(height: 16),
+              Text('No activity yet',
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade500)),
+            ]),
+          );
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.all(12),
+          itemCount: logs.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 6),
+          itemBuilder: (_, i) => _LogTile(log: logs[i]),
+        );
+      },
+    );
+  }
+}
+
+class _LogTile extends StatelessWidget {
+  final AuditLog log;
+  const _LogTile({required this.log});
+
+  IconData get _icon {
+    switch (log.action) {
+      case 'create':
+        return Icons.check_circle_outline;
+      case 'delete':
+        return Icons.cancel_outlined;
+      default:
+        return Icons.sync;
+    }
+  }
+
+  Color get _color {
+    switch (log.action) {
+      case 'create':
+        return Colors.green.shade700;
+      case 'delete':
+        return Colors.red.shade600;
+      default:
+        return Colors.blue.shade700;
+    }
+  }
+
+  String get _actionLabel {
+    switch (log.action) {
+      case 'create':
+        return 'Created';
+      case 'delete':
+        return 'Deleted';
+      default:
+        return 'Updated';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: _color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(_icon, color: _color, size: 18),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: _color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(_actionLabel,
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: _color)),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(log.detail,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w500, fontSize: 13)),
+                ),
+              ]),
+              const SizedBox(height: 4),
+              if (log.changedBy.isNotEmpty)
+                Text(log.changedBy,
+                    style: TextStyle(
+                        fontSize: 11, color: Colors.grey.shade600)),
+              const SizedBox(height: 2),
+              Text(
+                _fmt(log.timestamp),
+                style:
+                    TextStyle(fontSize: 10, color: Colors.grey.shade400),
+              ),
+            ],
+          ),
+        ),
+      ]),
+    );
+  }
+
+  String _fmt(DateTime d) {
+    final date = '${d.day}/${d.month}/${d.year}';
+    final time =
+        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    return '$date  $time';
   }
 }
 

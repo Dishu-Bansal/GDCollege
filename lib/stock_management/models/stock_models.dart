@@ -205,6 +205,7 @@ class StockLog {
   String buildingName;
   String floorName;
   String roomName;
+  String changedBy;
 
   StockLog({
     this.id,
@@ -219,6 +220,7 @@ class StockLog {
     this.buildingName = '',
     this.floorName = '',
     this.roomName = '',
+    this.changedBy = '',
   }) : timestamp = timestamp ?? DateTime.now();
 
   factory StockLog.fromFirestore(String id, Map<String, dynamic> d) =>
@@ -237,6 +239,7 @@ class StockLog {
         buildingName: d['buildingName'] ?? '',
         floorName: d['floorName'] ?? '',
         roomName: d['roomName'] ?? '',
+        changedBy: d['changedBy'] ?? '',
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -251,6 +254,7 @@ class StockLog {
     'buildingName': buildingName,
     'floorName': floorName,
     'roomName': roomName,
+    'changedBy': changedBy,
   };
 }
 
