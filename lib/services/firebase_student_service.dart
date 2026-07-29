@@ -156,13 +156,13 @@ class FirebaseStudentRepository implements StudentRepository {
   @override
   Stream<List<AuditLog>> watchStudentLogs(String studentId) =>
       _studentLogs(studentId)
-          .orderBy('timestamp')
+          .orderBy('timestamp', descending: true)
           .limit(100)
           .snapshots()
           .map((s) => s.docs
-              .reversed
               .map((d) => AuditLog.fromFirestore(d.id, d.data() as Map<String, dynamic>))
-              .toList());
+              .toList())
+          .handleError((_) => <AuditLog>[]);
 
   @override
   Stream<List<AuditLog>> watchAllStudentLogs() =>
@@ -172,7 +172,8 @@ class FirebaseStudentRepository implements StudentRepository {
           .snapshots()
           .map((s) => s.docs
               .map((d) => AuditLog.fromFirestore(d.id, d.data() as Map<String, dynamic>))
-              .toList());
+              .toList())
+          .handleError((_) => <AuditLog>[]);
 
   Future<void> migrateExistingStudents() async {
     print('Starting migration...');

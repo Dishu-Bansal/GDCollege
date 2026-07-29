@@ -108,13 +108,13 @@ class FirebaseStaffRepository implements StaffRepository {
   @override
   Stream<List<AuditLog>> watchStaffLogs(String staffId) =>
       _staffLogs(staffId)
-          .orderBy('timestamp')
+          .orderBy('timestamp', descending: true)
           .limit(100)
           .snapshots()
           .map((s) => s.docs
-              .reversed
               .map((d) => AuditLog.fromFirestore(d.id, d.data() as Map<String, dynamic>))
-              .toList());
+              .toList())
+          .handleError((_) => <AuditLog>[]);
 
   @override
   Stream<List<AuditLog>> watchAllStaffLogs() =>
@@ -124,7 +124,8 @@ class FirebaseStaffRepository implements StaffRepository {
           .snapshots()
           .map((s) => s.docs
               .map((d) => AuditLog.fromFirestore(d.id, d.data() as Map<String, dynamic>))
-              .toList());
+              .toList())
+          .handleError((_) => <AuditLog>[]);
 
   // ─── READ (stream) ───────────────────────────────────────────────────────
 
