@@ -7,15 +7,35 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../widgets/stock_widgets.dart';
 import 'floors_screen.dart';
 
-class BuildingsScreen extends ConsumerWidget {
+class BuildingsScreen extends ConsumerStatefulWidget {
   const BuildingsScreen({super.key});
 
+  @override
+  ConsumerState<BuildingsScreen> createState() => _BuildingsScreenState();
+}
+
+class _BuildingsScreenState extends ConsumerState<BuildingsScreen>
+    with SingleTickerProviderStateMixin {
   static const _kPrimary = Color(0xFF1A3C6E);
+  late final TabController _tabs;
+
+  StockRepository get _service => ref.read(stockRepositoryProvider);
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final service = ref.watch(stockRepositoryProvider);
+  void initState() {
+    super.initState();
+    _tabs = TabController(length: 2, vsync: this);
+    _tabs.addListener(() => setState(() {}));
+  }
 
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
       drawer: getSideDrawer(context),
@@ -23,54 +43,88 @@ class BuildingsScreen extends ConsumerWidget {
         title: const Text('Stock Management',
             style: TextStyle(fontWeight: FontWeight.w700)),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.add_business_outlined),
-            tooltip: 'Add Building',
-            onPressed: () => _addBuilding(context, service),
-          ),
+          if (_tabs.index == 0)
+            IconButton(
+              icon: const Icon(Icons.add_business_outlined),
+              tooltip: 'Add Building',
+              onPressed: () => _addBuilding(context),
+            ),
+        ],
+        bottom: TabBar(
+          controller: _tabs,
+          indicatorColor: Colors.amber,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white60,
+          tabs: const [
+            Tab(
+                icon: Icon(Icons.business_outlined, size: 18),
+                text: 'Buildings'),
+            Tab(
+                icon: Icon(Icons.history, size: 18),
+                text: 'Global Log'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabs,
+        children: [
+          _BuildingsTab(service: _service, onAdd: () => _addBuilding(context)),
+          _GlobalLogTab(service: _service),
         ],
       ),
-      body: StreamBuilder<List<BuildingModel>>(
-        stream: service.watchBuildings(),
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final buildings = snap.data ?? [];
-          if (buildings.isEmpty) {
-            return StockEmptyState(
-              message:
-              'No buildings yet.\nAdd your first building to get started.',
-              actionLabel: 'Add Building',
-              onAction: () => _addBuilding(context, service),
-            );
-          }
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: buildings.length,
-            itemBuilder: (_, i) => _BuildingCard(
-              building: buildings[i],
-              service: service,
-            ),
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _addBuilding(context, service),
-        backgroundColor: _kPrimary,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('Add Building',
-            style: TextStyle(
-                color: Colors.white, fontWeight: FontWeight.w600)),
-      ),
+      floatingActionButton: _tabs.index == 0
+          ? FloatingActionButton.extended(
+              onPressed: () => _addBuilding(context),
+              backgroundColor: _kPrimary,
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text('Add Building',
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w600)),
+            )
+          : null,
     );
   }
 
-  Future<void> _addBuilding(
-      BuildContext context, StockRepository service) async {
+  Future<void> _addBuilding(BuildContext context) async {
     final name = await showNameDialog(context,
         title: 'Add Building', hint: 'e.g. Main Block, Hostel A');
-    if (name != null) await service.addBuilding(name);
+    if (name != null) await _service.addBuilding(name);
+  }
+}
+
+class _BuildingsTab extends StatelessWidget {
+  final StockRepository service;
+  final VoidCallback onAdd;
+
+  const _BuildingsTab({required this.service, required this.onAdd});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<BuildingModel>>(
+      stream: service.watchBuildings(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final buildings = snap.data ?? [];
+        if (buildings.isEmpty) {
+          return StockEmptyState(
+            message:
+                'No buildings yet.\nAdd your first building to get started.',
+            actionLabel: 'Add Building',
+            onAction: onAdd,
+          );
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: buildings.length,
+          itemBuilder: (_, i) => _BuildingCard(
+            building: buildings[i],
+            service: service,
+          ),
+        );
+      },
+    );
   }
 }
 
@@ -78,8 +132,7 @@ class _BuildingCard extends StatelessWidget {
   final BuildingModel building;
   final StockRepository service;
 
-  const _BuildingCard(
-      {required this.building, required this.service});
+  const _BuildingCard({required this.building, required this.service});
 
   @override
   Widget build(BuildContext context) {
@@ -87,10 +140,8 @@ class _BuildingCard extends StatelessWidget {
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 12),
       shape:
-      RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       clipBehavior: Clip.antiAlias,
-      // Feature: Media Freshness â€” stream all rooms under this building's
-      // floors to determine if any room is overdue.
       child: StreamBuilder<List<FloorModel>>(
         stream: service.watchFloors(building.id!),
         builder: (context, floorSnap) {
@@ -123,7 +174,6 @@ class _BuildingCardContent extends StatelessWidget {
       return _tile(context, hasOverdue: false);
     }
 
-    // Combine room streams for all floors to detect any overdue room
     return _MultiFloorRoomWatcher(
       building: building,
       floors: floors,
@@ -135,7 +185,7 @@ class _BuildingCardContent extends StatelessWidget {
   Widget _tile(BuildContext context, {required bool hasOverdue}) {
     return ListTile(
       contentPadding:
-      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
@@ -168,10 +218,10 @@ class _BuildingCardContent extends StatelessWidget {
               fontWeight: FontWeight.w700, fontSize: 15)),
       subtitle: building.createdAt != null
           ? Text(
-        'Added ${building.createdAt!.day}/${building.createdAt!.month}/${building.createdAt!.year}',
-        style: TextStyle(
-            fontSize: 11, color: Colors.grey.shade500),
-      )
+              'Added ${building.createdAt!.day}/${building.createdAt!.month}/${building.createdAt!.year}',
+              style: TextStyle(
+                  fontSize: 11, color: Colors.grey.shade500),
+            )
           : null,
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
@@ -180,14 +230,13 @@ class _BuildingCardContent extends StatelessWidget {
             onSelected: (v) async {
               if (v == 'rename') {
                 final name = await showNameDialog(context,
-                    title: 'Rename Building',
-                    initial: building.name);
+                    title: 'Rename Building', initial: building.name);
                 if (name != null) {
                   await service.updateBuilding(building.id!, name);
                 }
               } else if (v == 'delete') {
-                final ok = await confirmDelete(context,
-                    label: building.name);
+                final ok =
+                    await confirmDelete(context, label: building.name);
                 if (ok) await service.deleteBuilding(building.id!);
               }
             },
@@ -218,8 +267,7 @@ class _BuildingCardContent extends StatelessWidget {
 }
 
 /// Watches room streams across multiple floors and reports whether any room
-/// has overdue media. This is purely client-side â€” no extra Firestore queries
-/// beyond what is already streamed.
+/// has overdue media.
 class _MultiFloorRoomWatcher extends StatelessWidget {
   final BuildingModel building;
   final List<FloorModel> floors;
@@ -235,9 +283,6 @@ class _MultiFloorRoomWatcher extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Use the first floor as the anchor; for a production app with many floors
-    // you'd combine multiple StreamBuilders or use rxdart's CombineLatestStream.
-    // For simplicity we watch all floors sequentially.
     return _FloorRoomWatcher(
       building: building,
       floors: floors,
@@ -289,5 +334,161 @@ class _FloorRoomWatcher extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+// ── Global Log Tab ──────────────────────────────────────────────────────────────
+
+class _GlobalLogTab extends StatelessWidget {
+  final StockRepository service;
+  const _GlobalLogTab({required this.service});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<StockLog>>(
+      stream: service.watchAllLogs(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final logs = snap.data ?? [];
+        if (snap.hasError) {
+          return StockEmptyState(
+            message:
+                'Unable to load global logs.\nA Firestore composite index may be required.\n\nSee the error link in the console to create it.',
+          );
+        }
+        if (logs.isEmpty) {
+          return const StockEmptyState(
+              message:
+                  'No stock movements yet across any room.\nAdjust item quantities to see the log.');
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.all(12),
+          itemCount: logs.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 6),
+          itemBuilder: (_, i) => _GlobalLogTile(log: logs[i]),
+        );
+      },
+    );
+  }
+}
+
+class _GlobalLogTile extends StatelessWidget {
+  final StockLog log;
+  const _GlobalLogTile({required this.log});
+
+  @override
+  Widget build(BuildContext context) {
+    final isIncrease = log.type == 'increase';
+    final color = isIncrease ? Colors.green.shade700 : Colors.red.shade600;
+
+    final location = <String>[];
+    if (log.buildingName.isNotEmpty) location.add(log.buildingName);
+    if (log.floorName.isNotEmpty) location.add(log.floorName);
+    if (log.roomName.isNotEmpty) location.add(log.roomName);
+    final locationText = location.join(' › ');
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+              isIncrease ? Icons.arrow_upward : Icons.arrow_downward,
+              color: color,
+              size: 18),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Expanded(
+                    child: Text(log.itemName,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 13)),
+                  ),
+                ]),
+                const SizedBox(height: 3),
+                Row(children: [
+                  Text(
+                    '${log.previousQty} → ${log.newQty}',
+                    style: TextStyle(
+                        fontSize: 11, color: Colors.grey.shade500),
+                  ),
+                  const SizedBox(width: 8),
+                  if (log.note.isNotEmpty)
+                    Expanded(
+                      child: Text(
+                        log.note,
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade600,
+                            fontStyle: FontStyle.italic),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ]),
+                const SizedBox(height: 3),
+                Row(children: [
+                  if (locationText.isNotEmpty)
+                    Expanded(
+                      child: Text(
+                        locationText,
+                        style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.blueGrey.shade400,
+                            fontWeight: FontWeight.w500),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ]),
+                const SizedBox(height: 1),
+                Text(
+                  _fmtDateTime(log.timestamp),
+                  style: TextStyle(
+                      fontSize: 10, color: Colors.grey.shade400),
+                ),
+              ]),
+        ),
+        const SizedBox(width: 10),
+        Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            '${isIncrease ? '+' : '-'}${log.quantity}',
+            style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: color,
+                fontSize: 18),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  String _fmtDateTime(DateTime d) {
+    final date = '${d.day}/${d.month}/${d.year}';
+    final time =
+        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    return '$date  $time';
   }
 }

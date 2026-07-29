@@ -229,7 +229,8 @@ class FirebaseStockRepository implements StockRepository {
           .toList());
 
   @override
-  Future<String> addItem(String buildingId, String floorId, String roomId, StockItem item, ) async {
+  Future<String> addItem(String buildingId, String floorId, String roomId, StockItem item,
+      {String buildingName = '', String floorName = '', String roomName = ''}) async {
     item.createdAt = DateTime.now();
     item.updatedAt = DateTime.now();
 
@@ -252,10 +253,11 @@ class FirebaseStockRepository implements StockRepository {
             previousQty: 0,
             newQty: item.currentQuantity,
             note: "",
+            buildingName: buildingName,
+            floorName: floorName,
+            roomName: roomName,
           ).toFirestore());
       batch.set(_items(buildingId, floorId, roomId).doc(item.id), item.toFirestore());
-      // final doc = await _items(buildingId, floorId, roomId)
-      //     .add(item.toFirestore());
       await batch.commit();
       return item.id!;
     }
@@ -277,6 +279,9 @@ class FirebaseStockRepository implements StockRepository {
               previousQty: 0,
               newQty: item.currentQuantity,
               note: "",
+              buildingName: buildingName,
+              floorName: floorName,
+              roomName: roomName,
             ).toFirestore());
         batch.set(_items(buildingId, floorId, roomId).doc(id), item.toFirestore());
         // final doc = await _items(buildingId, floorId, roomId)
@@ -347,6 +352,9 @@ class FirebaseStockRepository implements StockRepository {
     required StockItem item,
     required int delta,
     required String note,
+    String buildingName = '',
+    String floorName = '',
+    String roomName = '',
   }) async {
     final previousQty = item.currentQuantity;
     final newQty = (previousQty + delta).clamp(0, 999999);
@@ -375,6 +383,9 @@ class FirebaseStockRepository implements StockRepository {
           previousQty: previousQty,
           newQty: newQty,
           note: note,
+          buildingName: buildingName,
+          floorName: floorName,
+          roomName: roomName,
         ).toFirestore());
 
     await batch.commit();
@@ -394,6 +405,47 @@ class FirebaseStockRepository implements StockRepository {
         .map((d) => StockLog.fromFirestore(
         d.id, d.data() as Map<String, dynamic>))
         .toList());
+  }
+
+  @override
+  Stream<List<StockLog>> watchAllLogs() =>
+      _db.collectionGroup('stockLogs')
+          .orderBy('timestamp', descending: true)
+          .limit(300)
+          .snapshots()
+          .map((s) => s.docs
+              .map((d) => StockLog.fromFirestore(
+                  d.id, d.data() as Map<String, dynamic>))
+              .toList());
+
+  @override
+  Future<int> migrateStockLogsLocation() async {
+    int migrated = 0;
+    final buildingsSnap = await _buildings.get();
+    for (final bDoc in buildingsSnap.docs) {
+      final buildingName = (bDoc.data() as Map<String, dynamic>)['name'] ?? '';
+      final floorsSnap = await _floors(bDoc.id).get();
+      for (final fDoc in floorsSnap.docs) {
+        final floorName = (fDoc.data() as Map<String, dynamic>)['name'] ?? '';
+        final roomsSnap = await _rooms(bDoc.id, fDoc.id).get();
+        for (final rDoc in roomsSnap.docs) {
+          final roomName = (rDoc.data() as Map<String, dynamic>)['name'] ?? '';
+          final logsSnap = await _logs(bDoc.id, fDoc.id, rDoc.id).get();
+          for (final lDoc in logsSnap.docs) {
+            final data = lDoc.data() as Map<String, dynamic>;
+            if (data['buildingName'] == null || data['buildingName'] == '') {
+              await lDoc.reference.update({
+                'buildingName': buildingName,
+                'floorName': floorName,
+                'roomName': roomName,
+              });
+              migrated++;
+            }
+          }
+        }
+      }
+    }
+    return migrated;
   }
 
   // ── INSPECTIONS ───────────────────────────────────────────────────────────
@@ -512,6 +564,9 @@ class FirebaseStockRepository implements StockRepository {
           newQty: ci.actualQty,
           note: 'Corrected during inspection #${inspection.id}',
           timestamp: now,
+          buildingName: building.name,
+          floorName: floor.name,
+          roomName: room.name,
         ).toFirestore());
       }
     }
@@ -581,6 +636,9 @@ class FirebaseStockRepository implements StockRepository {
       note: 'Transferred to ${toRoom.name}, ${toFloor.name}, '
           '${toBuilding.name}. $note',
       timestamp: now,
+      buildingName: fromBuilding.name,
+      floorName: fromFloor.name,
+      roomName: fromRoom.name,
     ).toFirestore());
 
     // Destination log
@@ -591,11 +649,14 @@ class FirebaseStockRepository implements StockRepository {
       itemName: item.name,
       type: 'increase',
       quantity: clamped,
-      previousQty: 0, // unknown without a read — acceptable for log display
+      previousQty: 0,
       newQty: clamped,
       note: 'Transferred from ${fromRoom.name}, ${fromFloor.name}, '
           '${fromBuilding.name}. $note',
       timestamp: now,
+      buildingName: toBuilding.name,
+      floorName: toFloor.name,
+      roomName: toRoom.name,
     ).toFirestore());
 
     // Transfer record
@@ -714,6 +775,9 @@ class FirebaseStockRepository implements StockRepository {
       newQty: newQty,
       note: 'Assigned to $assignedTo. $note',
       timestamp: now,
+      buildingName: building.name,
+      floorName: floor.name,
+      roomName: room.name,
     ).toFirestore());
 
     // Assignment record
@@ -772,6 +836,9 @@ class FirebaseStockRepository implements StockRepository {
       newQty: newQty,
       note: 'Returned by ${assignment.assignedTo}',
       timestamp: now,
+      buildingName: building.name,
+      floorName: floor.name,
+      roomName: room.name,
     ).toFirestore());
 
     // Update assignment

@@ -43,7 +43,8 @@ abstract class StockRepository {
   Stream<List<StockItem>> watchItems(
       String buildingId, String floorId, String roomId);
   Future<String> addItem(
-      String buildingId, String floorId, String roomId, StockItem item);
+      String buildingId, String floorId, String roomId, StockItem item,
+      {String buildingName = '', String floorName = '', String roomName = ''});
   Future<void> updateItem(
       String buildingId, String floorId, String roomId, StockItem item);
   Future<CatalogItem?> getCatalogItemById(String catalogItemId);
@@ -59,12 +60,17 @@ abstract class StockRepository {
     required StockItem item,
     required int delta,
     required String note,
+    String buildingName = '',
+    String floorName = '',
+    String roomName = '',
   });
 
   // ── Logs ──
   Stream<List<StockLog>> watchLogs(
       String buildingId, String floorId, String roomId,
       {String? itemId});
+  Stream<List<StockLog>> watchAllLogs();
+  Future<int> migrateStockLogsLocation();
 
   // ── Inspections ──
   Stream<List<InspectionModel>> watchInspections(

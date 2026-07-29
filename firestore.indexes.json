@@ -7,6 +7,13 @@
       "indexes": [
         { "order": "ASCENDING", "queryScope": "COLLECTION" }
       ]
+    },
+    {
+      "collectionGroup": "stockLogs",
+      "fieldPath": "timestamp",
+      "indexes": [
+        { "order": "DESCENDING", "queryScope": "COLLECTION_GROUP" }
+      ]
     }
   ]
 }

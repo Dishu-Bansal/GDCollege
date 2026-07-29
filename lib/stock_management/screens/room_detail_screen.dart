@@ -135,7 +135,10 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen>
       builder: (_) => _ItemFormDialog(
         onSave: (item) async {
           await _service.addItem(widget.building.id!,
-              widget.floor.id!, widget.room.id!, item);
+              widget.floor.id!, widget.room.id!, item,
+              buildingName: widget.building.name,
+              floorName: widget.floor.name,
+              roomName: widget.room.name);
         },
       ),
     );
@@ -532,6 +535,9 @@ class _ItemCard extends StatelessWidget {
             item: item,
             delta: sign * qty,
             note: note,
+            buildingName: building.name,
+            floorName: floor.name,
+            roomName: room.name,
           );
         },
       ),
@@ -2331,20 +2337,9 @@ class _LogTile extends StatelessWidget {
           child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(children: [
-                  Text(log.itemName,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13)),
-                  const Spacer(),
-                  Text(
-                    '${isIncrease ? '+' : '-'}${log.quantity}',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: color,
-                        fontSize: 14),
-                  ),
-                ]),
+                Text(log.itemName,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 13)),
                 const SizedBox(height: 3),
                 Row(children: [
                   Text(
@@ -2373,6 +2368,24 @@ class _LogTile extends StatelessWidget {
                       fontSize: 10, color: Colors.grey.shade400),
                 ),
               ]),
+        ),
+        const SizedBox(width: 10),
+        Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            '${isIncrease ? '+' : '-'}${log.quantity}',
+            style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: color,
+                fontSize: 18),
+          ),
         ),
       ]),
     );

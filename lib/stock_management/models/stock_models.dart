@@ -202,6 +202,9 @@ class StockLog {
   int newQty;
   String note;
   DateTime timestamp;
+  String buildingName;
+  String floorName;
+  String roomName;
 
   StockLog({
     this.id,
@@ -213,6 +216,9 @@ class StockLog {
     this.newQty = 0,
     this.note = '',
     DateTime? timestamp,
+    this.buildingName = '',
+    this.floorName = '',
+    this.roomName = '',
   }) : timestamp = timestamp ?? DateTime.now();
 
   factory StockLog.fromFirestore(String id, Map<String, dynamic> d) =>
@@ -228,6 +234,9 @@ class StockLog {
         timestamp: d['timestamp'] != null
             ? DateTime.tryParse(d['timestamp']) ?? DateTime.now()
             : DateTime.now(),
+        buildingName: d['buildingName'] ?? '',
+        floorName: d['floorName'] ?? '',
+        roomName: d['roomName'] ?? '',
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -239,6 +248,9 @@ class StockLog {
     'newQty': newQty,
     'note': note,
     'timestamp': timestamp.toIso8601String(),
+    'buildingName': buildingName,
+    'floorName': floorName,
+    'roomName': roomName,
   };
 }
 
