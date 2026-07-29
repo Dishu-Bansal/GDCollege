@@ -156,10 +156,11 @@ class FirebaseStudentRepository implements StudentRepository {
   @override
   Stream<List<AuditLog>> watchStudentLogs(String studentId) =>
       _studentLogs(studentId)
-          .orderBy('timestamp', descending: true)
+          .orderBy('timestamp')
           .limit(100)
           .snapshots()
           .map((s) => s.docs
+              .reversed
               .map((d) => AuditLog.fromFirestore(d.id, d.data() as Map<String, dynamic>))
               .toList());
 

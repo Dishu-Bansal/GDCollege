@@ -108,10 +108,11 @@ class FirebaseStaffRepository implements StaffRepository {
   @override
   Stream<List<AuditLog>> watchStaffLogs(String staffId) =>
       _staffLogs(staffId)
-          .orderBy('timestamp', descending: true)
+          .orderBy('timestamp')
           .limit(100)
           .snapshots()
           .map((s) => s.docs
+              .reversed
               .map((d) => AuditLog.fromFirestore(d.id, d.data() as Map<String, dynamic>))
               .toList());
 
