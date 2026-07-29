@@ -5,6 +5,7 @@ import 'package:gd_college/constants.dart';
 import 'package:gd_college/widgets/drawer.dart';
 import 'package:gd_college/widgets/pagination_bar.dart';
 import '../../controllers/pagination_controller.dart';
+import '../../models/audit_log.dart';
 import '../models/student_model.dart';
 import '../../repositories/student_repository.dart';
 import '../../providers.dart';
@@ -18,9 +19,13 @@ class StudentListScreen extends ConsumerStatefulWidget {
   ConsumerState<StudentListScreen> createState() => _StudentListScreenState();
 }
 
-class _StudentListScreenState extends ConsumerState<StudentListScreen> {
-  
+class _StudentListScreenState extends ConsumerState<StudentListScreen>
+    with SingleTickerProviderStateMixin {
+
   late final PaginationController _pagination;
+  late final TabController _tabs;
+
+  StudentRepository get _service => ref.read(studentRepositoryProvider);
 
   // Filters
   final TextEditingController _searchIdCtrl = TextEditingController();
@@ -42,11 +47,14 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
     _pagination = PaginationController(ref.read(studentRepositoryProvider));
     _pagination.addListener(() => setState(() {}));
     _pagination.loadBrowsePage(1);
+    _tabs = TabController(length: 2, vsync: this);
+    _tabs.addListener(() => setState(() {}));
   }
 
   @override
   void dispose() {
     _pagination.dispose();
+    _tabs.dispose();
     _searchIdCtrl.dispose();
     _searchNameCtrl.dispose();
     _debounce?.cancel();
@@ -240,145 +248,400 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
     );
   }
 
+  void _onCourseChanged(String? v) {
+    setState(() => _selectedCourse = v);
+    _onFilterChanged();
+  }
+
+  void _onYearChanged(String? v) {
+    setState(() => _selectedYear = v == 'All' ? null : v);
+    _onFilterChanged();
+  }
+
+  void _onSort(int col, bool asc) {
+    setState(() {
+      _sortColumnIndex = col;
+      _sortAscending = asc;
+    });
+  }
+
+  void _onRetry() {
+    if (_pagination.isSearchMode) {
+      _onFilterChanged();
+    } else {
+      _pagination.loadBrowsePage(_pagination.currentPage);
+    }
+  }
+
+  List<String> get _allYears {
+    final years = _pagination.students
+        .map((s) => s.yearOfAdmission?.toString() ?? '')
+        .where((y) => y.isNotEmpty)
+        .toSet()
+        .toList();
+    years.sort((a, b) => b.compareTo(a));
+    return years;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
+      drawer: getSideDrawer(context),
       appBar: AppBar(
         title: const Text('Student Records',
             style: TextStyle(fontWeight: FontWeight.w700)),
         actions: [
-          IconButton(
-            icon: Badge(
-              isLabelVisible: _hasActiveFilters,
-              backgroundColor: Colors.amber,
-              child: Icon(
-                _filtersVisible ? Icons.filter_list_off : Icons.filter_list,
+          if (_tabs.index == 0) ...[
+            IconButton(
+              icon: Badge(
+                isLabelVisible: _hasActiveFilters,
+                backgroundColor: Colors.amber,
+                child: Icon(
+                  _filtersVisible ? Icons.filter_list_off : Icons.filter_list,
+                ),
               ),
+              tooltip: 'Toggle Filters',
+              onPressed: () =>
+                  setState(() => _filtersVisible = !_filtersVisible),
             ),
-            tooltip: 'Toggle Filters',
-            onPressed: () =>
-                setState(() => _filtersVisible = !_filtersVisible),
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Refresh',
+              onPressed: () {
+                _clearFilters();
+                _pagination.resetToBrowse();
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline),
+              tooltip: 'Add Student',
+              onPressed: _openAdd,
+            ),
+          ],
+        ],
+        bottom: TabBar(
+          controller: _tabs,
+          indicatorColor: Colors.amber,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white60,
+          tabs: const [
+            Tab(
+                icon: Icon(Icons.people_outlined, size: 18),
+                text: 'Students'),
+            Tab(
+                icon: Icon(Icons.history, size: 18),
+                text: 'Global Log'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabs,
+        children: [
+          _StudentsTab(
+            pagination: _pagination,
+            filtersVisible: _filtersVisible,
+            searchIdCtrl: _searchIdCtrl,
+            searchNameCtrl: _searchNameCtrl,
+            selectedCourse: _selectedCourse,
+            selectedYear: _selectedYear,
+            allYears: _allYears,
+            hasActiveFilters: _hasActiveFilters,
+            sortedStudents: _sorted,
+            sortColumnIndex: _sortColumnIndex,
+            sortAscending: _sortAscending,
+            onFilterChanged: _onFilterChanged,
+            onCourseChanged: _onCourseChanged,
+            onYearChanged: _onYearChanged,
+            onSort: _onSort,
+            onClearFilters: _clearFilters,
+            onRetry: _onRetry,
+            onView: _openDetail,
+            onEdit: _openEdit,
+            onDelete: _confirmDelete,
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
-            onPressed: () {
-              _clearFilters();
-              _pagination.resetToBrowse();
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline),
-            tooltip: 'Add Student',
-            onPressed: _openAdd,
-          ),
+          _StudentGlobalLogTab(service: _service),
         ],
       ),
-      drawer: getSideDrawer(context),
-      body: Column(
-        children: [
-          // ── Filter Panel ──────────────────────────────────────────
-          AnimatedSize(
-            duration: const Duration(milliseconds: 280),
-            curve: Curves.easeInOut,
-            child: _filtersVisible
-                ? _FilterPanel(
-                    idCtrl: _searchIdCtrl,
-                    nameCtrl: _searchNameCtrl,
-                    selectedCourse: _selectedCourse,
-                    courses: listOfCourses,
-                    selectedYear: _selectedYear,
-                    allYears: _pagination.students
-                        .map((s) => s.yearOfAdmission?.toString() ?? '')
-                        .where((y) => y.isNotEmpty)
-                        .toSet()
-                        .toList()
-                      ..sort((a, b) => b.compareTo(a)),
-                    hasActiveFilters: _hasActiveFilters,
-                    onChanged: _onFilterChanged,
-                    onCourseChanged: (v) {
-                      setState(() => _selectedCourse = v);
-                      _onFilterChanged();
-                    },
-                    onYearChanged: (v) {
-                      setState(() =>
-                      _selectedYear = v == 'All' ? null : v);
-                      _onFilterChanged();
-                    },
-                    onClear: _clearFilters,
-                  )
-                : const SizedBox.shrink(),
-          ),
+      floatingActionButton: _tabs.index == 0
+          ? FloatingActionButton.extended(
+              onPressed: _openAdd,
+              backgroundColor: const Color(0xFF1A3C6E),
+              icon: const Icon(Icons.person_add, color: Colors.white),
+              label: const Text('Add Student',
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w600)),
+            )
+          : null,
+    );
+  }
+}
 
-          // ── Stats Bar ─────────────────────────────────────────────
-          _StatsBar(
-            total: _pagination.totalCount,
-            showing: _pagination.students.length,
-            isSearchMode: _pagination.isSearchMode,
+// ── Students Tab ──────────────────────────────────────────────────────────────
+
+class _StudentsTab extends StatelessWidget {
+  final PaginationController pagination;
+  final bool filtersVisible;
+  final TextEditingController searchIdCtrl;
+  final TextEditingController searchNameCtrl;
+  final String? selectedCourse;
+  final String? selectedYear;
+  final List<String> allYears;
+  final bool hasActiveFilters;
+  final List<StudentModel> sortedStudents;
+  final int sortColumnIndex;
+  final bool sortAscending;
+  final VoidCallback onFilterChanged;
+  final void Function(String?) onCourseChanged;
+  final void Function(String?) onYearChanged;
+  final void Function(int, bool) onSort;
+  final VoidCallback onClearFilters;
+  final VoidCallback onRetry;
+  final void Function(StudentModel) onView;
+  final void Function(StudentModel) onEdit;
+  final void Function(StudentModel) onDelete;
+
+  const _StudentsTab({
+    required this.pagination,
+    required this.filtersVisible,
+    required this.searchIdCtrl,
+    required this.searchNameCtrl,
+    required this.selectedCourse,
+    required this.selectedYear,
+    required this.allYears,
+    required this.hasActiveFilters,
+    required this.sortedStudents,
+    required this.sortColumnIndex,
+    required this.sortAscending,
+    required this.onFilterChanged,
+    required this.onCourseChanged,
+    required this.onYearChanged,
+    required this.onSort,
+    required this.onClearFilters,
+    required this.onRetry,
+    required this.onView,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        AnimatedSize(
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeInOut,
+          child: filtersVisible
+              ? _FilterPanel(
+                  idCtrl: searchIdCtrl,
+                  nameCtrl: searchNameCtrl,
+                  selectedCourse: selectedCourse,
+                  courses: listOfCourses,
+                  selectedYear: selectedYear,
+                  allYears: allYears,
+                  hasActiveFilters: hasActiveFilters,
+                  onChanged: onFilterChanged,
+                  onCourseChanged: onCourseChanged,
+                  onYearChanged: onYearChanged,
+                  onClear: onClearFilters,
+                )
+              : const SizedBox.shrink(),
+        ),
+        _StatsBar(
+          total: pagination.totalCount,
+          showing: pagination.students.length,
+          isSearchMode: pagination.isSearchMode,
+        ),
+        if (pagination.error != null)
+          Container(
+            color: Colors.red.shade50,
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(children: [
+              const Icon(Icons.error_outline,
+                  color: Colors.red, size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                  child: Text(pagination.error!,
+                      style: const TextStyle(
+                          color: Colors.red, fontSize: 12))),
+              TextButton(
+                onPressed: onRetry,
+                child: const Text('Retry'),
+              ),
+            ]),
           ),
-          // Error banner
-          if (_pagination.error != null)
-            Container(
-              color: Colors.red.shade50,
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 8),
-              child: Row(children: [
-                const Icon(Icons.error_outline,
-                    color: Colors.red, size: 16),
-                const SizedBox(width: 8),
+        Expanded(
+          child: pagination.isLoading && pagination.students.isEmpty
+              ? const Center(
+                  child: CircularProgressIndicator(
+                    valueColor:
+                        AlwaysStoppedAnimation(Color(0xFF1A3C6E)),
+                  ),
+                )
+              : pagination.students.isEmpty
+                  ? _EmptyState(hasFilters: hasActiveFilters)
+                  : _StudentTable(
+                      students: sortedStudents,
+                      sortColumnIndex: sortColumnIndex,
+                      sortAscending: sortAscending,
+                      onSort: onSort,
+                      onView: onView,
+                      onEdit: onEdit,
+                      onDelete: onDelete,
+                    ),
+        ),
+        PaginationBar(controller: pagination),
+      ],
+    );
+  }
+}
+
+// ── Global Log Tab ──────────────────────────────────────────────────────────────
+
+class _StudentGlobalLogTab extends StatelessWidget {
+  final StudentRepository service;
+  const _StudentGlobalLogTab({required this.service});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<AuditLog>>(
+      stream: service.watchAllStudentLogs(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final logs = snap.data ?? [];
+        if (snap.hasError) {
+          return Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.error_outline,
+                  size: 48, color: Colors.red),
+              const SizedBox(height: 12),
+              Text('Unable to load logs.\n${snap.error}',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey.shade600)),
+            ]),
+          );
+        }
+        if (logs.isEmpty) {
+          return const _EmptyState(hasFilters: false);
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.all(12),
+          itemCount: logs.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 6),
+          itemBuilder: (_, i) => _AuditLogTile(log: logs[i]),
+        );
+      },
+    );
+  }
+}
+
+class _AuditLogTile extends StatelessWidget {
+  final AuditLog log;
+  const _AuditLogTile({required this.log});
+
+  IconData get _icon {
+    switch (log.action) {
+      case 'create':
+        return Icons.add_circle_outline;
+      case 'delete':
+        return Icons.remove_circle_outline;
+      default:
+        return Icons.edit_outlined;
+    }
+  }
+
+  Color get _color {
+    switch (log.action) {
+      case 'create':
+        return Colors.green.shade700;
+      case 'delete':
+        return Colors.red.shade600;
+      default:
+        return Colors.blue.shade700;
+    }
+  }
+
+  String get _actionLabel {
+    switch (log.action) {
+      case 'create':
+        return 'Created';
+      case 'delete':
+        return 'Deleted';
+      default:
+        return 'Updated';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: _color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(_icon, color: _color, size: 18),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
                 Expanded(
-                    child: Text(_pagination.error!,
-                        style: const TextStyle(
-                            color: Colors.red, fontSize: 12))),
-                TextButton(
-                  onPressed: () => _pagination.isSearchMode
-                      ? _onFilterChanged()
-                      : _pagination
-                      .loadBrowsePage(_pagination.currentPage),
-                  child: const Text('Retry'),
+                  child: Text(log.personName,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 13)),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: _color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(_actionLabel,
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: _color)),
                 ),
               ]),
-            ),
-
-          // ── Table ─────────────────────────────────────────────────
-          Expanded(
-            child: _pagination.isLoading &&
-                _pagination.students.isEmpty
-                ? const Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation(
-                    Color(0xFF1A3C6E)),
+              const SizedBox(height: 3),
+              if (log.changedBy.isNotEmpty)
+                Text(log.changedBy,
+                    style: TextStyle(
+                        fontSize: 11, color: Colors.grey.shade500)),
+              const SizedBox(height: 1),
+              Text(
+                _fmtDateTime(log.timestamp),
+                style: TextStyle(
+                    fontSize: 10, color: Colors.grey.shade400),
               ),
-            )
-                : _pagination.students.isEmpty
-                ? _EmptyState(
-                hasFilters: _hasActiveFilters)
-                : _StudentTable(
-              students: _sorted,
-              sortColumnIndex: _sortColumnIndex,
-              sortAscending: _sortAscending,
-              onSort: (col, asc) => setState(() {
-                _sortColumnIndex = col;
-                _sortAscending = asc;
-              }),
-              onView: _openDetail,
-              onEdit: _openEdit,
-              onDelete: _confirmDelete,
-            ),
+            ],
           ),
-
-          PaginationBar(controller: _pagination,)
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openAdd,
-        backgroundColor: const Color(0xFF1A3C6E),
-        icon: const Icon(Icons.person_add, color: Colors.white),
-        label: const Text('Add Student',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-      ),
+        ),
+      ]),
     );
+  }
+
+  String _fmtDateTime(DateTime d) {
+    final date = '${d.day}/${d.month}/${d.year}';
+    final time =
+        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    return '$date  $time';
   }
 }
 

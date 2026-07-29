@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:gd_college/constants.dart';
 import 'package:gd_college/widgets/drawer.dart';
 import '../models/staff_model.dart';
-import '../../repositories/staff_repository.dart';
+import '../../models/audit_log.dart';
 import '../../providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'staff_form_screen.dart';
@@ -14,8 +14,9 @@ class StaffListScreen extends ConsumerStatefulWidget {
   ConsumerState<StaffListScreen> createState() => _StaffListScreenState();
 }
 
-class _StaffListScreenState extends ConsumerState<StaffListScreen> {
-  
+class _StaffListScreenState extends ConsumerState<StaffListScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabs;
 
   // Filters
   final TextEditingController _searchIdCtrl = TextEditingController();
@@ -30,42 +31,18 @@ class _StaffListScreenState extends ConsumerState<StaffListScreen> {
   bool _sortAscending = true;
 
   @override
+  void initState() {
+    super.initState();
+    _tabs = TabController(length: 2, vsync: this);
+    _tabs.addListener(() => setState(() {}));
+  }
+
+  @override
   void dispose() {
     _searchIdCtrl.dispose();
     _searchNameCtrl.dispose();
+    _tabs.dispose();
     super.dispose();
-  }
-
-  List<StaffModel> _applyFilters(List<StaffModel> all) {
-    return all.where((s) {
-      final idMatch = _searchIdCtrl.text.isEmpty ||
-          s.staffId!
-              .toLowerCase()
-              .contains(_searchIdCtrl.text.toLowerCase());
-      final nameMatch = _searchNameCtrl.text.isEmpty ||
-          s.name
-              .toLowerCase()
-              .contains(_searchNameCtrl.text.toLowerCase());
-      return idMatch && nameMatch;
-    }).toList();
-  }
-
-  List<StaffModel> _applySort(List<StaffModel> list) {
-    list.sort((a, b) {
-      int cmp;
-      switch (_sortColumnIndex) {
-        case 0:
-          cmp = int.tryParse(a.staffId)!.compareTo(int.tryParse(b.staffId)!);
-          break;
-        case 1:
-          cmp = a.name.compareTo(b.name);
-          break;
-        default:
-          cmp = 0;
-      }
-      return _sortAscending ? cmp : -cmp;
-    });
-    return list;
   }
 
   void _clearFilters() {
@@ -199,99 +176,426 @@ class _StaffListScreenState extends ConsumerState<StaffListScreen> {
             onPressed: _openAdd,
           ),
         ],
+        bottom: TabBar(
+          controller: _tabs,
+          indicatorColor: Colors.amber,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white60,
+          tabs: const [
+            Tab(icon: Icon(Icons.people_outlined, size: 18), text: 'Staff'),
+            Tab(icon: Icon(Icons.history, size: 18), text: 'Global Log'),
+          ],
+        ),
       ),
       drawer: getSideDrawer(context),
-      body: StreamBuilder<List<StaffModel>>(
-        stream: ref.watch(staffRepositoryProvider).watchAll(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(
-                valueColor:
-                    AlwaysStoppedAnimation<Color>(Color(0xFF1A3C6E)),
-              ),
-            );
-          }
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.error_outline,
-                      size: 48, color: Colors.red),
-                  const SizedBox(height: 12),
-                  Text('Error: ${snapshot.error}',
-                      style: const TextStyle(color: Colors.red)),
-                ],
-              ),
-            );
-          }
-
-          final all = snapshot.data ?? [];
-          final filtered = _applySort(_applyFilters(all));
-
-          return Column(
-            children: [
-              // ── Filter Panel ──────────────────────────────────────────
-              AnimatedSize(
-                duration: const Duration(milliseconds: 280),
-                curve: Curves.easeInOut,
-                child: _filtersVisible
-                    ? _FilterPanel(
-                        idCtrl: _searchIdCtrl,
-                        nameCtrl: _searchNameCtrl,
-                        selectedCourse: _selectedCourse,
-                        courses: listOfCourses,
-                        selectedYear: _selectedYear,
-                        allYears: all
-                            .map((s) => s.salary?.toString() ?? '')
-                            .where((y) => y.isNotEmpty)
-                            .toSet()
-                            .toList()
-                          ..sort((a, b) => b.compareTo(a)),
-                        hasActiveFilters: _hasActiveFilters,
-                        onChanged: () => setState(() {}),
-                        onCourseChanged: (v) =>
-                            setState(() => _selectedCourse = v),
-                        onYearChanged: (v) =>
-                            setState(() => _selectedYear = v),
-                        onClear: _clearFilters,
-                      )
-                    : const SizedBox.shrink(),
-              ),
-
-              // ── Stats Bar ─────────────────────────────────────────────
-              _StatsBar(total: all.length, showing: filtered.length),
-
-              // ── Table ─────────────────────────────────────────────────
-              Expanded(
-                child: filtered.isEmpty
-                    ? _EmptyState(hasFilters: _hasActiveFilters)
-                    : _StaffTable(
-                        staffs: filtered,
-                        sortColumnIndex: _sortColumnIndex,
-                        sortAscending: _sortAscending,
-                        onSort: (col, asc) => setState(() {
-                          _sortColumnIndex = col;
-                          _sortAscending = asc;
-                        }),
-                        onView: _openDetail,
-                        onEdit: _openEdit,
-                        onDelete: _confirmDelete,
-                      ),
-              ),
-            ],
-          );
-        },
+      body: TabBarView(
+        controller: _tabs,
+        children: [
+          // Tab 0 – Staff list
+          _StaffTab(
+            searchIdCtrl: _searchIdCtrl,
+            searchNameCtrl: _searchNameCtrl,
+            selectedCourse: _selectedCourse,
+            selectedYear: _selectedYear,
+            filtersVisible: _filtersVisible,
+            sortColumnIndex: _sortColumnIndex,
+            sortAscending: _sortAscending,
+            hasActiveFilters: _hasActiveFilters,
+            onChanged: () => setState(() {}),
+            onCourseChanged: (v) => setState(() => _selectedCourse = v),
+            onYearChanged: (v) => setState(() => _selectedYear = v),
+            onClear: _clearFilters,
+            onSort: (col, asc) => setState(() {
+              _sortColumnIndex = col;
+              _sortAscending = asc;
+            }),
+            onView: _openDetail,
+            onEdit: _openEdit,
+            onDelete: _confirmDelete,
+          ),
+          // Tab 1 – Global audit log
+          const _StaffGlobalLogTab(),
+        ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openAdd,
-        backgroundColor: const Color(0xFF1A3C6E),
-        icon: const Icon(Icons.person_add, color: Colors.white),
-        label: const Text('Add Staff',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-      ),
+      floatingActionButton: _tabs.index == 0
+          ? FloatingActionButton.extended(
+              onPressed: _openAdd,
+              backgroundColor: const Color(0xFF1A3C6E),
+              icon: const Icon(Icons.person_add, color: Colors.white),
+              label: const Text('Add Staff',
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w600)),
+            )
+          : null,
     );
+  }
+}
+
+// ── Staff Tab ─────────────────────────────────────────────────────────────────
+
+class _StaffTab extends ConsumerWidget {
+  final TextEditingController searchIdCtrl;
+  final TextEditingController searchNameCtrl;
+  final String? selectedCourse;
+  final String? selectedYear;
+  final bool filtersVisible;
+  final int sortColumnIndex;
+  final bool sortAscending;
+  final bool hasActiveFilters;
+  final VoidCallback onChanged;
+  final void Function(String?) onCourseChanged;
+  final void Function(String?) onYearChanged;
+  final VoidCallback onClear;
+  final void Function(int, bool) onSort;
+  final void Function(StaffModel) onView;
+  final void Function(StaffModel) onEdit;
+  final void Function(StaffModel) onDelete;
+
+  const _StaffTab({
+    required this.searchIdCtrl,
+    required this.searchNameCtrl,
+    required this.selectedCourse,
+    required this.selectedYear,
+    required this.filtersVisible,
+    required this.sortColumnIndex,
+    required this.sortAscending,
+    required this.hasActiveFilters,
+    required this.onChanged,
+    required this.onCourseChanged,
+    required this.onYearChanged,
+    required this.onClear,
+    required this.onSort,
+    required this.onView,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  List<StaffModel> _applyFilters(List<StaffModel> all) {
+    return all.where((s) {
+      final idMatch = searchIdCtrl.text.isEmpty ||
+          s.staffId
+              .toLowerCase()
+              .contains(searchIdCtrl.text.toLowerCase());
+      final nameMatch = searchNameCtrl.text.isEmpty ||
+          s.name
+              .toLowerCase()
+              .contains(searchNameCtrl.text.toLowerCase());
+      return idMatch && nameMatch;
+    }).toList();
+  }
+
+  List<StaffModel> _applySort(List<StaffModel> list) {
+    list.sort((a, b) {
+      int cmp;
+      switch (sortColumnIndex) {
+        case 0:
+          cmp = int.tryParse(a.staffId)!.compareTo(int.tryParse(b.staffId)!);
+          break;
+        case 1:
+          cmp = a.name.compareTo(b.name);
+          break;
+        default:
+          cmp = 0;
+      }
+      return sortAscending ? cmp : -cmp;
+    });
+    return list;
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return StreamBuilder<List<StaffModel>>(
+      stream: ref.watch(staffRepositoryProvider).watchAll(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1A3C6E)),
+            ),
+          );
+        }
+        if (snapshot.hasError) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                const SizedBox(height: 12),
+                Text('Error: ${snapshot.error}',
+                    style: const TextStyle(color: Colors.red)),
+              ],
+            ),
+          );
+        }
+
+        final all = snapshot.data ?? [];
+        final filtered = _applySort(_applyFilters(all));
+
+        return Column(
+          children: [
+            AnimatedSize(
+              duration: const Duration(milliseconds: 280),
+              curve: Curves.easeInOut,
+              child: filtersVisible
+                  ? _FilterPanel(
+                      idCtrl: searchIdCtrl,
+                      nameCtrl: searchNameCtrl,
+                      selectedCourse: selectedCourse,
+                      courses: listOfCourses,
+                      selectedYear: selectedYear,
+                      allYears: all
+                          .map((s) => s.salary?.toString() ?? '')
+                          .where((y) => y.isNotEmpty)
+                          .toSet()
+                          .toList()
+                        ..sort((a, b) => b.compareTo(a)),
+                      hasActiveFilters: hasActiveFilters,
+                      onChanged: onChanged,
+                      onCourseChanged: onCourseChanged,
+                      onYearChanged: onYearChanged,
+                      onClear: onClear,
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            _StatsBar(total: all.length, showing: filtered.length),
+            Expanded(
+              child: filtered.isEmpty
+                  ? _EmptyState(hasFilters: hasActiveFilters)
+                  : _StaffTable(
+                      staffs: filtered,
+                      sortColumnIndex: sortColumnIndex,
+                      sortAscending: sortAscending,
+                      onSort: onSort,
+                      onView: onView,
+                      onEdit: onEdit,
+                      onDelete: onDelete,
+                    ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ── Global Audit Log Tab ──────────────────────────────────────────────────────
+
+class _StaffGlobalLogTab extends ConsumerWidget {
+  const _StaffGlobalLogTab();
+
+  IconData _actionIcon(String action) {
+    switch (action) {
+      case 'create':
+        return Icons.check_circle;
+      case 'update':
+        return Icons.sync;
+      case 'delete':
+        return Icons.cancel;
+      default:
+        return Icons.info_outline;
+    }
+  }
+
+  Color _actionColor(String action) {
+    switch (action) {
+      case 'create':
+        return Colors.green;
+      case 'update':
+        return Colors.blue;
+      case 'delete':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _actionLabel(String action) {
+    switch (action) {
+      case 'create':
+        return 'Created';
+      case 'update':
+        return 'Updated';
+      case 'delete':
+        return 'Deleted';
+      default:
+        return action;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return StreamBuilder<List<AuditLog>>(
+      stream: ref.watch(staffRepositoryProvider).watchAllStaffLogs(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1A3C6E)),
+            ),
+          );
+        }
+        if (snapshot.hasError) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                const SizedBox(height: 12),
+                Text('Error: ${snapshot.error}',
+                    style: const TextStyle(color: Colors.red)),
+              ],
+            ),
+          );
+        }
+
+        final logs = snapshot.data ?? [];
+        if (logs.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.history, size: 64, color: Colors.grey.shade300),
+                const SizedBox(height: 16),
+                Text(
+                  'No audit logs yet',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade500,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Activity will appear here',
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade400),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          itemCount: logs.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, i) {
+            final log = logs[i];
+            final color = _actionColor(log.action);
+            return Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: BorderSide(color: Colors.grey.shade200),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: color.withOpacity(0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(_actionIcon(log.action),
+                          size: 20, color: color),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  log.personName.isEmpty
+                                      ? 'Unknown'
+                                      : log.personName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                    color: Colors.black87,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: color.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  _actionLabel(log.action),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: color,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (log.detail.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              log.detail,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Icon(Icons.person_outline,
+                                  size: 13, color: Colors.grey.shade500),
+                              const SizedBox(width: 4),
+                              Text(
+                                log.changedBy.isEmpty ? '—' : log.changedBy,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey.shade500,
+                                ),
+                              ),
+                              const Spacer(),
+                              Icon(Icons.access_time,
+                                  size: 13, color: Colors.grey.shade400),
+                              const SizedBox(width: 4),
+                              Text(
+                                _formatTimestamp(log.timestamp),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey.shade400,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _formatTimestamp(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${dt.day}/${dt.month}/${dt.year}';
   }
 }
 

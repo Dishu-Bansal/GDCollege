@@ -2362,11 +2362,22 @@ class _LogTile extends StatelessWidget {
                     ),
                 ]),
                 const SizedBox(height: 2),
-                Text(
-                  _fmtDateTime(log.timestamp),
-                  style: TextStyle(
-                      fontSize: 10, color: Colors.grey.shade400),
-                ),
+                Row(children: [
+                  Text(
+                    _fmtDateTime(log.timestamp),
+                    style: TextStyle(
+                        fontSize: 10, color: Colors.grey.shade400),
+                  ),
+                  if (log.changedBy.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      'by ${log.changedBy}',
+                      style: TextStyle(
+                          fontSize: 10, color: Colors.grey.shade400),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ]),
               ]),
         ),
         const SizedBox(width: 10),

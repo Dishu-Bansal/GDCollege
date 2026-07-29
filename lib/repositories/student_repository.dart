@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../student_management/models/student_model.dart';
+import '../models/audit_log.dart';
 
 abstract class StudentRepository {
   static const int pageSize = 20;
@@ -32,4 +33,8 @@ abstract class StudentRepository {
     required String storagePath,
     void Function(double progress)? onProgress,
   });
+
+  // ── Logs ──
+  Stream<List<AuditLog>> watchStudentLogs(String studentId);
+  Stream<List<AuditLog>> watchAllStudentLogs();
 }

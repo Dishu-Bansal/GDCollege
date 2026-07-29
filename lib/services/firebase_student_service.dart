@@ -4,12 +4,29 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../student_management/models/student_model.dart';
 import '../repositories/student_repository.dart';
+import '../models/audit_log.dart';
+import '../models/user_session.dart';
 
 class FirebaseStudentRepository implements StudentRepository {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
   static const String _collection = 'students';
+
+  // ── Audit log helpers ──────────────────────────────────────────────────────
+
+  CollectionReference _studentLogs(String studentId) =>
+      _firestore.collection('students').doc(studentId).collection('studentLogs');
+
+  Future<void> _writeLog(String studentId, String studentName, String action, String detail) async {
+    await _studentLogs(studentId).add(AuditLog(
+      personId: studentId,
+      personName: studentName,
+      action: action,
+      changedBy: UserSession().currentUser?.email ?? '',
+      detail: detail,
+    ).toFirestore());
+  }
 
   // ── N-gram index builder ──────────────────────────────────────────────────
 
@@ -66,6 +83,8 @@ class FirebaseStudentRepository implements StudentRepository {
     data['_searchIndex'] = _buildSearchIndex(student);
     final docRef = await _firestore.collection(_collection).add(data);
     await _incrementCount();
+    final createDetail = 'Created: ${student.name}, ${student.nameOfCourse}, ${student.yearOfAdmission ?? '—'}';
+    await _writeLog(docRef.id, student.name, 'create', createDetail);
     return docRef.id;
   }
 
@@ -73,20 +92,88 @@ class FirebaseStudentRepository implements StudentRepository {
 
   @override
   Future<void> update(String docId, StudentModel student) async {
+    // Fetch old data before writing, for audit comparison
+    final oldSnap = await _firestore.collection(_collection).doc(docId).get();
+    final oldData = (oldSnap.data() as Map<String, dynamic>?) ?? {};
+
     student.updatedAt = DateTime.now();
     student.documentVersion += 1;
     final data = student.toFirestore();
     data['_searchIndex'] = _buildSearchIndex(student);
     await _firestore.collection(_collection).doc(docId).update(data);
+
+    final detail = _buildUpdateDetail(oldData, data);
+    await _writeLog(docId, student.name, 'update', detail);
+  }
+
+  static const _fieldLabels = {
+    'name': 'Name', 'fatherName': 'Father', 'motherName': 'Mother',
+    'dob': 'DOB', 'gender': 'Gender', 'caste': 'Caste',
+    'address': 'Address', 'village': 'Village', 'district': 'District',
+    'state': 'State', 'pin': 'PIN', 'mobileNo1': 'Mobile 1', 'mobileNo2': 'Mobile 2',
+    'aadharNumber': 'Aadhar', 'panCard': 'PAN', 'familyId': 'Family ID',
+    'nameOfCourse': 'Course', 'yearOfAdmission': 'Year',
+    'feeDetails1stYear': '1st Year Fee', 'feeDetails2ndYear': '2nd Year Fee',
+    'fineIfAny': 'Fine', 'examFee': 'Exam Fee', 'placementDetails': 'Placement',
+    'tenthUrl': '10th Cert', 'twelfthUrl': '12th Cert',
+    'graduationUrl': 'Graduation', 'postGraduationUrl': 'Post Grad', 'diplomaUrl': 'Diploma',
+    'photoUrl': 'Photo', 'aadharUrl': 'Aadhar File', 'panUrl': 'PAN File',
+    'scCertificateUrl': 'SC Cert', 'bcCertificateUrl': 'BC Cert', 'sportsCertificateUrl': 'Sports Cert',
+  };
+
+  String _buildUpdateDetail(Map<String, dynamic> oldData, Map<String, dynamic> newData) {
+    final changes = <String>[];
+    for (final entry in _fieldLabels.entries) {
+      final key = entry.key;
+      // Normalize: treat null, '', 0 as equivalent empty values
+      final oldVal = oldData[key];
+      final newVal = newData[key];
+      final oldNorm = (oldVal == null || oldVal == '' || oldVal == 0) ? null : oldVal.toString();
+      final newNorm = (newVal == null || newVal == '' || newVal == 0) ? null : newVal.toString();
+      if (oldNorm != newNorm) changes.add(entry.value);
+    }
+    return changes.isEmpty ? 'No changes detected' : 'Updated: ${changes.join(', ')}';
   }
 
   // ── DELETE ────────────────────────────────────────────────────────────────
 
   @override
   Future<void> delete(String docId) async {
+    // Write log before deleting
+    final doc = await _firestore.collection(_collection).doc(docId).get();
+    final data = (doc.data() as Map<String, dynamic>?) ?? {};
+    final name = data['name'] ?? '';
+    final course = data['nameOfCourse'] ?? '';
+    final year = data['yearOfAdmission'];
+    final deleteDetail = 'Deleted: $name, $course, ${year ?? '—'}';
+    await _writeLog(docId, name, 'delete', deleteDetail);
     await _firestore.collection(_collection).doc(docId).delete();
     await _decrementCount();
   }
+
+  // ── Audit log readers ─────────────────────────────────────────────────────
+
+  @override
+  Stream<List<AuditLog>> watchStudentLogs(String studentId) =>
+      _studentLogs(studentId)
+          .orderBy('timestamp', descending: true)
+          .limit(100)
+          .snapshots()
+          .map((s) => s.docs
+              .map((d) => AuditLog.fromFirestore(d.id, d.data() as Map<String, dynamic>))
+              .toList())
+          .handleError((_) => <AuditLog>[]);
+
+  @override
+  Stream<List<AuditLog>> watchAllStudentLogs() =>
+      _firestore.collectionGroup('studentLogs')
+          .orderBy('timestamp', descending: true)
+          .limit(300)
+          .snapshots()
+          .map((s) => s.docs
+              .map((d) => AuditLog.fromFirestore(d.id, d.data() as Map<String, dynamic>))
+              .toList())
+          .handleError((_) => <AuditLog>[]);
 
   Future<void> migrateExistingStudents() async {
     print('Starting migration...');

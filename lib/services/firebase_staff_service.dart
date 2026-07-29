@@ -4,12 +4,29 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../staff_management/models/staff_model.dart';
 import '../repositories/staff_repository.dart';
+import '../models/audit_log.dart';
+import '../models/user_session.dart';
 
 class FirebaseStaffRepository implements StaffRepository {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
   static const String _collection = 'staff';
+
+  // ── Audit log helpers ──────────────────────────────────────────────────────
+
+  CollectionReference _staffLogs(String staffId) =>
+      _firestore.collection('staff').doc(staffId).collection('staffLogs');
+
+  Future<void> _writeLog(String staffId, String staffName, String action, String detail) async {
+    await _staffLogs(staffId).add(AuditLog(
+      personId: staffId,
+      personName: staffName,
+      action: action,
+      changedBy: UserSession().currentUser?.email ?? '',
+      detail: detail,
+    ).toFirestore());
+  }
 
   // ─── CREATE ──────────────────────────────────────────────────────────────
 
@@ -20,6 +37,8 @@ class FirebaseStaffRepository implements StaffRepository {
     staff.updatedAt = now;
     final docRef =
     await _firestore.collection(_collection).add(staff.toFirestore());
+    final createDetail = 'Created: ${staff.name}, ${staff.designation ?? '—'}';
+    await _writeLog(docRef.id, staff.name, 'create', createDetail);
     return docRef.id;
   }
 
@@ -27,20 +46,86 @@ class FirebaseStaffRepository implements StaffRepository {
 
   @override
   Future<void> update(String docId, StaffModel staff) async {
+    // Fetch old data before writing, for audit comparison
+    final oldSnap = await _firestore.collection(_collection).doc(docId).get();
+    final oldData = (oldSnap.data() as Map<String, dynamic>?) ?? {};
+
     staff.updatedAt = DateTime.now();
     staff.documentVersion += 1;
-    await _firestore
-        .collection(_collection)
-        .doc(docId)
-        .update(staff.toFirestore());
+    final data = staff.toFirestore();
+    await _firestore.collection(_collection).doc(docId).update(data);
+
+    final detail = _buildUpdateDetail(oldData, data);
+    await _writeLog(docId, staff.name, 'update', detail);
+  }
+
+  static const _fieldLabels = {
+    'name': 'Name', 'fatherName': 'Father', 'motherName': 'Mother',
+    'dob': 'DOB', 'gender': 'Gender', 'caste': 'Caste',
+    'address': 'Address', 'village': 'Village', 'district': 'District',
+    'state': 'State', 'pin': 'PIN', 'mobileNo1': 'Mobile 1', 'mobileNo2': 'Mobile 2',
+    'aadharNumber': 'Aadhar', 'panCard': 'PAN', 'familyId': 'Family ID',
+    'designation': 'Designation', 'course': 'Course', 'salary': 'Salary',
+    'dateOfJoining': 'Joining Date', 'dateOfRelieving': 'Relieving Date',
+    'tenthUrl': '10th Cert', 'twelfthUrl': '12th Cert',
+    'graduationUrl': 'Graduation', 'postGraduationUrl': 'Post Grad', 'diplomaUrl': 'Diploma',
+    'netUrl': 'NET', 'phdUrl': 'PhD',
+    'photoUrl': 'Photo', 'aadharUrl': 'Aadhar File', 'panUrl': 'PAN File',
+    'scCertificateUrl': 'SC Cert', 'bcCertificateUrl': 'BC Cert', 'sportsCertificateUrl': 'Sports Cert',
+    'appointmentLetterUrl': 'Appt Letter', 'joiningLetterUrl': 'Joining Letter',
+    'universityApprovalUrl': 'Univ Approval', 'resignationLetterUrl': 'Resignation Letter',
+  };
+
+  String _buildUpdateDetail(Map<String, dynamic> oldData, Map<String, dynamic> newData) {
+    final changes = <String>[];
+    for (final entry in _fieldLabels.entries) {
+      final key = entry.key;
+      final oldVal = oldData[key];
+      final newVal = newData[key];
+      final oldNorm = (oldVal == null || oldVal == '' || oldVal == 0) ? null : oldVal.toString();
+      final newNorm = (newVal == null || newVal == '' || newVal == 0) ? null : newVal.toString();
+      if (oldNorm != newNorm) changes.add(entry.value);
+    }
+    return changes.isEmpty ? 'No changes detected' : 'Updated: ${changes.join(', ')}';
   }
 
   // ─── DELETE ──────────────────────────────────────────────────────────────
 
   @override
   Future<void> delete(String docId) async {
+    // Write log before deleting
+    final doc = await _firestore.collection(_collection).doc(docId).get();
+    final data = (doc.data() as Map<String, dynamic>?) ?? {};
+    final name = data['name'] ?? '';
+    final designation = data['designation'] ?? '';
+    final deleteDetail = 'Deleted: $name, ${designation.isNotEmpty ? designation : '—'}';
+    await _writeLog(docId, name, 'delete', deleteDetail);
     await _firestore.collection(_collection).doc(docId).delete();
   }
+
+  // ── Audit log readers ─────────────────────────────────────────────────────
+
+  @override
+  Stream<List<AuditLog>> watchStaffLogs(String staffId) =>
+      _staffLogs(staffId)
+          .orderBy('timestamp', descending: true)
+          .limit(100)
+          .snapshots()
+          .map((s) => s.docs
+              .map((d) => AuditLog.fromFirestore(d.id, d.data() as Map<String, dynamic>))
+              .toList())
+          .handleError((_) => <AuditLog>[]);
+
+  @override
+  Stream<List<AuditLog>> watchAllStaffLogs() =>
+      _firestore.collectionGroup('staffLogs')
+          .orderBy('timestamp', descending: true)
+          .limit(300)
+          .snapshots()
+          .map((s) => s.docs
+              .map((d) => AuditLog.fromFirestore(d.id, d.data() as Map<String, dynamic>))
+              .toList())
+          .handleError((_) => <AuditLog>[]);
 
   // ─── READ (stream) ───────────────────────────────────────────────────────
 
