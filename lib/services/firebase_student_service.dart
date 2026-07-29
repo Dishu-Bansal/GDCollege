@@ -175,6 +175,42 @@ class FirebaseStudentRepository implements StudentRepository {
               .toList())
           .handleError((_) => <AuditLog>[]);
 
+  @override
+  Future<int> migrateStudentAuditLogs() async {
+    int migrated = 0;
+    final snapshot = await _firestore.collection(_collection).get();
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      final name = data['name'] ?? '';
+      final course = data['nameOfCourse'] ?? '';
+      final year = data['yearOfAdmission'];
+      final createdAtStr = data['createdAt'] as String?;
+      final createdBy = data['createdBy'] as String? ?? 'Unknown';
+
+      final existing = await _studentLogs(doc.id)
+          .where('action', isEqualTo: 'create')
+          .limit(1)
+          .get();
+      if (existing.docs.isNotEmpty) continue;
+
+      final ts = createdAtStr != null
+          ? DateTime.tryParse(createdAtStr) ?? DateTime.now()
+          : DateTime.now();
+
+      final detail = 'Created: $name, $course, ${year ?? '—'}';
+      await _studentLogs(doc.id).add(AuditLog(
+        personId: doc.id,
+        personName: name,
+        action: 'create',
+        changedBy: createdBy,
+        detail: detail,
+        timestamp: ts,
+      ).toFirestore());
+      migrated++;
+    }
+    return migrated;
+  }
+
   Future<void> migrateExistingStudents() async {
     print('Starting migration...');
 
