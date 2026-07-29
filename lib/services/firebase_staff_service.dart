@@ -37,7 +37,8 @@ class FirebaseStaffRepository implements StaffRepository {
     staff.updatedAt = now;
     final docRef =
     await _firestore.collection(_collection).add(staff.toFirestore());
-    await _writeLog(docRef.id, staff.name, 'create', 'Staff created');
+    final createDetail = 'Created: ${staff.name}, ${staff.designation ?? '—'}';
+    await _writeLog(docRef.id, staff.name, 'create', createDetail);
     return docRef.id;
   }
 
@@ -94,8 +95,11 @@ class FirebaseStaffRepository implements StaffRepository {
   Future<void> delete(String docId) async {
     // Write log before deleting
     final doc = await _firestore.collection(_collection).doc(docId).get();
-    final name = (doc.data() as Map<String, dynamic>)?['name'] ?? '';
-    await _writeLog(docId, name, 'delete', 'Staff deleted');
+    final data = (doc.data() as Map<String, dynamic>?) ?? {};
+    final name = data['name'] ?? '';
+    final designation = data['designation'] ?? '';
+    final deleteDetail = 'Deleted: $name, ${designation.isNotEmpty ? designation : '—'}';
+    await _writeLog(docId, name, 'delete', deleteDetail);
     await _firestore.collection(_collection).doc(docId).delete();
   }
 

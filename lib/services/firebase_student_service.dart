@@ -83,7 +83,8 @@ class FirebaseStudentRepository implements StudentRepository {
     data['_searchIndex'] = _buildSearchIndex(student);
     final docRef = await _firestore.collection(_collection).add(data);
     await _incrementCount();
-    await _writeLog(docRef.id, student.name, 'create', 'Student created');
+    final createDetail = 'Created: ${student.name}, ${student.nameOfCourse}, ${student.yearOfAdmission ?? '—'}';
+    await _writeLog(docRef.id, student.name, 'create', createDetail);
     return docRef.id;
   }
 
@@ -140,8 +141,12 @@ class FirebaseStudentRepository implements StudentRepository {
   Future<void> delete(String docId) async {
     // Write log before deleting
     final doc = await _firestore.collection(_collection).doc(docId).get();
-    final name = (doc.data() as Map<String, dynamic>)?['name'] ?? '';
-    await _writeLog(docId, name, 'delete', 'Student deleted');
+    final data = (doc.data() as Map<String, dynamic>?) ?? {};
+    final name = data['name'] ?? '';
+    final course = data['nameOfCourse'] ?? '';
+    final year = data['yearOfAdmission'];
+    final deleteDetail = 'Deleted: $name, $course, ${year ?? '—'}';
+    await _writeLog(docId, name, 'delete', deleteDetail);
     await _firestore.collection(_collection).doc(docId).delete();
     await _decrementCount();
   }
