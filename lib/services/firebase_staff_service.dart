@@ -127,6 +127,44 @@ class FirebaseStaffRepository implements StaffRepository {
               .toList())
           .handleError((_) => <AuditLog>[]);
 
+  @override
+  Future<int> migrateStaffAuditLogs() async {
+    int migrated = 0;
+    final snapshot = await _firestore.collection(_collection).get();
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      final name = data['name'] ?? '';
+      final designation = data['designation'] ?? '';
+      final createdAtRaw = data['createdAt'];
+      final createdBy = data['createdBy'] as String? ?? 'Unknown';
+
+      final existing = await _staffLogs(doc.id)
+          .where('action', isEqualTo: 'create')
+          .limit(1)
+          .get();
+      if (existing.docs.isNotEmpty) continue;
+
+      DateTime ts = DateTime.now();
+      if (createdAtRaw is String) {
+        ts = DateTime.tryParse(createdAtRaw) ?? DateTime.now();
+      } else if (createdAtRaw is Timestamp) {
+        ts = createdAtRaw.toDate();
+      }
+
+      final detail = 'Created: $name, ${designation.isNotEmpty ? designation : '—'}';
+      await _staffLogs(doc.id).add(AuditLog(
+        personId: doc.id,
+        personName: name,
+        action: 'create',
+        changedBy: createdBy,
+        detail: detail,
+        timestamp: ts,
+      ).toFirestore());
+      migrated++;
+    }
+    return migrated;
+  }
+
   // ─── READ (stream) ───────────────────────────────────────────────────────
 
   @override

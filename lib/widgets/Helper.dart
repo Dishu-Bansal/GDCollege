@@ -11,8 +11,10 @@ class Helper extends ConsumerStatefulWidget {
 }
 
 class _HelperState extends ConsumerState<Helper> {
-  String _migrationMsg = 'Migrate Stock Logs (add location fields)';
-  bool _migrating = false;
+  String _stockMsg = 'Migrate Stock Logs (add location fields)';
+  String _studentMsg = 'Migrate Student Audit Logs';
+  String _staffMsg = 'Migrate Staff Audit Logs';
+  bool _running = false;
 
   @override
   Widget build(BuildContext context) {
@@ -22,27 +24,27 @@ class _HelperState extends ConsumerState<Helper> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            ElevatedButton(
-              onPressed: _migrating ? null : _runMigration,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-              ),
-              child: _migrating
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : Text(_migrationMsg,
-                      style: const TextStyle(fontSize: 14)),
-            ),
+            _buildButton(_stockMsg, () => _runMigration(
+              ref.read(stockRepositoryProvider).migrateStockLogsLocation(),
+              'Stock',
+              (s) => _stockMsg = s,
+            )),
+            const SizedBox(height: 16),
+            _buildButton(_studentMsg, () => _runMigration(
+              ref.read(studentRepositoryProvider).migrateStudentAuditLogs(),
+              'Student',
+              (s) => _studentMsg = s,
+            )),
+            const SizedBox(height: 16),
+            _buildButton(_staffMsg, () => _runMigration(
+              ref.read(staffRepositoryProvider).migrateStaffAuditLogs(),
+              'Staff',
+              (s) => _staffMsg = s,
+            )),
             const SizedBox(height: 12),
             Text(
-              'This is a one-time migration to add building/floor/room\n'
-              'names to existing stock logs for the Global Log tab.',
+              'One-time migrations. Each can be run safely multiple times —\n'
+              'existing logs are skipped.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
@@ -52,22 +54,28 @@ class _HelperState extends ConsumerState<Helper> {
     );
   }
 
-  Future<void> _runMigration() async {
-    setState(() {
-      _migrating = true;
-      _migrationMsg = 'Migrating...';
-    });
+  Widget _buildButton(String label, VoidCallback onTap) {
+    return ElevatedButton(
+      onPressed: _running ? null : onTap,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+      ),
+      child: Text(label, style: const TextStyle(fontSize: 14)),
+    );
+  }
+
+  Future<void> _runMigration(
+    Future<int> future, String kind, void Function(String) setMsg) async {
+    setState(() => _running = true);
+    setMsg('Migrating $kind...');
     try {
-      final service = ref.read(stockRepositoryProvider);
-      final count = await service.migrateStockLogsLocation();
-      setState(() {
-        _migrationMsg = 'Done! Migrated $count log(s).';
-      });
+      final count = await future;
+      setMsg('$kind: Done! Migrated $count log(s).');
     } catch (e) {
-      setState(() {
-        _migrationMsg = 'Error: $e';
-      });
+      setMsg('$kind: Error — $e');
     }
-    setState(() => _migrating = false);
+    setState(() => _running = false);
   }
 }

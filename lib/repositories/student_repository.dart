@@ -37,4 +37,7 @@ abstract class StudentRepository {
   // ── Logs ──
   Stream<List<AuditLog>> watchStudentLogs(String studentId);
   Stream<List<AuditLog>> watchAllStudentLogs();
+
+  // ── Migration ──
+  Future<int> migrateStudentAuditLogs();
 }

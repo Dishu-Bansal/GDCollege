@@ -25,4 +25,7 @@ abstract class StaffRepository {
   // ── Logs ──
   Stream<List<AuditLog>> watchStaffLogs(String staffId);
   Stream<List<AuditLog>> watchAllStaffLogs();
+
+  // ── Migration ──
+  Future<int> migrateStaffAuditLogs();
 }
