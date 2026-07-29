@@ -135,7 +135,10 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen>
       builder: (_) => _ItemFormDialog(
         onSave: (item) async {
           await _service.addItem(widget.building.id!,
-              widget.floor.id!, widget.room.id!, item);
+              widget.floor.id!, widget.room.id!, item,
+              buildingName: widget.building.name,
+              floorName: widget.floor.name,
+              roomName: widget.room.name);
         },
       ),
     );
@@ -532,6 +535,9 @@ class _ItemCard extends StatelessWidget {
             item: item,
             delta: sign * qty,
             note: note,
+            buildingName: building.name,
+            floorName: floor.name,
+            roomName: room.name,
           );
         },
       ),
