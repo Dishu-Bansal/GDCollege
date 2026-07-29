@@ -184,7 +184,7 @@ class FirebaseStudentRepository implements StudentRepository {
       final name = data['name'] ?? '';
       final course = data['nameOfCourse'] ?? '';
       final year = data['yearOfAdmission'];
-      final createdAtStr = data['createdAt'] as String?;
+      final createdAtRaw = data['createdAt'];
       final createdBy = data['createdBy'] as String? ?? 'Unknown';
 
       final existing = await _studentLogs(doc.id)
@@ -193,9 +193,12 @@ class FirebaseStudentRepository implements StudentRepository {
           .get();
       if (existing.docs.isNotEmpty) continue;
 
-      final ts = createdAtStr != null
-          ? DateTime.tryParse(createdAtStr) ?? DateTime.now()
-          : DateTime.now();
+      DateTime ts = DateTime.now();
+      if (createdAtRaw is String) {
+        ts = DateTime.tryParse(createdAtRaw) ?? DateTime.now();
+      } else if (createdAtRaw is Timestamp) {
+        ts = createdAtRaw.toDate();
+      }
 
       final detail = 'Created: $name, $course, ${year ?? '—'}';
       await _studentLogs(doc.id).add(AuditLog(
