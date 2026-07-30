@@ -552,7 +552,8 @@ class FirebaseStockRepository implements StockRepository {
     final items = await _items(buildingId, floorId, roomId).get();
     final stockById = <String, int>{};
     for (final d in items.docs) {
-      stockById[d.id] = (d.data()['currentQuantity'] as num?)?.toInt() ?? 0;
+      final data = d.data() as Map<String, dynamic>;
+      stockById[d.id] = (data['currentQuantity'] as num?)?.toInt() ?? 0;
     }
 
     var changed = false;
