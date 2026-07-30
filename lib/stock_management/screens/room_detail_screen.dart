@@ -1754,7 +1754,8 @@ class _ItemFormDialogState extends ConsumerState<_ItemFormDialog> {
 
   @override
   void dispose() {
-    _nameCtrl?.dispose();
+    // _nameCtrl is reassigned to Autocomplete's controller in fieldViewBuilder;
+    // Autocomplete owns its lifecycle, so we must not dispose it.
     _priceCtrl.dispose();
     _qtyCtrl.dispose();
     _storeNameCtrl.dispose();
