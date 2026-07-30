@@ -834,36 +834,33 @@ class _AdjustSheetState extends State<_AdjustSheet> {
           ),
         ),
 
-        const SizedBox(height: 12),
-
-        TextField(
-          controller: _priceCtrl,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
-            labelText: 'Unit Price (₹) (optional)',
-            prefixText: '₹ ',
+        if (isIncrease) ...[
+          const SizedBox(height: 12),
+          TextField(
+            controller: _priceCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Unit Price (₹) (optional)',
+              prefixText: '₹ ',
+            ),
           ),
-        ),
-
-        const SizedBox(height: 12),
-
-        TextField(
-          controller: _storeCtrl,
-          decoration: const InputDecoration(
-            labelText: 'Store Name (optional)',
+          const SizedBox(height: 12),
+          TextField(
+            controller: _storeCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Store Name (optional)',
+            ),
           ),
-        ),
-
-        const SizedBox(height: 12),
-
-        TextField(
-          controller: _billCtrl,
-          keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          decoration: const InputDecoration(
-            labelText: 'Bill Number (optional)',
+          const SizedBox(height: 12),
+          TextField(
+            controller: _billCtrl,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: const InputDecoration(
+              labelText: 'Bill Number (optional)',
+            ),
           ),
-        ),
+        ],
 
         const SizedBox(height: 20),
 
