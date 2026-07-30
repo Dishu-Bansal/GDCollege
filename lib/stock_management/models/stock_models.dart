@@ -57,6 +57,8 @@ class RoomModel {
   DateTime? createdAt;
   // Feature: Media Freshness
   DateTime? lastMediaUploadedAt;
+  // Feature: Inspection Tracking
+  DateTime? lastInspectedAt;
 
   RoomModel({
     this.id,
@@ -67,12 +69,20 @@ class RoomModel {
     this.videoUrls = const [],
     this.createdAt,
     this.lastMediaUploadedAt,
+    this.lastInspectedAt,
   });
 
   /// Returns true if no media has been uploaded or last upload was >30 days ago.
   bool get isMediaOverdue {
     if (lastMediaUploadedAt == null) return true;
     return DateTime.now().difference(lastMediaUploadedAt!).inDays > 30;
+  }
+
+  /// Returns true if the room has never been inspected or last inspection
+  /// was more than 14 days ago.
+  bool get isInspectionDue {
+    if (lastInspectedAt == null) return true;
+    return DateTime.now().difference(lastInspectedAt!).inDays > 14;
   }
 
   factory RoomModel.fromFirestore(String id, Map<String, dynamic> d) =>
@@ -88,6 +98,9 @@ class RoomModel {
         lastMediaUploadedAt: d['lastMediaUploadedAt'] != null
             ? DateTime.tryParse(d['lastMediaUploadedAt'])
             : null,
+        lastInspectedAt: d['lastInspectedAt'] != null
+            ? DateTime.tryParse(d['lastInspectedAt'])
+            : null,
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -98,6 +111,7 @@ class RoomModel {
     'videoUrls': videoUrls,
     'createdAt': createdAt?.toIso8601String(),
     'lastMediaUploadedAt': lastMediaUploadedAt?.toIso8601String(),
+    'lastInspectedAt': lastInspectedAt?.toIso8601String(),
   };
 }
 

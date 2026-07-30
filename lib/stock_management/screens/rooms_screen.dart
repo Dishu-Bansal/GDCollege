@@ -103,8 +103,8 @@ class _RoomCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final photoCount = room.photoUrls.length;
     final videoCount = room.videoUrls.length;
-    // Feature: Media Freshness
-    final overdue = room.isMediaOverdue;
+    // Feature: Inspection Tracking
+    final due = room.isInspectionDue;
 
     return Card(
       elevation: 0,
@@ -139,12 +139,12 @@ class _RoomCard extends StatelessWidget {
                   child: const Icon(Icons.meeting_room_outlined,
                       color: Colors.orange, size: 26),
                 ),
-                // Feature: Media Freshness badge
-                if (overdue)
+                // Feature: Inspection Tracking badge
+                if (due)
                   const Positioned(
                     top: -4,
                     right: -4,
-                    child: MediaOverdueBadge(),
+                    child: InspectionDueBadge(),
                   ),
               ],
             ),
@@ -183,17 +183,17 @@ class _RoomCard extends StatelessWidget {
                               fontSize: 11,
                               color: Colors.grey.shade400)),
                   ]),
-                  // Feature: Media Freshness — show overdue label
-                  if (overdue)
+                  // Feature: Inspection Tracking - show due label
+                  if (due)
                     Padding(
                       padding: const EdgeInsets.only(top: 3),
                       child: Text(
-                        room.lastMediaUploadedAt == null
-                            ? 'No media ever uploaded'
-                            : 'Media overdue (>30 days)',
-                        style: TextStyle(
+                        room.lastInspectedAt == null
+                            ? 'Never inspected'
+                            : 'Inspection due (>14 days)',
+                        style: const TextStyle(
                             fontSize: 11,
-                            color: Colors.orange.shade700,
+                            color: Colors.red,
                             fontWeight: FontWeight.w500),
                       ),
                     ),

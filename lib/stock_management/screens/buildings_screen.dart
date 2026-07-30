@@ -171,18 +171,18 @@ class _BuildingCardContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (floors.isEmpty) {
-      return _tile(context, hasOverdue: false);
+      return _tile(context, hasDueInspection: false);
     }
 
     return _MultiFloorRoomWatcher(
       building: building,
       floors: floors,
       service: service,
-      builder: (hasOverdue) => _tile(context, hasOverdue: hasOverdue),
+      builder: (hasDueInspection) => _tile(context, hasDueInspection: hasDueInspection),
     );
   }
 
-  Widget _tile(BuildContext context, {required bool hasOverdue}) {
+  Widget _tile(BuildContext context, {required bool hasDueInspection}) {
     return ListTile(
       contentPadding:
           const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -205,11 +205,11 @@ class _BuildingCardContent extends StatelessWidget {
             child: const Icon(Icons.business,
                 color: Color(0xFF1A3C6E), size: 26),
           ),
-          if (hasOverdue)
+          if (hasDueInspection)
             const Positioned(
               top: -4,
               right: -4,
-              child: MediaOverdueBadge(),
+              child: InspectionDueBadge(),
             ),
         ],
       ),
@@ -267,12 +267,12 @@ class _BuildingCardContent extends StatelessWidget {
 }
 
 /// Watches room streams across multiple floors and reports whether any room
-/// has overdue media.
+/// has an inspection due (>14 days or never inspected).
 class _MultiFloorRoomWatcher extends StatelessWidget {
   final BuildingModel building;
   final List<FloorModel> floors;
   final StockRepository service;
-  final Widget Function(bool hasOverdue) builder;
+  final Widget Function(bool hasDueInspection) builder;
 
   const _MultiFloorRoomWatcher({
     required this.building,
@@ -288,7 +288,7 @@ class _MultiFloorRoomWatcher extends StatelessWidget {
       floors: floors,
       index: 0,
       service: service,
-      accumulatedOverdue: false,
+      accumulatedDue: false,
       builder: builder,
     );
   }
@@ -299,7 +299,7 @@ class _FloorRoomWatcher extends StatelessWidget {
   final List<FloorModel> floors;
   final int index;
   final StockRepository service;
-  final bool accumulatedOverdue;
+  final bool accumulatedDue;
   final Widget Function(bool) builder;
 
   const _FloorRoomWatcher({
@@ -307,29 +307,29 @@ class _FloorRoomWatcher extends StatelessWidget {
     required this.floors,
     required this.index,
     required this.service,
-    required this.accumulatedOverdue,
+    required this.accumulatedDue,
     required this.builder,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (index >= floors.length) return builder(accumulatedOverdue);
+    if (index >= floors.length) return builder(accumulatedDue);
 
     return StreamBuilder<List<RoomModel>>(
       stream: service.watchRooms(building.id!, floors[index].id!),
       builder: (context, snap) {
         final rooms = snap.data ?? [];
-        final floorOverdue = rooms.any((r) => r.isMediaOverdue);
-        final nowOverdue = accumulatedOverdue || floorOverdue;
+        final floorDue = rooms.any((r) => r.isInspectionDue);
+        final nowDue = accumulatedDue || floorDue;
 
-        if (nowOverdue) return builder(true);
+        if (nowDue) return builder(true);
 
         return _FloorRoomWatcher(
           building: building,
           floors: floors,
           index: index + 1,
           service: service,
-          accumulatedOverdue: nowOverdue,
+          accumulatedDue: nowDue,
           builder: builder,
         );
       },

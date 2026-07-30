@@ -176,12 +176,12 @@ class StockEmptyState extends StatelessWidget {
   }
 }
 
-// ── Media Overdue Badge ───────────────────────────────────────────────────────
-// Feature: Media Freshness — shown on room/floor/building cards when a room
-// has not had media uploaded in the last 30 days (or never).
+// ── Inspection Due Badge ───────────────────────────────────────────────────────
+// Feature: Inspection Tracking — shown on room/floor/building cards when a room
+// has not been inspected in the last 14 days (or never).
 
-class MediaOverdueBadge extends StatelessWidget {
-  const MediaOverdueBadge({super.key});
+class InspectionDueBadge extends StatelessWidget {
+  const InspectionDueBadge({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -189,7 +189,7 @@ class MediaOverdueBadge extends StatelessWidget {
       width: 18,
       height: 18,
       decoration: BoxDecoration(
-        color: Colors.orange.shade600,
+        color: Colors.red.shade600,
         shape: BoxShape.circle,
         border: Border.all(color: Colors.white, width: 1.5),
       ),
