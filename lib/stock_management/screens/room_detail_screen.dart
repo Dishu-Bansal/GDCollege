@@ -133,6 +133,9 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen>
     await showDialog(
       context: context,
       builder: (_) => _ItemFormDialog(
+        building: widget.building,
+        floor: widget.floor,
+        room: widget.room,
         onSave: (item) async {
           await _service.addItem(widget.building.id!,
               widget.floor.id!, widget.room.id!, item,
@@ -332,6 +335,9 @@ class _ItemCard extends StatelessWidget {
                       context: context,
                       builder: (_) => _ItemFormDialog(
                         initial: item,
+                        building: building,
+                        floor: floor,
+                        room: room,
                         onSave: (updated) async {
                           updated.id = item.id;
                           await service.updateItem(building.id!,
@@ -527,7 +533,7 @@ class _ItemCard extends StatelessWidget {
       builder: (_) => _AdjustSheet(
         item: item,
         sign: sign,
-        onConfirm: (qty, note) async {
+        onConfirm: (qty, note, unitPrice, store, bill) async {
           await service.adjustQuantity(
             buildingId: building.id!,
             floorId: floor.id!,
@@ -538,6 +544,9 @@ class _ItemCard extends StatelessWidget {
             buildingName: building.name,
             floorName: floor.name,
             roomName: room.name,
+            unitPrice: unitPrice,
+            store: store,
+            bill: bill,
           );
         },
       ),
@@ -640,7 +649,7 @@ class _QtyButton extends StatelessWidget {
 class _AdjustSheet extends StatefulWidget {
   final StockItem item;
   final int sign;
-  final Future<void> Function(int qty, String note) onConfirm;
+  final Future<void> Function(int qty, String note, double unitPrice, String store, String bill) onConfirm;
 
   const _AdjustSheet({
     required this.item,
@@ -655,12 +664,18 @@ class _AdjustSheet extends StatefulWidget {
 class _AdjustSheetState extends State<_AdjustSheet> {
   final _qtyCtrl = TextEditingController(text: '1');
   final _noteCtrl = TextEditingController();
+  final _priceCtrl = TextEditingController();
+  final _storeCtrl = TextEditingController();
+  final _billCtrl = TextEditingController();
   bool _saving = false;
 
   @override
   void dispose() {
     _qtyCtrl.dispose();
     _noteCtrl.dispose();
+    _priceCtrl.dispose();
+    _storeCtrl.dispose();
+    _billCtrl.dispose();
     super.dispose();
   }
 
@@ -668,7 +683,13 @@ class _AdjustSheetState extends State<_AdjustSheet> {
     final qty = int.tryParse(_qtyCtrl.text) ?? 0;
     if (qty <= 0) return;
     setState(() => _saving = true);
-    await widget.onConfirm(qty, _noteCtrl.text.trim());
+    await widget.onConfirm(
+      qty,
+      _noteCtrl.text.trim(),
+      double.tryParse(_priceCtrl.text) ?? 0,
+      _storeCtrl.text.trim(),
+      _billCtrl.text.trim(),
+    );
     if (mounted) Navigator.pop(context);
   }
 
@@ -810,6 +831,37 @@ class _AdjustSheetState extends State<_AdjustSheet> {
                 : 'e.g. Used for maintenance',
             prefixIcon:
             const Icon(Icons.notes_outlined, size: 18),
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        TextField(
+          controller: _priceCtrl,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+            labelText: 'Unit Price (₹) (optional)',
+            prefixText: '₹ ',
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        TextField(
+          controller: _storeCtrl,
+          decoration: const InputDecoration(
+            labelText: 'Store Name (optional)',
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        TextField(
+          controller: _billCtrl,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          decoration: const InputDecoration(
+            labelText: 'Bill Number (optional)',
           ),
         ),
 
@@ -1646,10 +1698,17 @@ class _ItemFormDialog extends ConsumerStatefulWidget {
   ConsumerState<_ItemFormDialog> createState() => _ItemFormDialogState();
   final StockItem? initial;
   final Future<void> Function(StockItem) onSave;
+  final BuildingModel building;
+  final FloorModel floor;
+  final RoomModel room;
 
-  const _ItemFormDialog({this.initial, required this.onSave});
-
-
+  const _ItemFormDialog({
+    this.initial,
+    required this.onSave,
+    required this.building,
+    required this.floor,
+    required this.room,
+  });
 }
 
 class _ItemFormDialogState extends ConsumerState<_ItemFormDialog> {
@@ -1709,6 +1768,41 @@ class _ItemFormDialogState extends ConsumerState<_ItemFormDialog> {
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() => _saving = true);
+
+    final qty = int.tryParse(_qtyCtrl.text) ?? 0;
+    final price = double.tryParse(_priceCtrl.text) ?? 0;
+    final store = _storeNameCtrl.text.trim();
+    final bill = _billCtrl.text.trim();
+
+    // If a catalog item was selected that already exists in this room,
+    // increment the existing item's quantity instead of adding a duplicate.
+    if (_selectedCatalogItem != null) {
+      final existing = items.where(
+          (i) => i.id == _selectedCatalogItem!.id).firstOrNull;
+      if (existing != null) {
+        if (qty <= 0) {
+          setState(() => _saving = false);
+          return;
+        }
+        await _service.adjustQuantity(
+          buildingId: widget.building.id!,
+          floorId: widget.floor.id!,
+          roomId: widget.room.id!,
+          item: existing,
+          delta: qty,
+          note: '',
+          buildingName: widget.building.name,
+          floorName: widget.floor.name,
+          roomName: widget.room.name,
+          unitPrice: price,
+          store: store,
+          bill: bill,
+        );
+        if (mounted) Navigator.pop(context);
+        return;
+      }
+    }
+
     await widget.onSave(StockItem(
       id: _selectedCatalogItem != null ? _selectedCatalogItem!.id : null,
       name: _selectedCatalogItem == null ? _nameCtrl!.text.trim() : _selectedCatalogItem!.name,
@@ -1744,8 +1838,7 @@ class _ItemFormDialogState extends ConsumerState<_ItemFormDialog> {
           return _catalogSummaries.where((option)
           {
             return option.name.toLowerCase().contains(
-                textEditingValue.text.toLowerCase()) &&
-                !(items.any((i) => i.id == option.id));
+                textEditingValue.text.toLowerCase());
           });
         },
         onSelected: (CatalogItem selection) {

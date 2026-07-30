@@ -63,6 +63,9 @@ abstract class StockRepository {
     String buildingName = '',
     String floorName = '',
     String roomName = '',
+    double unitPrice = 0,
+    String store = '',
+    String bill = '',
   });
 
   // ── Logs ──
