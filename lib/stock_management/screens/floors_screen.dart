@@ -97,17 +97,17 @@ class _FloorCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       shape:
       RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      // Feature: Media Freshness â€” watch rooms on this floor to detect overdue
+      // Feature: Inspection Tracking - watch rooms on this floor to detect due
       child: StreamBuilder<List<RoomModel>>(
         stream: service.watchRooms(building.id!, floor.id!),
         builder: (context, snap) {
           final rooms = snap.data ?? [];
-          final hasOverdue = rooms.any((r) => r.isMediaOverdue);
+          final due = rooms.any((r) => r.isInspectionDue);
           return _FloorCardTile(
             floor: floor,
             building: building,
             service: service,
-            hasOverdue: hasOverdue,
+            due: due,
           );
         },
       ),
@@ -119,13 +119,13 @@ class _FloorCardTile extends StatelessWidget {
   final FloorModel floor;
   final BuildingModel building;
   final StockRepository service;
-  final bool hasOverdue;
+  final bool due;
 
   const _FloorCardTile({
     required this.floor,
     required this.building,
     required this.service,
-    required this.hasOverdue,
+    required this.due,
   });
 
   @override
@@ -155,11 +155,11 @@ class _FloorCardTile extends StatelessWidget {
                 child: const Icon(Icons.layers_outlined,
                     color: Colors.teal, size: 26),
               ),
-              if (hasOverdue)
+              if (due)
                 const Positioned(
                   top: -4,
                   right: -4,
-                  child: MediaOverdueBadge(),
+                  child: InspectionDueBadge(),
                 ),
             ],
           ),
@@ -171,11 +171,11 @@ class _FloorCardTile extends StatelessWidget {
                 Text(floor.name,
                     style: const TextStyle(
                         fontWeight: FontWeight.w700, fontSize: 15)),
-                if (hasOverdue)
-                  Text(
-                    'Some rooms have overdue media',
+                if (due)
+                  const Text(
+                    'Inspection due for some rooms',
                     style: TextStyle(
-                        fontSize: 11, color: Colors.orange.shade700),
+                        fontSize: 11, color: Colors.red),
                   ),
               ],
             ),

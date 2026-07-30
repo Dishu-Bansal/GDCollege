@@ -619,6 +619,11 @@ class FirebaseStockRepository implements StockRepository {
       'overallNote': inspection.overallNote,
     });
 
+    // Stamp the room's last inspection date
+    final roomRef =
+    _rooms(building.id!, floor.id!).doc(room.id);
+    batch.update(roomRef, {'lastInspectedAt': now.toIso8601String()});
+
     // If syncing, adjust quantities for mismatched items
     if (syncQuantities) {
       for (final ci in inspection.checklistItems) {
