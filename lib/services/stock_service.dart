@@ -539,6 +539,61 @@ class FirebaseStockRepository implements StockRepository {
     });
   }
 
+  /// Syncs the inspection checklist's expected quantities with current stock.
+  /// Called when resuming an in-progress inspection to reflect any stock
+  /// changes made since the inspection was started.
+  @override
+  Future<InspectionModel> syncInspectionChecklist({
+    required String buildingId,
+    required String floorId,
+    required String roomId,
+    required InspectionModel inspection,
+  }) async {
+    final items = await _items(buildingId, floorId, roomId).get();
+    final stockById = <String, int>{};
+    for (final d in items.docs) {
+      stockById[d.id] = (d.data()['currentQuantity'] as num?)?.toInt() ?? 0;
+    }
+
+    var changed = false;
+    final updated = inspection.checklistItems.map((ci) {
+      final currentQty = stockById[ci.itemId];
+      if (currentQty != null && currentQty != ci.expectedQty) {
+        changed = true;
+        return InspectionChecklistItem(
+          itemId: ci.itemId,
+          itemName: ci.itemName,
+          expectedQty: currentQty,
+          actualQty: ci.actualQty,
+          matched: ci.actualQty == currentQty,
+          note: ci.note,
+        );
+      }
+      return ci;
+    }).toList();
+
+    if (changed) {
+      await _inspections(buildingId, floorId, roomId)
+          .doc(inspection.id)
+          .update({'checklistItems': updated.map((e) => e.toMap()).toList()});
+    }
+
+    return InspectionModel(
+      id: inspection.id,
+      roomId: inspection.roomId,
+      roomName: inspection.roomName,
+      floorId: inspection.floorId,
+      floorName: inspection.floorName,
+      buildingId: inspection.buildingId,
+      buildingName: inspection.buildingName,
+      startedAt: inspection.startedAt,
+      status: inspection.status,
+      overallNote: inspection.overallNote,
+      hasDiscrepancy: updated.any((e) => !e.matched),
+      checklistItems: updated,
+    );
+  }
+
   /// Completes an inspection.  Optionally syncs quantities to actual counts.
   @override
   Future<void> completeInspection({

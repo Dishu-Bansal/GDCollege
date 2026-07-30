@@ -89,6 +89,12 @@ abstract class StockRepository {
     required List<InspectionChecklistItem> checklistItems,
     required String overallNote,
   });
+  Future<InspectionModel> syncInspectionChecklist({
+    required String buildingId,
+    required String floorId,
+    required String roomId,
+    required InspectionModel inspection,
+  });
   Future<void> completeInspection({
     required BuildingModel building,
     required FloorModel floor,

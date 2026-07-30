@@ -2492,8 +2492,17 @@ class _InspectionsTab extends StatelessWidget {
           // In-progress banner
           if (inProgress.isNotEmpty)
             InkWell(
-              onTap: () => _openInspection(
-                  context, inProgress.first),
+              onTap: () async {
+                final synced = await service.syncInspectionChecklist(
+                  buildingId: building.id!,
+                  floorId: floor.id!,
+                  roomId: room.id!,
+                  inspection: inProgress.first,
+                );
+                if (context.mounted) {
+                  _openInspection(context, synced);
+                }
+              },
               child: Container(
                 color: Colors.amber.shade50,
                 padding: const EdgeInsets.symmetric(
