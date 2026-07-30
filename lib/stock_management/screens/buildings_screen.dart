@@ -380,8 +380,13 @@ class _GlobalLogTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isInspection = log.type == 'inspection';
     final isIncrease = log.type == 'increase';
-    final color = isIncrease ? Colors.green.shade700 : Colors.red.shade600;
+    final color = isInspection
+        ? const Color(0xFF1A3C6E)
+        : isIncrease
+            ? Colors.green.shade700
+            : Colors.red.shade600;
 
     final location = <String>[];
     if (log.buildingName.isNotEmpty) location.add(log.buildingName);
@@ -405,7 +410,11 @@ class _GlobalLogTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(
-              isIncrease ? Icons.arrow_upward : Icons.arrow_downward,
+              isInspection
+                  ? Icons.fact_check_outlined
+                  : isIncrease
+                      ? Icons.arrow_upward
+                      : Icons.arrow_downward,
               color: color,
               size: 18),
         ),
@@ -422,25 +431,36 @@ class _GlobalLogTile extends StatelessWidget {
                   ),
                 ]),
                 const SizedBox(height: 3),
-                Row(children: [
+                if (isInspection)
                   Text(
-                    '${log.previousQty} → ${log.newQty}',
+                    log.note,
                     style: TextStyle(
-                        fontSize: 11, color: Colors.grey.shade500),
-                  ),
-                  const SizedBox(width: 8),
-                  if (log.note.isNotEmpty)
-                    Expanded(
-                      child: Text(
-                        log.note,
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey.shade600,
-                            fontStyle: FontStyle.italic),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                        fontSize: 11,
+                        color: Colors.grey.shade600,
+                        fontStyle: FontStyle.italic),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  )
+                else
+                  Row(children: [
+                    Text(
+                      '${log.previousQty} → ${log.newQty}',
+                      style: TextStyle(
+                          fontSize: 11, color: Colors.grey.shade500),
                     ),
-                ]),
+                    const SizedBox(width: 8),
+                    if (log.note.isNotEmpty)
+                      Expanded(
+                        child: Text(
+                          log.note,
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade600,
+                              fontStyle: FontStyle.italic),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ]),
                 const SizedBox(height: 3),
                 Row(children: [
                   if (locationText.isNotEmpty)
@@ -474,24 +494,26 @@ class _GlobalLogTile extends StatelessWidget {
                 ]),
               ]),
         ),
-        const SizedBox(width: 10),
-        Container(
-          width: 52,
-          height: 52,
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withOpacity(0.3)),
+        if (!isInspection) ...[
+          const SizedBox(width: 10),
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: color.withOpacity(0.3)),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              '${isIncrease ? '+' : '-'}${log.quantity}',
+              style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                  fontSize: 18),
+            ),
           ),
-          alignment: Alignment.center,
-          child: Text(
-            '${isIncrease ? '+' : '-'}${log.quantity}',
-            style: TextStyle(
-                fontWeight: FontWeight.w800,
-                color: color,
-                fontSize: 18),
-          ),
-        ),
+        ],
       ]),
     );
   }

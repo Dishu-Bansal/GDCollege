@@ -497,6 +497,25 @@ class FirebaseStockRepository implements StockRepository {
 
     final doc = await _inspections(building.id!, floor.id!, room.id!)
         .add(inspection.toFirestore());
+
+    // Write a log entry for the inspection start
+    final logRef = _logs(building.id!, floor.id!, room.id!).doc();
+    await logRef.set(StockLog(
+      itemId: '',
+      itemName: 'Inspection',
+      type: 'inspection',
+      quantity: 0,
+      previousQty: 0,
+      newQty: 0,
+      note: 'Inspection started. ${currentItems.length} items to check.',
+      timestamp: DateTime.now(),
+      buildingName: building.name,
+      floorName: floor.name,
+      roomName: room.name,
+      changedBy: UserSession().currentUser?.email ?? '',
+      inspectionId: doc.id,
+    ).toFirestore());
+
     return doc.id;
   }
 
@@ -518,6 +537,62 @@ class FirebaseStockRepository implements StockRepository {
       'overallNote': overallNote,
       'hasDiscrepancy': hasDiscrepancy,
     });
+  }
+
+  /// Syncs the inspection checklist's expected quantities with current stock.
+  /// Called when resuming an in-progress inspection to reflect any stock
+  /// changes made since the inspection was started.
+  @override
+  Future<InspectionModel> syncInspectionChecklist({
+    required String buildingId,
+    required String floorId,
+    required String roomId,
+    required InspectionModel inspection,
+  }) async {
+    final items = await _items(buildingId, floorId, roomId).get();
+    final stockById = <String, int>{};
+    for (final d in items.docs) {
+      final data = d.data() as Map<String, dynamic>;
+      stockById[d.id] = (data['currentQuantity'] as num?)?.toInt() ?? 0;
+    }
+
+    var changed = false;
+    final updated = inspection.checklistItems.map((ci) {
+      final currentQty = stockById[ci.itemId];
+      if (currentQty != null && currentQty != ci.expectedQty) {
+        changed = true;
+        return InspectionChecklistItem(
+          itemId: ci.itemId,
+          itemName: ci.itemName,
+          expectedQty: currentQty,
+          actualQty: ci.actualQty,
+          matched: ci.actualQty == currentQty,
+          note: ci.note,
+        );
+      }
+      return ci;
+    }).toList();
+
+    if (changed) {
+      await _inspections(buildingId, floorId, roomId)
+          .doc(inspection.id)
+          .update({'checklistItems': updated.map((e) => e.toMap()).toList()});
+    }
+
+    return InspectionModel(
+      id: inspection.id,
+      roomId: inspection.roomId,
+      roomName: inspection.roomName,
+      floorId: inspection.floorId,
+      floorName: inspection.floorName,
+      buildingId: inspection.buildingId,
+      buildingName: inspection.buildingName,
+      startedAt: inspection.startedAt,
+      status: inspection.status,
+      overallNote: inspection.overallNote,
+      hasDiscrepancy: updated.any((e) => !e.matched),
+      checklistItems: updated,
+    );
   }
 
   /// Completes an inspection.  Optionally syncs quantities to actual counts.
@@ -575,6 +650,42 @@ class FirebaseStockRepository implements StockRepository {
         ).toFirestore());
       }
     }
+
+    // Write an inspection log entry (appears in both room-level and global logs)
+    final mismatched = inspection.checklistItems
+        .where((ci) => !ci.matched)
+        .toList();
+    final noteParts = <String>[];
+    if (mismatched.isEmpty) {
+      noteParts.add(
+          'Inspection completed. All ${inspection.checklistItems.length} items matched.');
+    } else {
+      final details = mismatched
+          .map((ci) => '${ci.itemName} (${ci.expectedQty}→${ci.actualQty})')
+          .join(', ');
+      noteParts.add(
+          'Inspection completed. Mismatched: $details.');
+    }
+    if (inspection.overallNote.isNotEmpty) {
+      noteParts.add('Note: ${inspection.overallNote}');
+    }
+
+    final inspLogRef = _logs(building.id!, floor.id!, room.id!).doc();
+    batch.set(inspLogRef, StockLog(
+      itemId: '',
+      itemName: 'Inspection',
+      type: 'inspection',
+      quantity: 0,
+      previousQty: 0,
+      newQty: 0,
+      note: noteParts.join(' '),
+      timestamp: now,
+      buildingName: building.name,
+      floorName: floor.name,
+      roomName: room.name,
+      changedBy: UserSession().currentUser?.email ?? '',
+      inspectionId: inspection.id,
+    ).toFirestore());
 
     await batch.commit();
   }

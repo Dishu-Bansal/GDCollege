@@ -196,7 +196,7 @@ class StockLog {
   String? id;
   String itemId;
   String itemName;
-  String type; // 'increase' | 'decrease'
+  String type; // 'increase' | 'decrease' | 'inspection'
   int quantity;
   int previousQty;
   int newQty;
@@ -206,6 +206,7 @@ class StockLog {
   String floorName;
   String roomName;
   String changedBy;
+  String? inspectionId; // set when type == 'inspection'
 
   StockLog({
     this.id,
@@ -221,6 +222,7 @@ class StockLog {
     this.floorName = '',
     this.roomName = '',
     this.changedBy = '',
+    this.inspectionId,
   }) : timestamp = timestamp ?? DateTime.now();
 
   factory StockLog.fromFirestore(String id, Map<String, dynamic> d) =>
@@ -240,6 +242,7 @@ class StockLog {
         floorName: d['floorName'] ?? '',
         roomName: d['roomName'] ?? '',
         changedBy: d['changedBy'] ?? '',
+        inspectionId: d['inspectionId'],
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -255,6 +258,7 @@ class StockLog {
     'floorName': floorName,
     'roomName': roomName,
     'changedBy': changedBy,
+    if (inspectionId != null) 'inspectionId': inspectionId,
   };
 }
 
