@@ -358,6 +358,9 @@ class FirebaseStockRepository implements StockRepository {
     String buildingName = '',
     String floorName = '',
     String roomName = '',
+    double unitPrice = 0,
+    String store = '',
+    String bill = '',
   }) async {
     final previousQty = item.currentQuantity;
     final newQty = (previousQty + delta).clamp(0, 999999);
@@ -374,6 +377,18 @@ class FirebaseStockRepository implements StockRepository {
 
     final _itemCatalog = _itemsCatalog.doc(item.id);
     batch.update(_itemCatalog, {'totalQuantity': FieldValue.increment(delta), 'updatedAt': DateTime.now().toIso8601String()});
+
+    // Write price history if price/store/bill supplied
+    if (unitPrice > 0 || store.isNotEmpty || bill.isNotEmpty) {
+      final _priceHistory = _itemCatalog.collection("priceHistory");
+      batch.set(_priceHistory.doc(), {
+        'price': unitPrice,
+        'quantity': actualDelta.abs(),
+        'timestamp': DateTime.now().toIso8601String(),
+        'store': store,
+        'bill': bill,
+      });
+    }
 
     final logRef = _logs(buildingId, floorId, roomId).doc();
     batch.set(
