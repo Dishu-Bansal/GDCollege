@@ -169,6 +169,7 @@ class CatalogItem {
   String name;
   double lastPrice;
   int totalQuantity;
+  String? photoUrl;
   DateTime? createdAt;
   DateTime? updatedAt;
 
@@ -177,11 +178,10 @@ class CatalogItem {
     this.name = '',
     this.lastPrice = 0,
     this.totalQuantity = 0,
+    this.photoUrl,
     this.createdAt,
     this.updatedAt,
   });
-
-  // double get totalValue => unitPrice * currentQuantity;
 
   factory CatalogItem.fromFirestore(String id, Map<String, dynamic> d) =>
       CatalogItem(
@@ -189,6 +189,7 @@ class CatalogItem {
         name: d['name'] ?? '',
         lastPrice: (d['lastPrice'] ?? 0).toDouble(),
         totalQuantity: d['totalQuantity'] ?? 0,
+        photoUrl: d['photoUrl'],
         createdAt:
         d['createdAt'] != null ? DateTime.tryParse(d['createdAt']) : null,
         updatedAt:
@@ -199,6 +200,7 @@ class CatalogItem {
     'name': name,
     'lastPrice': lastPrice,
     'totalQuantity': totalQuantity,
+    'photoUrl': photoUrl,
     'createdAt': createdAt?.toIso8601String(),
     'updatedAt': updatedAt?.toIso8601String(),
   };

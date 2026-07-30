@@ -216,6 +216,48 @@ class FirebaseStockRepository implements StockRepository {
     });
   }
 
+  // 📷 CATALOG ITEM PHOTO ─────────────────────────────────────────────────────
+
+  @override
+  Future<String?> uploadCatalogItemPhoto({
+    required XFile xfile,
+    required String catalogItemId,
+    void Function(double)? onProgress,
+  }) async {
+    final src = xfile.name.isNotEmpty ? xfile.name : xfile.path;
+    String ext = '.jpg';
+    if (src.contains('.')) {
+      final candidate = src.substring(src.lastIndexOf('.'));
+      if (candidate.length <= 5) ext = candidate;
+    }
+
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}$ext';
+    final ref = _storage.ref().child('catalog/$catalogItemId/$fileName');
+
+    UploadTask task;
+    if (kIsWeb) {
+      final bytes = await xfile.readAsBytes();
+      task = ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+    } else {
+      task = ref.putFile(io.File(xfile.path));
+    }
+
+    task.snapshotEvents.listen((s) {
+      if (s.totalBytes > 0) {
+        onProgress?.call(s.bytesTransferred / s.totalBytes);
+      }
+    });
+
+    final snap = await task;
+    return snap.ref.getDownloadURL();
+  }
+
+  @override
+  Future<void> updateCatalogItemPhoto(
+      String catalogItemId, String url) async {
+    await _itemsCatalog.doc(catalogItemId).update({'photoUrl': url});
+  }
+
   // ── ITEMS ─────────────────────────────────────────────────────────────────
 
   @override
