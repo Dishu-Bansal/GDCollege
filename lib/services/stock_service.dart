@@ -576,6 +576,42 @@ class FirebaseStockRepository implements StockRepository {
       }
     }
 
+    // Write an inspection log entry (appears in both room-level and global logs)
+    final mismatched = inspection.checklistItems
+        .where((ci) => !ci.matched)
+        .toList();
+    final noteParts = <String>[];
+    if (mismatched.isEmpty) {
+      noteParts.add(
+          'Inspection completed. All ${inspection.checklistItems.length} items matched.');
+    } else {
+      final details = mismatched
+          .map((ci) => '${ci.itemName} (${ci.expectedQty}→${ci.actualQty})')
+          .join(', ');
+      noteParts.add(
+          'Inspection completed. Mismatched: $details.');
+    }
+    if (inspection.overallNote.isNotEmpty) {
+      noteParts.add('Note: ${inspection.overallNote}');
+    }
+
+    final inspLogRef = _logs(building.id!, floor.id!, room.id!).doc();
+    batch.set(inspLogRef, StockLog(
+      itemId: '',
+      itemName: 'Inspection',
+      type: 'inspection',
+      quantity: 0,
+      previousQty: 0,
+      newQty: 0,
+      note: noteParts.join(' '),
+      timestamp: now,
+      buildingName: building.name,
+      floorName: floor.name,
+      roomName: room.name,
+      changedBy: UserSession().currentUser?.email ?? '',
+      inspectionId: inspection.id,
+    ).toFirestore());
+
     await batch.commit();
   }
 
