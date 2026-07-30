@@ -497,6 +497,25 @@ class FirebaseStockRepository implements StockRepository {
 
     final doc = await _inspections(building.id!, floor.id!, room.id!)
         .add(inspection.toFirestore());
+
+    // Write a log entry for the inspection start
+    final logRef = _logs(building.id!, floor.id!, room.id!).doc();
+    await logRef.set(StockLog(
+      itemId: '',
+      itemName: 'Inspection',
+      type: 'inspection',
+      quantity: 0,
+      previousQty: 0,
+      newQty: 0,
+      note: 'Inspection started. ${currentItems.length} items to check.',
+      timestamp: DateTime.now(),
+      buildingName: building.name,
+      floorName: floor.name,
+      roomName: room.name,
+      changedBy: UserSession().currentUser?.email ?? '',
+      inspectionId: doc.id,
+    ).toFirestore());
+
     return doc.id;
   }
 
