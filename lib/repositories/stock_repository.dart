@@ -52,6 +52,15 @@ abstract class StockRepository {
   Future<void> deleteItem(
       String buildingId, String floorId, String roomId, String itemId);
 
+  // 📷 Catalog Item Photo
+  Future<String?> uploadCatalogItemPhoto({
+    required XFile xfile,
+    required String catalogItemId,
+    void Function(double)? onProgress,
+  });
+  Future<void> updateCatalogItemPhoto(
+      String catalogItemId, String url);
+
   // ── Quantity Adjustment ──
   Future<void> adjustQuantity({
     required String buildingId,

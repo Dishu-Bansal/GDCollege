@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:ui_web' as ui_web;
 import 'dart:html' as html;
+import 'package:image_picker/image_picker.dart';
 import '../models/stock_models.dart';
 import '../../repositories/stock_repository.dart';
 import '../../providers.dart';
@@ -270,7 +271,7 @@ class _SummaryChip extends StatelessWidget {
   }
 }
 
-class _ItemCard extends StatelessWidget {
+class _ItemCard extends StatefulWidget {
   final StockItem item;
   final BuildingModel building;
   final FloorModel floor;
@@ -284,6 +285,52 @@ class _ItemCard extends StatelessWidget {
     required this.room,
     required this.service,
   });
+
+  @override
+  State<_ItemCard> createState() => _ItemCardState();
+}
+
+class _ItemCardState extends State<_ItemCard> {
+  CatalogItem? _catalog;
+  bool _uploadingPhoto = false;
+
+  StockItem get item => widget.item;
+  BuildingModel get building => widget.building;
+  FloorModel get floor => widget.floor;
+  RoomModel get room => widget.room;
+  StockRepository get service => widget.service;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCatalog();
+  }
+
+  Future<void> _loadCatalog() async {
+    if (item.id == null) return;
+    final cat = await service.getCatalogItemById(item.id!);
+    if (mounted) setState(() => _catalog = cat);
+  }
+
+  Future<void> _pickAndUploadPhoto() async {
+    final picker = ImagePicker();
+    final file = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    if (file == null || !mounted) return;
+
+    setState(() => _uploadingPhoto = true);
+    try {
+      final url = await service.uploadCatalogItemPhoto(
+        xfile: file,
+        catalogItemId: item.id!,
+      );
+      if (url != null) {
+        await service.updateCatalogItemPhoto(item.id!, url);
+        if (mounted) setState(() => _catalog?.photoUrl = url);
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingPhoto = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -308,8 +355,21 @@ class _ItemCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top row: name + actions
+            // Top row: photo + name + actions
             Row(children: [
+              if (_catalog?.photoUrl != null) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Image.network(
+                    _catalog!.photoUrl!,
+                    width: 42,
+                    height: 42,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
               Expanded(
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -396,7 +456,6 @@ class _ItemCard extends StatelessWidget {
                       ),
                     );
                   } else if (v == 'assignments') {
-                    // Feature: View active assignments for this item
                     await showDialog(
                       context: context,
                       builder: (_) => _AssignmentsDialog(
@@ -407,16 +466,35 @@ class _ItemCard extends StatelessWidget {
                         service: service,
                       ),
                     );
+                  } else if (v == 'photo') {
+                    _pickAndUploadPhoto();
+                  } else if (v == 'removePhoto') {
+                    await service.updateCatalogItemPhoto(item.id!, '');
+                    if (mounted) setState(() => _catalog?.photoUrl = null);
                   }
                 },
                 itemBuilder: (_) => [
-                  // const PopupMenuItem(
-                  //     value: 'edit',
-                  //     child: Row(children: [
-                  //       Icon(Icons.edit_outlined, size: 16),
-                  //       SizedBox(width: 8),
-                  //       Text('Edit Item'),
-                  //     ])),
+                  PopupMenuItem(
+                      value: 'photo',
+                      child: Row(children: [
+                        _uploadingPhoto
+                            ? const SizedBox(
+                                width: 16, height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.camera_alt_outlined, size: 16),
+                        const SizedBox(width: 8),
+                        Text(_catalog?.photoUrl != null ? 'Change Photo' : 'Add Photo'),
+                      ])),
+                  if (_catalog?.photoUrl != null)
+                    const PopupMenuItem(
+                        value: 'removePhoto',
+                        child: Row(children: [
+                          Icon(Icons.delete_outline,
+                              size: 16, color: Colors.red),
+                          SizedBox(width: 8),
+                          Text('Remove Photo',
+                              style: TextStyle(color: Colors.red)),
+                        ])),
                   const PopupMenuItem(
                       value: 'log',
                       child: Row(children: [
@@ -424,7 +502,6 @@ class _ItemCard extends StatelessWidget {
                         SizedBox(width: 8),
                         Text('View Log'),
                       ])),
-                  // Feature: Stock Transfer
                   const PopupMenuItem(
                       value: 'transfer',
                       child: Row(children: [
@@ -432,7 +509,6 @@ class _ItemCard extends StatelessWidget {
                         SizedBox(width: 8),
                         Text('Transfer'),
                       ])),
-                  // Feature: Consumable Assignment
                   const PopupMenuItem(
                       value: 'assign',
                       child: Row(children: [
