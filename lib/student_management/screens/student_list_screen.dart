@@ -620,6 +620,12 @@ class _AuditLogTile extends StatelessWidget {
                 ),
               ]),
               const SizedBox(height: 3),
+              if (log.detail.isNotEmpty) ...[
+                Text(log.detail,
+                    style: const TextStyle(
+                        fontSize: 13, color: Colors.black87)),
+                const SizedBox(height: 4),
+              ],
               if (log.changedBy.isNotEmpty)
                 Text(log.changedBy,
                     style: TextStyle(

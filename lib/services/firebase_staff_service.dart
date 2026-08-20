@@ -82,6 +82,17 @@ class FirebaseStaffRepository implements StaffRepository {
     'universityApprovalUrl': 'Univ Approval', 'resignationLetterUrl': 'Resignation Letter',
   };
 
+  // Fields whose stored value is a Firebase Storage URL — we don't print the
+  // URL in the audit log, just note that the file changed.
+  static const _fileFieldKeys = {
+    'tenthUrl', 'twelfthUrl', 'graduationUrl', 'postGraduationUrl', 'diplomaUrl',
+    'netUrl', 'phdUrl',
+    'photoUrl', 'aadharUrl', 'panUrl',
+    'scCertificateUrl', 'bcCertificateUrl', 'sportsCertificateUrl',
+    'appointmentLetterUrl', 'joiningLetterUrl',
+    'universityApprovalUrl', 'resignationLetterUrl',
+  };
+
   String _buildUpdateDetail(Map<String, dynamic> oldData, Map<String, dynamic> newData) {
     final changes = <String>[];
     for (final entry in _fieldLabels.entries) {
@@ -90,7 +101,12 @@ class FirebaseStaffRepository implements StaffRepository {
       final newVal = newData[key];
       final oldNorm = (oldVal == null || oldVal == '' || oldVal == 0) ? null : oldVal.toString();
       final newNorm = (newVal == null || newVal == '' || newVal == 0) ? null : newVal.toString();
-      if (oldNorm != newNorm) changes.add(entry.value);
+      if (oldNorm == newNorm) continue;
+      if (_fileFieldKeys.contains(key)) {
+        changes.add('${entry.value} changed');
+      } else {
+        changes.add('${entry.value}: ${oldNorm ?? '—'} → ${newNorm ?? '—'}');
+      }
     }
     return changes.isEmpty ? 'No changes detected' : 'Updated: ${changes.join(', ')}';
   }
