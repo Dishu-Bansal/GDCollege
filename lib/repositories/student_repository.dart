@@ -9,7 +9,7 @@ abstract class StudentRepository {
   Stream<int> watchTotalCount();
 
   Future<String> create(StudentModel student);
-  Future<void> update(String id, StudentModel student);
+  Future<void> update(String id, StudentModel student, {bool writeLog = true});
   Future<void> delete(String id);
 
   Future<({List<StudentModel> students, DocumentSnapshot? lastDoc})> fetchPage({

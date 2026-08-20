@@ -119,9 +119,11 @@ class _StaffFormScreenState extends ConsumerState<StaffFormScreen> {
           },
         );
 
-        // 3. Update record with file URLs
+        // 3. Update record with file URLs (no audit log — this is part of
+        //    creation, not a user-initiated update)
         setState(() => _uploadStatus = 'Saving final data...');
-        await ref.read(staffRepositoryProvider).update(docId, _staff);
+        await ref.read(staffRepositoryProvider).update(docId, _staff,
+            writeLog: false);
       }
       if (mounted) {
         setState(() => _isSubmitting = false);
