@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/home_analytics.dart';
+import '../providers.dart';
 import '../student_management/screens/student_list_screen.dart';
 import '../staff_management/screens/staff_list_screen.dart';
 import '../stock_management/screens/buildings_screen.dart';
@@ -10,6 +12,7 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final analytics = ref.watch(homeAnalyticsProvider);
     return Scaffold(
       drawer: getSideDrawer(context),
       body: SafeArea(
@@ -17,31 +20,33 @@ class HomeScreen extends ConsumerWidget {
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const SizedBox(height: 60),
+                const SizedBox(height: 32),
                 // Welcome header
                 Icon(
                   Icons.school,
-                  size: 72,
+                  size: 56,
                   color: Theme.of(context).colorScheme.primary,
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
                 Text(
                   'Welcome to',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     color: Colors.grey[600],
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
                 Text(
                   'Lala Kundan Lal\nMemorial Society',
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 56),
+                const SizedBox(height: 24),
+                // Daily analytics (previous calendar day, IST)
+                _AnalyticsCard(analytics: analytics),
+                const SizedBox(height: 24),
                 // Navigation cards
                 _NavCard(
                   icon: Icons.people_alt,
@@ -72,7 +77,7 @@ class HomeScreen extends ConsumerWidget {
                     MaterialPageRoute(builder: (_) => const BuildingsScreen()),
                   ),
                 ),
-                const SizedBox(height: 60),
+                const SizedBox(height: 40),
               ],
             ),
           ),
@@ -82,6 +87,234 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
+// ── Daily Analytics ───────────────────────────────────────────────────────────
+
+class _AnalyticsCard extends ConsumerWidget {
+  final AsyncValue<HomeAnalytics> analytics;
+
+  const _AnalyticsCard({required this.analytics});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border:
+            Border.all(color: const Color(0xFF1A3C6E).withValues(alpha: 0.15)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A3C6E).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.query_stats,
+                  size: 18, color: Color(0xFF1A3C6E)),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Daily Activity',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                  color: Color(0xFF1A3C6E),
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Refresh',
+              icon: const Icon(Icons.refresh, size: 20),
+              onPressed: () =>
+                  ref.invalidate(homeAnalyticsProvider),
+            ),
+          ]),
+          const SizedBox(height: 2),
+          analytics.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+              ),
+            ),
+            error: (e, _) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Row(children: [
+                Icon(Icons.error_outline, size: 18, color: Colors.red.shade600),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Could not load analytics: $e',
+                    style: TextStyle(
+                        fontSize: 12, color: Colors.red.shade700),
+                  ),
+                ),
+              ]),
+            ),
+            data: (data) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Yesterday · ${_fmtDay(data.day)} (IST)',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                ),
+                const SizedBox(height: 12),
+                if (!data.hasAnyActivity)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      'No activity recorded for yesterday.',
+                      style: TextStyle(
+                          fontSize: 13, color: Colors.grey.shade500),
+                    ),
+                  )
+                else ...[
+                  _AnalyticsGroup(
+                    title: 'Students',
+                    icon: Icons.people_alt,
+                    color: const Color(0xFF1565C0),
+                    stats: [
+                      (label: 'Created', value: data.studentsCreated),
+                      (label: 'Updated', value: data.studentsUpdated),
+                      (label: 'Deleted', value: data.studentsDeleted),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  _AnalyticsGroup(
+                    title: 'Staff',
+                    icon: Icons.badge,
+                    color: const Color(0xFF2E7D32),
+                    stats: [
+                      (label: 'Created', value: data.staffCreated),
+                      (label: 'Updated', value: data.staffUpdated),
+                      (label: 'Deleted', value: data.staffDeleted),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  _AnalyticsGroup(
+                    title: 'Stock',
+                    icon: Icons.inventory_2,
+                    color: const Color(0xFF6A1B9A),
+                    stats: [
+                      (label: 'Inspections', value: data.inspectionsDone),
+                      (label: 'Items Added', value: data.itemsAdded),
+                      (label: 'Items Removed', value: data.itemsRemoved),
+                      (label: 'Assignments', value: data.assignmentsDone),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _fmtDay(DateTime d) =>
+      '${d.day}/${d.month}/${d.year}';
+}
+
+class _AnalyticsGroup extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Color color;
+  final List<({String label, int value})> stats;
+
+  const _AnalyticsGroup({
+    required this.title,
+    required this.icon,
+    required this.color,
+    required this.stats,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 6),
+            Text(
+              title,
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                color: color,
+              ),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final s in stats) _StatChip(label: s.label, value: s.value, color: color),
+          ]),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatChip extends StatelessWidget {
+  final String label;
+  final int value;
+  final Color color;
+
+  const _StatChip({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Text(
+          '$value',
+          style: TextStyle(
+              fontWeight: FontWeight.w700, color: color, fontSize: 13),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          label,
+          style: TextStyle(fontSize: 11, color: color.withValues(alpha: 0.75)),
+        ),
+      ]),
+    );
+  }
+}
 class _NavCard extends StatelessWidget {
   final IconData icon;
   final String label;
