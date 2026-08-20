@@ -119,9 +119,11 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
           },
         );
 
-        // 3. Update record with file URLs
+        // 3. Update record with file URLs (no audit log — this is part of
+        //    creation, not a user-initiated update)
         setState(() => _uploadStatus = 'Saving final data...');
-        await ref.read(studentRepositoryProvider).update(docId, _student);
+        await ref.read(studentRepositoryProvider).update(docId, _student,
+            writeLog: false);
       }
       if (mounted) {
         setState(() => _isSubmitting = false);

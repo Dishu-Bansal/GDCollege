@@ -7,7 +7,7 @@ abstract class StaffRepository {
   Stream<List<StaffModel>> watchNames();
 
   Future<String> create(StaffModel staff);
-  Future<void> update(String id, StaffModel staff);
+  Future<void> update(String id, StaffModel staff, {bool writeLog = true});
   Future<void> delete(String id);
 
   Future<void> uploadFiles(

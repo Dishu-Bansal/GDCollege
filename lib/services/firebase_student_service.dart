@@ -91,10 +91,14 @@ class FirebaseStudentRepository implements StudentRepository {
   // ── UPDATE ────────────────────────────────────────────────────────────────
 
   @override
-  Future<void> update(String docId, StudentModel student) async {
-    // Fetch old data before writing, for audit comparison
-    final oldSnap = await _firestore.collection(_collection).doc(docId).get();
-    final oldData = (oldSnap.data() as Map<String, dynamic>?) ?? {};
+  Future<void> update(String docId, StudentModel student,
+      {bool writeLog = true}) async {
+    // Fetch old data before writing, for audit comparison (only when logging)
+    Map<String, dynamic>? oldData;
+    if (writeLog) {
+      final oldSnap = await _firestore.collection(_collection).doc(docId).get();
+      oldData = (oldSnap.data() as Map<String, dynamic>?) ?? {};
+    }
 
     student.updatedAt = DateTime.now();
     student.documentVersion += 1;
@@ -102,8 +106,10 @@ class FirebaseStudentRepository implements StudentRepository {
     data['_searchIndex'] = _buildSearchIndex(student);
     await _firestore.collection(_collection).doc(docId).update(data);
 
-    final detail = _buildUpdateDetail(oldData, data);
-    await _writeLog(docId, student.name, 'update', detail);
+    if (writeLog) {
+      final detail = _buildUpdateDetail(oldData!, data);
+      await _writeLog(docId, student.name, 'update', detail);
+    }
   }
 
   static const _fieldLabels = {

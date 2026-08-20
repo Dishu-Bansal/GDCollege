@@ -45,18 +45,24 @@ class FirebaseStaffRepository implements StaffRepository {
   // ─── UPDATE ──────────────────────────────────────────────────────────────
 
   @override
-  Future<void> update(String docId, StaffModel staff) async {
-    // Fetch old data before writing, for audit comparison
-    final oldSnap = await _firestore.collection(_collection).doc(docId).get();
-    final oldData = (oldSnap.data() as Map<String, dynamic>?) ?? {};
+  Future<void> update(String docId, StaffModel staff,
+      {bool writeLog = true}) async {
+    // Fetch old data before writing, for audit comparison (only when logging)
+    Map<String, dynamic>? oldData;
+    if (writeLog) {
+      final oldSnap = await _firestore.collection(_collection).doc(docId).get();
+      oldData = (oldSnap.data() as Map<String, dynamic>?) ?? {};
+    }
 
     staff.updatedAt = DateTime.now();
     staff.documentVersion += 1;
     final data = staff.toFirestore();
     await _firestore.collection(_collection).doc(docId).update(data);
 
-    final detail = _buildUpdateDetail(oldData, data);
-    await _writeLog(docId, staff.name, 'update', detail);
+    if (writeLog) {
+      final detail = _buildUpdateDetail(oldData!, data);
+      await _writeLog(docId, staff.name, 'update', detail);
+    }
   }
 
   static const _fieldLabels = {
