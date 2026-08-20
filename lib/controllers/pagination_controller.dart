@@ -6,6 +6,8 @@ import '../student_management/models/student_model.dart';
 enum PageMode { browse, search }
 
 class PaginationController extends ChangeNotifier {
+  static final DateTime _oldest = DateTime.fromMillisecondsSinceEpoch(0);
+
   final StudentRepository _service;
 
   PaginationController(this._service);
@@ -132,6 +134,10 @@ class PaginationController extends ChangeNotifier {
         course: course,
         year: year,
       );
+      // Keep the default view (Date Added, newest first) consistent across
+      // pages — Firestore returns search results without a guaranteed order.
+      _allSearchResults.sort((a, b) =>
+          (b.createdAt ?? _oldest).compareTo(a.createdAt ?? _oldest));
       students = _pageSlice(1);
     } catch (e) {
       error = e.toString();

@@ -35,9 +35,9 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
 
   bool _filtersVisible = false;
 
-  // Sorting
-  int _sortColumnIndex = 0;
-  bool _sortAscending = true;
+  // Sorting — defaults to Date Added, newest first
+  int _sortColumnIndex = 0; // 0 = Date Added
+  bool _sortAscending = false;
 
   Timer? _debounce;
 
@@ -83,15 +83,20 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     });
   }
 
+  static final DateTime _oldest = DateTime.fromMillisecondsSinceEpoch(0);
+
   List<StudentModel> get _sorted {
     final list = List<StudentModel>.from(_pagination.students);
     list.sort((a, b) {
       int cmp;
       switch (_sortColumnIndex) {
-        case 0: cmp = a.studentId.compareTo(b.studentId); break;
-        case 1: cmp = a.name.compareTo(b.name); break;
-        case 2: cmp = (a.yearOfAdmission ?? 0).compareTo(b.yearOfAdmission ?? 0); break;
-        case 3: cmp = a.nameOfCourse.compareTo(b.nameOfCourse); break;
+        case 0:
+          cmp = (a.createdAt ?? _oldest).compareTo(b.createdAt ?? _oldest);
+          break;
+        case 1: cmp = a.studentId.compareTo(b.studentId); break;
+        case 2: cmp = a.name.compareTo(b.name); break;
+        case 3: cmp = (a.yearOfAdmission ?? 0).compareTo(b.yearOfAdmission ?? 0); break;
+        case 4: cmp = a.nameOfCourse.compareTo(b.nameOfCourse); break;
         default: cmp = 0;
       }
       return _sortAscending ? cmp : -cmp;
@@ -117,30 +122,6 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
           s.yearOfAdmission?.toString() == _selectedYear;
       return idMatch && nameMatch && courseMatch && yearMatch;
     }).toList();
-  }
-
-  List<StudentModel> _applySort(List<StudentModel> list) {
-    list.sort((a, b) {
-      int cmp;
-      switch (_sortColumnIndex) {
-        case 0:
-          cmp = int.tryParse(a.studentId)!.compareTo(int.tryParse(b.studentId)!);
-          break;
-        case 1:
-          cmp = a.name.compareTo(b.name);
-          break;
-        case 2:
-          cmp = (a.yearOfAdmission ?? 0).compareTo(b.yearOfAdmission ?? 0);
-          break;
-        case 3:
-          cmp = a.nameOfCourse.compareTo(b.nameOfCourse);
-          break;
-        default:
-          cmp = 0;
-      }
-      return _sortAscending ? cmp : -cmp;
-    });
-    return list;
   }
 
   void _clearFilters() {
@@ -1033,14 +1014,16 @@ class _TableHeader extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
           children: [
-        _HeaderCell('Student ID', 3, 0, sortColumnIndex,
+        _HeaderCell('Date Added', 3, 0, sortColumnIndex,
+            sortAscending, onSort),
+        _HeaderCell('Student ID', 3, 1, sortColumnIndex,
             sortAscending, onSort),
         _HeaderCell(
-            'Name', 4, 1, sortColumnIndex, sortAscending, onSort),
-        _HeaderCell('Adm. Year', 2, 2, sortColumnIndex,
+            'Name', 4, 2, sortColumnIndex, sortAscending, onSort),
+        _HeaderCell('Adm. Year', 2, 3, sortColumnIndex,
             sortAscending, onSort),
         _HeaderCell(
-            'Course', 2, 3, sortColumnIndex, sortAscending, onSort),
+            'Course', 2, 4, sortColumnIndex, sortAscending, onSort),
         const Expanded(
           flex: 4,
           child: Text('Actions',
@@ -1115,6 +1098,14 @@ class _TableRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
           children: [
+        // Date Added
+        Expanded(
+          flex: 3,
+          child: Text(
+            student.createdAt == null ? '—' : _fmtDate(student.createdAt!),
+            style: const TextStyle(fontSize: 12, color: Colors.black87),
+          ),
+        ),
         // Student ID
         Expanded(
           flex: 3,
@@ -1292,6 +1283,8 @@ class _MobileList extends StatelessWidget {
 }
 
 // ── Small helpers ─────────────────────────────────────────────────────────────
+
+String _fmtDate(DateTime d) => '${d.day}/${d.month}/${d.year}';
 
 class _CourseBadge extends StatelessWidget {
   final String course;
