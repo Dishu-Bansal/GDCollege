@@ -2908,6 +2908,9 @@ class _InspectionExecutionScreenState
   final _noteCtrl = TextEditingController();
   bool _saving = false;
 
+  /// Photo URLs of the catalog items on the checklist (catalog id → url).
+  final Map<String, String> _catalogPhotos = {};
+
   @override
   void initState() {
     super.initState();
@@ -2924,6 +2927,24 @@ class _InspectionExecutionScreenState
         .map((e) => TextEditingController(text: '${e.actualQty}'))
         .toList();
     _noteCtrl.text = widget.inspection.overallNote;
+    _loadCatalogPhotos();
+  }
+
+  Future<void> _loadCatalogPhotos() async {
+    try {
+      final summaries = await widget.service.getCatalogItemSummaries();
+      if (!mounted) return;
+      setState(() {
+        _catalogPhotos
+          ..clear()
+          ..addEntries(summaries
+              .where((c) =>
+              c.id != null && (c.photoUrl?.isNotEmpty ?? false))
+              .map((c) => MapEntry(c.id!, c.photoUrl!)));
+      });
+    } catch (_) {
+      // Photos are optional; keep the add-photo button if they fail to load.
+    }
   }
 
   @override
@@ -3215,6 +3236,18 @@ class _InspectionExecutionScreenState
                     CrossAxisAlignment.start,
                     children: [
                       Row(children: [
+                        // Feature: Item photos - photo slot on the left for
+                        // every checklist item (add-photo when missing).
+                        ItemPhotoButton(
+                          service: widget.service,
+                          catalogItemId: item.itemId,
+                          photoUrl: _catalogPhotos[item.itemId],
+                          size: 38,
+                          borderRadius: 6,
+                          onPhotoUploaded: (url) =>
+                              setState(() => _catalogPhotos[item.itemId] = url),
+                        ),
+                        const SizedBox(width: 8),
                         Icon(
                           item.matched
                               ? Icons.check_circle
