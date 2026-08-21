@@ -405,8 +405,15 @@ class _BreakdownSheetState extends ConsumerState<_BreakdownSheet> {
                             child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Icon(Icons.add_circle_outline,
-                                      size: 16, color: Colors.green.shade700),
+                                  Icon(
+                                    log.type == 'decrease'
+                                        ? Icons.remove_circle_outline
+                                        : Icons.add_circle_outline,
+                                    size: 16,
+                                    color: log.type == 'decrease'
+                                        ? Colors.red.shade600
+                                        : Colors.green.shade700,
+                                  ),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(_logLine(log),
@@ -438,9 +445,11 @@ class _BreakdownSheetState extends ConsumerState<_BreakdownSheet> {
 
   String _logLine(ItemPriceLog log) {
     final date = '${log.timestamp.day}/${log.timestamp.month}/${log.timestamp.year}';
+    final sign = log.type == 'decrease' ? '-' : '+';
     final parts = [
       date,
-      '+${log.quantity} @ ${_money(log.price)}',
+      '$sign${log.quantity}',
+      if (log.price > 0) '@ ${_money(log.price)}',
       if (log.store.isNotEmpty) log.store,
       if (log.bill.isNotEmpty) 'Bill ${log.bill}',
     ];

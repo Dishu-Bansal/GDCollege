@@ -86,8 +86,15 @@ class FirebaseBillRepository implements BillRepository {
       bill.photoUrl = null;
     }
 
+    // Snapshot the old bill so the stock sync can diff against it.
+    final oldSnap = await _bills.doc(id).get();
+    final previousItems = oldSnap.exists
+        ? BillModel.fromFirestore(id, oldSnap.data()!).items
+        : const <BillItem>[];
+
     await _bills.doc(id).set(bill.toFirestore());
-    await _syncBillItemsToPending(bill, updateMode: true);
+    await _syncBillItemsToPending(bill,
+        updateMode: true, previousItems: previousItems);
     await _writeLog(id, bill.billNumber, 'update',
         'Bill updated. ${bill.items.length} item(s), total '
             '₹${bill.totalAmount.toStringAsFixed(2)}.');
@@ -216,7 +223,9 @@ class FirebaseBillRepository implements BillRepository {
   /// Pending. Only items that carry this bill's [sourceBillId] are ever
   /// decremented, so edits never reduce stock contributed by other bills.
   Future<void> _syncBillItemsToPending(
-      BillModel bill, {required bool updateMode}) async {
+      BillModel bill,
+      {required bool updateMode,
+      List<BillItem> previousItems = const []}) async {
     final room = await _ensurePendingRoom();
     final bid = room.buildingId, fid = room.floorId, rid = room.roomId;
 
@@ -246,14 +255,29 @@ class FirebaseBillRepository implements BillRepository {
       }
     }
 
+    // Same grouping for the previous version of the bill, so edits can tell
+    // brand-new line items apart from ones that existed before (the latter
+    // must not be resurrected if the user deleted their stock from the room).
+    final oldByKey = <String, int>{};
+    for (final item in previousItems) {
+      if (item.quantity <= 0) continue;
+      final key = item.catalogItemId ?? 'name:${item.name.trim().toLowerCase()}';
+      oldByKey[key] = (oldByKey[key] ?? 0) + item.quantity;
+    }
+
     for (final entry in grouped.entries) {
       final item = entry.value;
       final catalogId = item.catalogItemId ??
           catalogByLowerName[item.name.trim().toLowerCase()];
       final roomKey = catalogId ?? entry.key;
       final roomItem = roomByKey[roomKey];
+      final inPreviousBill = (oldByKey[entry.key] ?? 0) > 0;
 
-      if (roomItem == null) {
+      // If the room no longer holds this item (deleted or zeroed out), only
+      // add it back when it is brand-new to this bill. Items that were part
+      // of the bill before stay gone: the user deliberately removed them.
+      if (roomItem == null || roomItem.currentQuantity <= 0) {
+        if (updateMode && inPreviousBill) continue;
         await _stock.addItem(
           bid,
           fid,

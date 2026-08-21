@@ -193,9 +193,14 @@ class ItemLocationStock {
 class ItemPriceLog {
   final DateTime timestamp;
   final double price;
+
+  /// Magnitude of the quantity change; see [type] for the direction.
   final int quantity;
   final String store;
   final String bill;
+
+  /// 'increase' or 'decrease'.
+  final String type;
 
   ItemPriceLog({
     required this.timestamp,
@@ -203,6 +208,7 @@ class ItemPriceLog {
     required this.quantity,
     required this.store,
     required this.bill,
+    this.type = 'increase',
   });
 }
 
