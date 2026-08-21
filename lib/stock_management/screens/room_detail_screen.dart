@@ -324,7 +324,17 @@ class _ItemCardState extends State<_ItemCard> {
         catalogItemId: item.id!,
       );
       if (url != null) {
+        final oldUrl = _catalog?.photoUrl ?? '';
         await service.updateCatalogItemPhoto(item.id!, url);
+        await service.logItemPhotoChange(
+          catalogItemId: item.id!,
+          itemName: item.name,
+          oldPhotoUrl: oldUrl,
+          newPhotoUrl: url,
+          building: building,
+          floor: floor,
+          room: room,
+        );
         if (mounted) setState(() => _catalog?.photoUrl = url);
       }
     } finally {
@@ -363,6 +373,12 @@ class _ItemCardState extends State<_ItemCard> {
                 photoUrl: _catalog?.photoUrl,
                 size: 42,
                 borderRadius: 6,
+                itemName: item.name,
+                logRoom: (
+                  building: building,
+                  floor: floor,
+                  room: room,
+                ),
                 onPhotoUploaded: (url) =>
                     setState(() => _catalog?.photoUrl = url),
               ),
@@ -466,7 +482,17 @@ class _ItemCardState extends State<_ItemCard> {
                   } else if (v == 'photo') {
                     _pickAndUploadPhoto();
                   } else if (v == 'removePhoto') {
+                    final oldUrl = _catalog?.photoUrl ?? '';
                     await service.updateCatalogItemPhoto(item.id!, '');
+                    await service.logItemPhotoChange(
+                      catalogItemId: item.id!,
+                      itemName: item.name,
+                      oldPhotoUrl: oldUrl,
+                      newPhotoUrl: '',
+                      building: building,
+                      floor: floor,
+                      room: room,
+                    );
                     if (mounted) setState(() => _catalog?.photoUrl = null);
                   }
                 },
@@ -2477,13 +2503,16 @@ class _LogTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isPhoto = log.type == 'photo';
     final isInspection = log.type == 'inspection';
     final isIncrease = log.type == 'increase';
-    final color = isInspection
-        ? const Color(0xFF1A3C6E)
-        : isIncrease
-            ? Colors.green.shade700
-            : Colors.red.shade600;
+    final color = isPhoto
+        ? Colors.indigo.shade600
+        : isInspection
+            ? const Color(0xFF1A3C6E)
+            : isIncrease
+                ? Colors.green.shade700
+                : Colors.red.shade600;
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -2501,11 +2530,13 @@ class _LogTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(
-              isInspection
-                  ? Icons.fact_check_outlined
-                  : isIncrease
-                      ? Icons.arrow_upward
-                      : Icons.arrow_downward,
+              isPhoto
+                  ? Icons.photo_camera_outlined
+                  : isInspection
+                      ? Icons.fact_check_outlined
+                      : isIncrease
+                          ? Icons.arrow_upward
+                          : Icons.arrow_downward,
               color: color,
               size: 18),
         ),
@@ -2518,7 +2549,17 @@ class _LogTile extends StatelessWidget {
                     style: const TextStyle(
                         fontWeight: FontWeight.w600, fontSize: 13)),
                 const SizedBox(height: 3),
-                if (isInspection)
+                if (isPhoto)
+                  Row(children: [
+                    LogPhotoThumb(url: log.oldPhotoUrl ?? ''),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6),
+                      child: Icon(Icons.arrow_forward,
+                          size: 14, color: Colors.grey),
+                    ),
+                    LogPhotoThumb(url: log.newPhotoUrl ?? ''),
+                  ])
+                else if (isInspection)
                   Text(
                     log.note,
                     style: TextStyle(
@@ -2568,7 +2609,7 @@ class _LogTile extends StatelessWidget {
                 ]),
               ]),
         ),
-        if (!isInspection) ...[
+        if (!isInspection && !isPhoto) ...[
           const SizedBox(width: 10),
           Container(
             width: 52,
@@ -3244,6 +3285,7 @@ class _InspectionExecutionScreenState
                           photoUrl: _catalogPhotos[item.itemId],
                           size: 38,
                           borderRadius: 6,
+                          itemName: item.itemName,
                           onPhotoUploaded: (url) =>
                               setState(() => _catalogPhotos[item.itemId] = url),
                         ),

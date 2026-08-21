@@ -397,13 +397,16 @@ class _GlobalLogTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isPhoto = log.type == 'photo';
     final isInspection = log.type == 'inspection';
     final isIncrease = log.type == 'increase';
-    final color = isInspection
-        ? const Color(0xFF1A3C6E)
-        : isIncrease
-            ? Colors.green.shade700
-            : Colors.red.shade600;
+    final color = isPhoto
+        ? Colors.indigo.shade600
+        : isInspection
+            ? const Color(0xFF1A3C6E)
+            : isIncrease
+                ? Colors.green.shade700
+                : Colors.red.shade600;
 
     final location = <String>[];
     if (log.buildingName.isNotEmpty) location.add(log.buildingName);
@@ -427,11 +430,13 @@ class _GlobalLogTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(
-              isInspection
-                  ? Icons.fact_check_outlined
-                  : isIncrease
-                      ? Icons.arrow_upward
-                      : Icons.arrow_downward,
+              isPhoto
+                  ? Icons.photo_camera_outlined
+                  : isInspection
+                      ? Icons.fact_check_outlined
+                      : isIncrease
+                          ? Icons.arrow_upward
+                          : Icons.arrow_downward,
               color: color,
               size: 18),
         ),
@@ -448,7 +453,17 @@ class _GlobalLogTile extends StatelessWidget {
                   ),
                 ]),
                 const SizedBox(height: 3),
-                if (isInspection)
+                if (isPhoto)
+                  Row(children: [
+                    LogPhotoThumb(url: log.oldPhotoUrl ?? ''),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6),
+                      child: Icon(Icons.arrow_forward,
+                          size: 14, color: Colors.grey),
+                    ),
+                    LogPhotoThumb(url: log.newPhotoUrl ?? ''),
+                  ])
+                else if (isInspection)
                   Text(
                     log.note,
                     style: TextStyle(
@@ -511,7 +526,7 @@ class _GlobalLogTile extends StatelessWidget {
                 ]),
               ]),
         ),
-        if (!isInspection) ...[
+        if (!isInspection && !isPhoto) ...[
           const SizedBox(width: 10),
           Container(
             width: 52,

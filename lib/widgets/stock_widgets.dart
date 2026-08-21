@@ -327,6 +327,16 @@ class ItemPhotoButton extends StatefulWidget {
   final double borderRadius;
   final ValueChanged<String>? onPhotoUploaded;
 
+  /// Whether tapping an existing photo opens the picker to change it.
+  final bool changePhotoOnTap;
+
+  /// Item name used in the photo-change log entry.
+  final String itemName;
+
+  /// When set, the photo-change log is written to this room; otherwise it is
+  /// written to every room that stocks the item (catalog-level change).
+  final ({BuildingModel building, FloorModel floor, RoomModel room})? logRoom;
+
   const ItemPhotoButton({
     super.key,
     required this.service,
@@ -335,6 +345,9 @@ class ItemPhotoButton extends StatefulWidget {
     this.size = 48,
     this.borderRadius = 8,
     this.onPhotoUploaded,
+    this.changePhotoOnTap = true,
+    this.itemName = '',
+    this.logRoom,
   });
 
   @override
@@ -362,7 +375,17 @@ class _ItemPhotoButtonState extends State<ItemPhotoButton> {
         catalogItemId: widget.catalogItemId,
       );
       if (url != null) {
+        final oldUrl = widget.photoUrl ?? '';
         await widget.service.updateCatalogItemPhoto(widget.catalogItemId, url);
+        await widget.service.logItemPhotoChange(
+          catalogItemId: widget.catalogItemId,
+          itemName: widget.itemName,
+          oldPhotoUrl: oldUrl,
+          newPhotoUrl: url,
+          building: widget.logRoom?.building,
+          floor: widget.logRoom?.floor,
+          room: widget.logRoom?.room,
+        );
         widget.onPhotoUploaded?.call(url);
       }
     } catch (e) {
@@ -416,13 +439,61 @@ class _ItemPhotoButtonState extends State<ItemPhotoButton> {
         width: widget.size,
         height: widget.size,
         child: _hasPhoto
-            ? Image.network(
-                widget.photoUrl!,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _addButton(),
-              )
+            ? (widget.changePhotoOnTap
+                ? GestureDetector(
+                    onTap: _uploading ? null : _pickAndUpload,
+                    child: Image.network(
+                      widget.photoUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _addButton(),
+                    ),
+                  )
+                : Image.network(
+                    widget.photoUrl!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _addButton(),
+                  ))
             : _addButton(),
       ),
     );
   }
+}
+
+/// Small photo thumbnail used by log entries of type 'photo' to show the old
+/// and the new item photo side by side.
+class LogPhotoThumb extends StatelessWidget {
+  final String url;
+  final double size;
+
+  const LogPhotoThumb({super.key, required this.url, this.size = 36});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        width: size,
+        height: size,
+        color: Colors.grey.shade100,
+        alignment: Alignment.center,
+        child: url.isEmpty
+            ? _placeholder()
+            : Image.network(
+                url,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _placeholder(),
+              ),
+      ),
+    );
+  }
+
+  Widget _placeholder() => Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.broken_image_outlined,
+              size: size * 0.4, color: Colors.grey.shade400),
+          Text('No photo',
+              style: TextStyle(fontSize: 7, color: Colors.grey.shade500)),
+        ],
+      );
 }

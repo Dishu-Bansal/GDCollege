@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 /// Units selectable for bill line items.
 const List<String> stockUnits = [
   'Pieces',
@@ -21,12 +23,20 @@ class BillItem {
   String unit;
   String? catalogItemId;
 
+  /// Transient item photo picked in the bill form for free-text items. Not
+  /// persisted on the bill; when the stock sync creates/matches a catalog
+  /// entry for the item, the photo is uploaded and its URL saved on it.
+  Uint8List? photoBytes;
+  String? photoName;
+
   BillItem({
     this.name = '',
     this.quantity = 0,
     this.pricePerUnit = 0,
     this.unit = 'Pieces',
     this.catalogItemId,
+    this.photoBytes,
+    this.photoName,
   });
 
   double get total => pricePerUnit * quantity;

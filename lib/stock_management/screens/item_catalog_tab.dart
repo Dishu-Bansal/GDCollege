@@ -223,6 +223,7 @@ class _CatalogItemCard extends ConsumerWidget {
           catalogItemId: item.id ?? '',
           photoUrl: item.photoUrl,
           size: 48,
+          itemName: item.name,
           onPhotoUploaded: onPhotoUploaded,
         ),
         const SizedBox(width: 12),

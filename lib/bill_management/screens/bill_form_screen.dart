@@ -23,6 +23,11 @@ class _ItemEditData {
   CatalogItem? selected;
   String name;
 
+  /// Photo picked in the form for a free-text item (not a catalog item). It is
+  /// uploaded when the bill is saved and the new catalog entry is created.
+  Uint8List? photoBytes;
+  String? photoName;
+
   _ItemEditData({this.name = ''})
     : qtyCtrl = TextEditingController(text: '1'),
       priceCtrl = TextEditingController(),
@@ -210,6 +215,8 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
           pricePerUnit: price,
           unit: d.unit,
           catalogItemId: d.selected?.id,
+          photoBytes: d.selected != null ? null : d.photoBytes,
+          photoName: d.selected != null ? null : d.photoName,
         ),
       );
     }
@@ -668,6 +675,20 @@ class _BillItemRow extends ConsumerStatefulWidget {
 }
 
 class _BillItemRowState extends ConsumerState<_BillItemRow> {
+  Future<void> _pickFreeTextPhoto() async {
+    final picker = ImagePicker();
+    final file = await picker.pickImage(
+        source: ImageSource.gallery, imageQuality: 80);
+    if (file == null || !mounted) return;
+    final bytes = await file.readAsBytes();
+    if (!mounted) return;
+    setState(() {
+      widget.data.photoBytes = bytes;
+      widget.data.photoName = file.name;
+    });
+    widget.onChanged();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -727,9 +748,52 @@ class _BillItemRowState extends ConsumerState<_BillItemRow> {
                     catalogItemId: widget.data.selected!.id ?? '',
                     photoUrl: widget.data.selected!.photoUrl,
                     size: 48,
+                    itemName: widget.data.selected!.name,
                     onPhotoUploaded: (url) => setState(
                         () => widget.data.selected?.photoUrl = url),
                   ),
+                ),
+                const SizedBox(width: 10),
+                // Free-text item: photo picked here is uploaded when the bill
+                // is saved and the new catalog entry is created.
+              ] else if (widget.data.photoBytes != null) ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Stack(children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.memory(
+                        widget.data.photoBytes!,
+                        width: 48,
+                        height: 48,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    Positioned(
+                      right: -8,
+                      top: -8,
+                      child: GestureDetector(
+                        onTap: () => setState(() {
+                          widget.data.photoBytes = null;
+                          widget.data.photoName = null;
+                        }),
+                        child: Container(
+                          decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white),
+                          child: const Icon(Icons.cancel,
+                              size: 18, color: Colors.red),
+                        ),
+                      ),
+                    ),
+                  ]),
+                ),
+                const SizedBox(width: 10),
+              ] else ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: _FreeTextAddPhotoButton(
+                      onTap: _pickFreeTextPhoto),
                 ),
                 const SizedBox(width: 10),
               ],
@@ -846,6 +910,43 @@ class _BillItemRowState extends ConsumerState<_BillItemRow> {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Photo pick button shown next to free-text (non-catalog) bill items.
+class _FreeTextAddPhotoButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _FreeTextAddPhotoButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFF1A3C6E).withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+                color: const Color(0xFF1A3C6E).withValues(alpha: 0.3)),
+          ),
+          child: const Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.add_a_photo_outlined,
+                  size: 18, color: Color(0xFF1A3C6E)),
+              Text('Add Photo',
+                  style: TextStyle(
+                      fontSize: 7, color: Color(0xFF1A3C6E))),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -162,6 +162,25 @@ class FirebaseBillRepository implements BillRepository {
     return ext.length <= 5 ? ext : '.jpg';
   }
 
+  /// Saves the photo a user picked for a free-text bill item onto its catalog
+  /// entry. No-op when the item has no photo or no catalog entry yet.
+  Future<void> _attachItemPhoto(String? catalogId, BillItem item) async {
+    if (catalogId == null || catalogId.isEmpty) return;
+    final bytes = item.photoBytes;
+    final name = item.photoName;
+    if (bytes == null || name == null) return;
+    try {
+      final ref = _storage.ref().child(
+          'catalog/$catalogId/bill_${DateTime.now().millisecondsSinceEpoch}'
+          '${_ext(name)}');
+      await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+      final url = await ref.getDownloadURL();
+      await _stock.updateCatalogItemPhoto(catalogId, url);
+    } catch (e) {
+      print('Item photo attach failed: $e');
+    }
+  }
+
   // ── Logs ────────────────────────────────────────────────────────────────────
 
   Future<void> _writeLog(
@@ -304,7 +323,7 @@ class FirebaseBillRepository implements BillRepository {
       // of the bill before stay gone: the user deliberately removed them.
       if (roomItem == null || roomItem.currentQuantity <= 0) {
         if (updateMode && inPreviousBill) continue;
-        await _stock.addItem(
+        final addedId = await _stock.addItem(
           bid,
           fid,
           rid,
@@ -322,6 +341,9 @@ class FirebaseBillRepository implements BillRepository {
           floorName: 'Pending',
           roomName: 'Pending',
         );
+        // Free-text item: attach the form-picked photo to its catalog entry
+        // (created here when the name is not in the catalog yet).
+        await _attachItemPhoto(catalogId ?? addedId, item);
         continue;
       }
 
@@ -345,6 +367,7 @@ class FirebaseBillRepository implements BillRepository {
         store: bill.storeName,
         bill: bill.billNumber,
       );
+      await _attachItemPhoto(catalogId, item);
     }
 
     if (updateMode) {
