@@ -183,20 +183,11 @@ class _RoomCard extends StatelessWidget {
                               fontSize: 11,
                               color: Colors.grey.shade400)),
                   ]),
-                  // Feature: Inspection Tracking - show due label
-                  if (due)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 3),
-                      child: Text(
-                        room.lastInspectedAt == null
-                            ? 'Never inspected'
-                            : 'Inspection due (>14 days)',
-                        style: const TextStyle(
-                            fontSize: 11,
-                            color: Colors.red,
-                            fontWeight: FontWeight.w500),
-                      ),
-                    ),
+                  // Feature: Inspection Tracking - show last inspection date
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: InspectionStatusLine(room: room),
+                  ),
                 ],
               ),
             ),

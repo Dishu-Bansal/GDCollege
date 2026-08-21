@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../stock_management/models/stock_models.dart';
 
 // ── Quick name dialog (add / rename) ─────────────────────────────────────────
 
@@ -195,6 +196,45 @@ class InspectionDueBadge extends StatelessWidget {
       ),
       child: const Icon(Icons.warning_amber_rounded,
           color: Colors.white, size: 11),
+    );
+  }
+}
+
+// ── Inspection status line ─────────────────────────────────────────────────────
+// Feature: Inspection Tracking - shows a room's last inspection date. The text
+// is normal when the room was inspected within 14 days and red when the
+// inspection is due or the room was never inspected.
+
+class InspectionStatusLine extends StatelessWidget {
+  final RoomModel room;
+  final bool includeRoomName;
+  final String? floorName;
+
+  const InspectionStatusLine({
+    super.key,
+    required this.room,
+    this.includeRoomName = false,
+    this.floorName,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final d = room.lastInspectedAt;
+    final dateText = d == null
+        ? 'Never inspected'
+        : 'Last inspected ${d.day}/${d.month}/${d.year}';
+    final parts = [
+      if (floorName != null && floorName!.isNotEmpty) floorName!,
+      if (includeRoomName) room.name,
+      dateText,
+    ];
+    return Text(
+      parts.join('  ·  '),
+      style: TextStyle(
+        fontSize: 11,
+        color: room.isInspectionDue ? Colors.red : Colors.grey.shade600,
+        fontWeight: FontWeight.w500,
+      ),
     );
   }
 }

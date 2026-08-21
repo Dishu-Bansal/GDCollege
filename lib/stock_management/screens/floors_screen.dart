@@ -102,12 +102,13 @@ class _FloorCard extends StatelessWidget {
         stream: service.watchRooms(building.id!, floor.id!),
         builder: (context, snap) {
           final rooms = snap.data ?? [];
-          final due = rooms.any((r) => r.isInspectionDue);
+          final dueRooms =
+              rooms.where((r) => r.isInspectionDue).toList();
           return _FloorCardTile(
             floor: floor,
             building: building,
             service: service,
-            due: due,
+            dueRooms: dueRooms,
           );
         },
       ),
@@ -119,13 +120,13 @@ class _FloorCardTile extends StatelessWidget {
   final FloorModel floor;
   final BuildingModel building;
   final StockRepository service;
-  final bool due;
+  final List<RoomModel> dueRooms;
 
   const _FloorCardTile({
     required this.floor,
     required this.building,
     required this.service,
-    required this.due,
+    required this.dueRooms,
   });
 
   @override
@@ -155,7 +156,7 @@ class _FloorCardTile extends StatelessWidget {
                 child: const Icon(Icons.layers_outlined,
                     color: Colors.teal, size: 26),
               ),
-              if (due)
+              if (dueRooms.isNotEmpty)
                 const Positioned(
                   top: -4,
                   right: -4,
@@ -171,12 +172,25 @@ class _FloorCardTile extends StatelessWidget {
                 Text(floor.name,
                     style: const TextStyle(
                         fontWeight: FontWeight.w700, fontSize: 15)),
-                if (due)
-                  const Text(
-                    'Inspection due for some rooms',
-                    style: TextStyle(
-                        fontSize: 11, color: Colors.red),
+                // Feature: Inspection Tracking - list rooms due or never
+                // inspected with their last inspection date.
+                if (dueRooms.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Inspection due for ${dueRooms.length} '
+                    'room${dueRooms.length == 1 ? '' : 's'}',
+                    style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.red,
+                        fontWeight: FontWeight.w500),
                   ),
+                  for (final r in dueRooms)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: InspectionStatusLine(
+                          room: r, includeRoomName: true),
+                    ),
+                ],
               ],
             ),
           ),
