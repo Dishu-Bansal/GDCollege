@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../providers.dart';
 import '../../widgets/drawer.dart';
 import '../models/bill_models.dart';
@@ -48,15 +49,17 @@ class _BillManagementScreenState extends ConsumerState<BillManagementScreen>
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: const Row(children: [
-          Icon(Icons.payments, color: Color(0xFF2E7D32), size: 24),
-          SizedBox(width: 8),
-          Text('Mark as Paid'),
-        ]),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Row(
+          children: [
+            Icon(Icons.payments, color: Color(0xFF2E7D32), size: 24),
+            SizedBox(width: 8),
+            Text('Mark as Paid'),
+          ],
+        ),
         content: Text(
-            'Confirm that bill #${bill.billNumber} has been paid/reimbursed?'),
+          'Confirm that bill #${bill.billNumber} has been paid/reimbursed?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -65,7 +68,8 @@ class _BillManagementScreenState extends ConsumerState<BillManagementScreen>
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2E7D32)),
+              backgroundColor: const Color(0xFF2E7D32),
+            ),
             child: const Text('Mark as Paid'),
           ),
         ],
@@ -97,15 +101,20 @@ class _BillManagementScreenState extends ConsumerState<BillManagementScreen>
       backgroundColor: const Color(0xFFF4F6FA),
       drawer: getSideDrawer(context),
       appBar: AppBar(
-        title: const Text('Bill Management',
-            style: TextStyle(fontWeight: FontWeight.w700)),
+        title: const Text(
+          'Bill Management',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
         bottom: TabBar(
           controller: _tabs,
           indicatorColor: Colors.amber,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white60,
           tabs: const [
-            Tab(icon: Icon(Icons.receipt_long_outlined, size: 18), text: 'Bills'),
+            Tab(
+              icon: Icon(Icons.receipt_long_outlined, size: 18),
+              text: 'Bills',
+            ),
             Tab(icon: Icon(Icons.history, size: 18), text: 'Logs'),
           ],
         ),
@@ -113,10 +122,7 @@ class _BillManagementScreenState extends ConsumerState<BillManagementScreen>
       body: TabBarView(
         controller: _tabs,
         children: [
-          _BillsTab(
-            onEdit: _openEdit,
-            onMarkPaid: _confirmMarkPaid,
-          ),
+          _BillsTab(onEdit: _openEdit, onMarkPaid: _confirmMarkPaid),
           const _BillLogsTab(),
         ],
       ),
@@ -125,9 +131,13 @@ class _BillManagementScreenState extends ConsumerState<BillManagementScreen>
               onPressed: _openAdd,
               backgroundColor: const Color(0xFF1A3C6E),
               icon: const Icon(Icons.receipt_long, color: Colors.white),
-              label: const Text('Add Bill',
-                  style: TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w600)),
+              label: const Text(
+                'Add Bill',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             )
           : null,
     );
@@ -150,13 +160,18 @@ class _BillsTab extends ConsumerWidget {
       error: (e, _) => Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.error_outline, size: 48, color: Colors.red),
-            const SizedBox(height: 12),
-            Text('Unable to load bills.\n$e',
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              const SizedBox(height: 12),
+              Text(
+                'Unable to load bills.\n$e',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey.shade600)),
-          ]),
+                style: TextStyle(color: Colors.grey.shade600),
+              ),
+            ],
+          ),
         ),
       ),
       data: (list) {
@@ -195,7 +210,10 @@ class _BillCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pending = bill.isPaymentPending;
+    final pending = !bill.paid;
+    final photoUrl = (bill.photoUrl != null && bill.photoUrl!.isNotEmpty)
+        ? bill.photoUrl
+        : null;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -209,96 +227,160 @@ class _BillCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(
-              child: Text('Bill #${bill.billNumber}',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 15)),
-            ),
-            Text(_money(bill.totalAmount),
-                style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15,
-                    color: Color(0xFF1A3C6E))),
-          ]),
-          const SizedBox(height: 8),
-          _infoRow(Icons.storefront_outlined, 'Store: ${bill.storeName}'),
-          _infoRow(Icons.event_outlined,
-              'Bill Date: ${_fmtDate(bill.billDate)}'),
-          if (bill.paid && bill.paymentDate != null)
-            _infoRow(
-                Icons.check_circle_outline,
-                'Paid on ${_fmtDate(bill.paymentDate!)}'
-                    '${bill.paymentBy.isNotEmpty ? ' by ${bill.paymentBy}' : ''}',
-                color: const Color(0xFF2E7D32)),
-          if (pending)
-            _infoRow(Icons.pending_actions,
-                'Payment Pending',
-                color: Colors.orange.shade800),
-          const SizedBox(height: 8),
-          if (bill.photoUrl != null && bill.photoUrl!.isNotEmpty) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                bill.photoUrl!,
-                height: 120,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => const SizedBox.shrink(),
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-          if (bill.items.isNotEmpty) ...[
-            for (final item in bill.items)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
                 child: Text(
-                  '${item.quantity} × ${item.name} '
-                  '(${item.unit}) — ${_money(item.total)}',
-                  style: TextStyle(
-                      fontSize: 13, color: Colors.grey.shade800),
+                  'Bill #${bill.billNumber}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
                 ),
               ),
-            const SizedBox(height: 6),
-            Text('Total: ${_money(bill.totalAmount)}',
-                style: const TextStyle(
-                    fontWeight: FontWeight.w600, fontSize: 13)),
-          ],
+              _statusChip(pending),
+            ],
+          ),
           const SizedBox(height: 10),
-          Row(children: [
-            if (pending)
-              OutlinedButton.icon(
-                onPressed: onMarkPaid,
-                icon: const Icon(Icons.payments_outlined, size: 16),
-                label: const Text('Mark as Paid'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF2E7D32),
-                  side: const BorderSide(color: Color(0xFF2E7D32)),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _infoRow(
+                      Icons.storefront_outlined,
+                      'Store: ${bill.storeName}',
+                    ),
+                    _infoRow(
+                      Icons.event_outlined,
+                      'Bill Date: ${_fmtDate(bill.billDate)}',
+                    ),
+                    if (bill.paid && bill.paymentDate != null)
+                      _infoRow(
+                        Icons.check_circle_outline,
+                        'Paid on ${_fmtDate(bill.paymentDate!)}'
+                        '${bill.paymentBy.isNotEmpty ? ' by ${bill.paymentBy}' : ''}',
+                        color: const Color(0xFF2E7D32),
+                      ),
+                    if (pending)
+                      _infoRow(
+                        Icons.pending_actions,
+                        'Payment pending',
+                        color: Colors.orange.shade800,
+                      ),
+                    const SizedBox(height: 6),
+                    if (bill.items.isNotEmpty)
+                      for (final item in bill.items)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Text(
+                            '${item.quantity} × ${item.name}'
+                            ' (${item.unit}) — ${_money(item.total)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade800,
+                            ),
+                          ),
+                        ),
+                  ],
                 ),
-              )
-            else
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF2E7D32).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text('PAID',
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.green.shade700)),
               ),
-            const Spacer(),
-            TextButton.icon(
-              onPressed: onEdit,
-              icon: const Icon(Icons.edit_outlined, size: 16),
-              label: const Text('Edit'),
-            ),
-          ]),
+              if (photoUrl != null) ...[
+                const SizedBox(width: 12),
+                _BillPhoto(photoUrl: photoUrl),
+              ],
+            ],
+          ),
+          const SizedBox(height: 12),
+          Divider(height: 1, color: Colors.grey.shade200),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Spacer(),
+              Text(
+                'TOTAL',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                _money(bill.totalAmount),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 17,
+                  color: Color(0xFF1A3C6E),
+                ),
+              ),
+              const SizedBox(width: 12),
+              OutlinedButton.icon(
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit_outlined, size: 16),
+                label: const Text('Edit'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF1A3C6E),
+                  side: const BorderSide(color: Color(0xFF1A3C6E)),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (pending)
+                FilledButton.icon(
+                  onPressed: onMarkPaid,
+                  icon: const Icon(Icons.payments_outlined, size: 16),
+                  label: const Text('Mark as Paid'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF2E7D32),
+                    foregroundColor: Colors.white,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+            ],
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _statusChip(bool pending) {
+    if (pending) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: Colors.orange.shade50,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.orange.shade200),
+        ),
+        child: Text(
+          'PENDING',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: Colors.orange.shade800,
+          ),
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2E7D32).withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        'PAID',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: Colors.green.shade700,
+        ),
       ),
     );
   }
@@ -306,16 +388,82 @@ class _BillCard extends StatelessWidget {
   Widget _infoRow(IconData icon, String text, {Color? color}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(children: [
-        Icon(icon, size: 15, color: color ?? Colors.grey.shade600),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(text,
+      child: Row(
+        children: [
+          Icon(icon, size: 15, color: color ?? Colors.grey.shade600),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              text,
               style: TextStyle(
-                  fontSize: 13,
-                  color: color ?? Colors.grey.shade800)),
-        ),
-      ]),
+                fontSize: 13,
+                color: color ?? Colors.grey.shade800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BillPhoto extends StatelessWidget {
+  final String photoUrl;
+  const _BillPhoto({required this.photoUrl});
+
+  Future<void> _open(BuildContext context) async {
+    final uri = Uri.parse(photoUrl);
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open the photo.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => _open(context),
+      borderRadius: BorderRadius.circular(10),
+      child: Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: SizedBox(
+              width: 104,
+              height: 104,
+              child: Image.network(
+                photoUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => Container(
+                  color: Colors.grey.shade100,
+                  child: Icon(
+                    Icons.image_not_supported_outlined,
+                    color: Colors.grey.shade400,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            right: 4,
+            bottom: 4,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Icon(
+                Icons.open_in_new,
+                size: 13,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -331,9 +479,11 @@ class _BillLogsTab extends ConsumerWidget {
     return logs.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(
-        child: Text('Unable to load logs.\n$e',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey.shade600)),
+        child: Text(
+          'Unable to load logs.\n$e',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.grey.shade600),
+        ),
       ),
       data: (list) {
         if (list.isEmpty) {
@@ -379,60 +529,74 @@ class _BillLogTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: Colors.grey.shade200),
       ),
-      child: Row(children: [
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: color, size: 18),
           ),
-          child: Icon(icon, color: color, size: 18),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Expanded(
-                  child: Text(
-                    'Bill #${log.billNumber.isEmpty ? '—' : log.billNumber}',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 13),
-                  ),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(label,
-                      style: TextStyle(
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Bill #${log.billNumber.isEmpty ? '—' : log.billNumber}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        label,
+                        style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
-                          color: color)),
+                          color: color,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ]),
-              const SizedBox(height: 3),
-              if (log.detail.isNotEmpty)
-                Text(log.detail,
-                    style: const TextStyle(
-                        fontSize: 13, color: Colors.black87)),
-              if (log.changedBy.isNotEmpty)
-                Text(log.changedBy,
-                    style: TextStyle(
-                        fontSize: 11, color: Colors.grey.shade500)),
-              const SizedBox(height: 1),
-              Text(_fmtDateTime(log.timestamp),
-                  style:
-                      TextStyle(fontSize: 10, color: Colors.grey.shade400)),
-            ],
+                const SizedBox(height: 3),
+                if (log.detail.isNotEmpty)
+                  Text(
+                    log.detail,
+                    style: const TextStyle(fontSize: 13, color: Colors.black87),
+                  ),
+                if (log.changedBy.isNotEmpty)
+                  Text(
+                    log.changedBy,
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                  ),
+                const SizedBox(height: 1),
+                Text(
+                  _fmtDateTime(log.timestamp),
+                  style: TextStyle(fontSize: 10, color: Colors.grey.shade400),
+                ),
+              ],
+            ),
           ),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 }
@@ -454,17 +618,23 @@ class _EmptyState extends StatelessWidget {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 56, color: Colors.grey.shade400),
-          const SizedBox(height: 12),
-          Text(title,
-              style: const TextStyle(
-                  fontWeight: FontWeight.w600, fontSize: 16)),
-          const SizedBox(height: 6),
-          Text(subtitle,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 56, color: Colors.grey.shade400),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
-        ]),
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+            ),
+          ],
+        ),
       ),
     );
   }

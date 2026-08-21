@@ -23,9 +23,9 @@ class _ItemEditData {
   String name;
 
   _ItemEditData({this.name = ''})
-      : qtyCtrl = TextEditingController(text: '1'),
-        priceCtrl = TextEditingController(),
-        unit = 'Pieces';
+    : qtyCtrl = TextEditingController(text: '1'),
+      priceCtrl = TextEditingController(),
+      unit = 'Pieces';
 
   void dispose() {
     qtyCtrl.dispose();
@@ -65,15 +65,17 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
       _storeNameCtrl.text = bill.storeName;
       _paymentByCtrl.text = bill.paymentBy;
       for (final i in bill.items) {
-        _items.add(_ItemEditData(name: i.name)
-          ..qtyCtrl.text = '${i.quantity}'
-          ..priceCtrl.text = i.pricePerUnit == 0
-              ? ''
-              : i.pricePerUnit.toStringAsFixed(2)
-          ..unit = i.unit
-          ..selected = i.catalogItemId != null
-              ? CatalogItem(id: i.catalogItemId, name: i.name)
-              : null);
+        _items.add(
+          _ItemEditData(name: i.name)
+            ..qtyCtrl.text = '${i.quantity}'
+            ..priceCtrl.text = i.pricePerUnit == 0
+                ? ''
+                : i.pricePerUnit.toStringAsFixed(2)
+            ..unit = i.unit
+            ..selected = i.catalogItemId != null
+                ? CatalogItem(id: i.catalogItemId, name: i.name)
+                : null,
+        );
       }
     }
     if (_items.isEmpty) {
@@ -129,18 +131,21 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
     final action = await showModalBottomSheet<String>(
       context: context,
       builder: (_) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(
-            leading: const Icon(Icons.camera_alt),
-            title: const Text('Camera'),
-            onTap: () => Navigator.pop(context, 'camera'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.photo_library),
-            title: const Text('Gallery'),
-            onTap: () => Navigator.pop(context, 'gallery'),
-          ),
-        ]),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Camera'),
+              onTap: () => Navigator.pop(context, 'camera'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Gallery'),
+              onTap: () => Navigator.pop(context, 'gallery'),
+            ),
+          ],
+        ),
       ),
     );
     if (action == null) return;
@@ -159,8 +164,18 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
     }
   }
 
-  String _fmtDate(DateTime d) =>
-      '${d.day}/${d.month}/${d.year}';
+  String _fmtDate(DateTime d) => '${d.day}/${d.month}/${d.year}';
+
+  /// Running total of the items currently entered in the form.
+  double get _liveTotal {
+    var total = 0.0;
+    for (final d in _items) {
+      final qty = int.tryParse(d.qtyCtrl.text) ?? 0;
+      final price = double.tryParse(d.priceCtrl.text) ?? 0;
+      total += qty * price;
+    }
+    return total;
+  }
 
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
@@ -172,13 +187,15 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
       final qty = int.tryParse(d.qtyCtrl.text) ?? 0;
       final price = double.tryParse(d.priceCtrl.text) ?? 0;
       if (name.isEmpty || qty <= 0 || price <= 0) continue;
-      items.add(BillItem(
-        name: name,
-        quantity: qty,
-        pricePerUnit: price,
-        unit: d.unit,
-        catalogItemId: d.selected?.id,
-      ));
+      items.add(
+        BillItem(
+          name: name,
+          quantity: qty,
+          pricePerUnit: price,
+          unit: d.unit,
+          catalogItemId: d.selected?.id,
+        ),
+      );
     }
 
     if (items.isEmpty) {
@@ -192,15 +209,23 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
       return;
     }
 
+    final paymentBy = _paymentByCtrl.text.trim();
+    // A bill counts as paid only when a payer is recorded; a bill already
+    // marked paid (e.g. via "Mark as Paid") stays paid when re-edited.
+    final paid =
+        paymentBy.isNotEmpty ||
+        (_isEdit && (widget.existingBill?.paid ?? false));
+    final paymentDate = _paymentDate ?? (paid ? DateTime.now() : null);
+
     final bill = BillModel(
       id: widget.existingBill?.id,
       billNumber: _billNumberCtrl.text.trim(),
       storeName: _storeNameCtrl.text.trim(),
       billDate: _billDate,
-      paymentDate: _paymentDate,
-      paymentBy: _paymentByCtrl.text.trim(),
+      paymentDate: paymentDate,
+      paymentBy: paymentBy,
       reimbursementRequired: _reimbursementRequired,
-      paid: _paymentDate != null,
+      paid: paid,
       photoUrl: widget.existingBill?.photoUrl,
       items: items,
       createdAt: widget.existingBill?.createdAt,
@@ -239,8 +264,10 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
       appBar: AppBar(
-        title: Text(_isEdit ? 'Edit Bill' : 'Add Bill',
-            style: const TextStyle(fontWeight: FontWeight.w700)),
+        title: Text(
+          _isEdit ? 'Edit Bill' : 'Add Bill',
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
         actions: [
           IconButton(
             onPressed: _saving ? null : _save,
@@ -255,23 +282,37 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
           padding: const EdgeInsets.all(16),
           children: [
             _sectionCard([
-              _buildField(_billNumberCtrl, 'Bill Number *',
-                  hint: 'e.g. INV-2026-014'),
+              _buildField(
+                _billNumberCtrl,
+                'Bill Number *',
+                hint: 'e.g. INV-2026-014',
+              ),
               _buildField(_storeNameCtrl, 'Store Name *'),
-              _buildDateTile('Bill Date *', _fmtDate(_billDate), _pickBillDate,
-                  Icons.event),
               _buildDateTile(
-                  'Payment Date',
-                  _paymentDate == null ? 'Not set' : _fmtDate(_paymentDate!),
-                  _pickPaymentDate,
-                  Icons.payments_outlined),
-              _buildField(_paymentByCtrl, 'Payment By',
-                  hint: 'Name of the person / source'),
+                'Bill Date *',
+                _fmtDate(_billDate),
+                _pickBillDate,
+                Icons.event,
+              ),
+              _buildDateTile(
+                'Payment Date',
+                _paymentDate == null ? 'Not set' : _fmtDate(_paymentDate!),
+                _pickPaymentDate,
+                Icons.payments_outlined,
+              ),
+              _buildField(
+                _paymentByCtrl,
+                'Payment By',
+                hint: 'Name of the person / source',
+                required: false,
+              ),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
                 controlAffinity: ListTileControlAffinity.leading,
-                title: const Text('Reimbursement required',
-                    style: TextStyle(fontSize: 14)),
+                title: const Text(
+                  'Reimbursement required',
+                  style: TextStyle(fontSize: 14),
+                ),
                 value: _reimbursementRequired,
                 onChanged: (v) =>
                     setState(() => _reimbursementRequired = v ?? false),
@@ -281,11 +322,14 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
             _sectionCard([
               Row(
                 children: [
-                  const Text('Items',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                          color: Color(0xFF1A3C6E))),
+                  const Text(
+                    'Items',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: Color(0xFF1A3C6E),
+                    ),
+                  ),
                   const Spacer(),
                   TextButton.icon(
                     onPressed: () =>
@@ -294,6 +338,28 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
                     label: const Text('Add Item'),
                   ),
                 ],
+              ),
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A3C6E).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Total: ₹ ${_liveTotal.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                      color: Color(0xFF1A3C6E),
+                    ),
+                  ),
+                ),
               ),
               const SizedBox(height: 8),
               for (var i = 0; i < _items.length; i++) ...[
@@ -313,16 +379,23 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
             ]),
             const SizedBox(height: 16),
             _sectionCard([
-              Text('Bill Photo',
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey.shade600)),
+              Text(
+                'Bill Photo',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey.shade600,
+                ),
+              ),
               const SizedBox(height: 8),
               if (_photoBytes != null)
                 _photoPreview(
-                  Image.memory(_photoBytes!,
-                      width: 160, height: 160, fit: BoxFit.cover),
+                  Image.memory(
+                    _photoBytes!,
+                    width: 160,
+                    height: 160,
+                    fit: BoxFit.cover,
+                  ),
                   onRemove: () => setState(() {
                     _photoBytes = null;
                     _photoName = null;
@@ -332,10 +405,13 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
                   widget.existingBill?.photoUrl != null &&
                   !_removeExistingPhoto)
                 _photoPreview(
-                  Image.network(widget.existingBill!.photoUrl!,
-                      width: 160, height: 160, fit: BoxFit.cover),
-                  onRemove: () =>
-                      setState(() => _removeExistingPhoto = true),
+                  Image.network(
+                    widget.existingBill!.photoUrl!,
+                    width: 160,
+                    height: 160,
+                    fit: BoxFit.cover,
+                  ),
+                  onRemove: () => setState(() => _removeExistingPhoto = true),
                   onReplace: _pickImage,
                 )
               else
@@ -361,12 +437,14 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     )
                   : const Icon(Icons.save_outlined),
-              label: Text(_saving
-                  ? 'Saving...'
-                  : (_isEdit ? 'Save Changes' : 'Add Bill')),
+              label: Text(
+                _saving ? 'Saving...' : (_isEdit ? 'Save Changes' : 'Add Bill'),
+              ),
             ),
             const SizedBox(height: 32),
           ],
@@ -391,25 +469,34 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
     );
   }
 
-  Widget _buildField(TextEditingController ctrl, String label,
-      {String? hint}) {
+  Widget _buildField(
+    TextEditingController ctrl,
+    String label, {
+    String? hint,
+    bool required = true,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
         controller: ctrl,
         decoration: InputDecoration(
-          labelText: label,
+          labelText: required ? label : '$label (optional)',
           hintText: hint,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         ),
-        validator: (v) =>
-            v == null || v.trim().isEmpty ? 'Required' : null,
+        validator: required
+            ? (v) => v == null || v.trim().isEmpty ? 'Required' : null
+            : null,
       ),
     );
   }
 
   Widget _buildDateTile(
-      String label, String value, VoidCallback onTap, IconData icon) {
+    String label,
+    String value,
+    VoidCallback onTap,
+    IconData icon,
+  ) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
@@ -427,30 +514,33 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
     );
   }
 
-  Widget _photoPreview(Widget image, {VoidCallback? onRemove, VoidCallback? onReplace}) {
+  Widget _photoPreview(
+    Widget image, {
+    VoidCallback? onRemove,
+    VoidCallback? onReplace,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: image,
-        ),
+        ClipRRect(borderRadius: BorderRadius.circular(8), child: image),
         const SizedBox(height: 8),
-        Row(children: [
-          if (onReplace != null)
-            TextButton.icon(
-              onPressed: onReplace,
-              icon: const Icon(Icons.camera_alt_outlined, size: 16),
-              label: const Text('Replace'),
-            ),
-          if (onRemove != null)
-            TextButton.icon(
-              onPressed: onRemove,
-              icon: const Icon(Icons.delete_outline, size: 16),
-              label: const Text('Remove'),
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
-            ),
-        ]),
+        Row(
+          children: [
+            if (onReplace != null)
+              TextButton.icon(
+                onPressed: onReplace,
+                icon: const Icon(Icons.camera_alt_outlined, size: 16),
+                label: const Text('Replace'),
+              ),
+            if (onRemove != null)
+              TextButton.icon(
+                onPressed: onRemove,
+                icon: const Icon(Icons.delete_outline, size: 16),
+                label: const Text('Remove'),
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+              ),
+          ],
+        ),
       ],
     );
   }
@@ -506,21 +596,26 @@ class _BillItemRowState extends State<_BillItemRow> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Text('Item ${widget.index + 1}',
+          Row(
+            children: [
+              Text(
+                'Item ${widget.index + 1}',
                 style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                    color: Colors.grey.shade700)),
-            const Spacer(),
-            if (widget.canRemove)
-              IconButton(
-                icon: const Icon(Icons.delete_outline, size: 18),
-                color: Colors.redAccent,
-                visualDensity: VisualDensity.compact,
-                onPressed: widget.onRemove,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                  color: Colors.grey.shade700,
+                ),
               ),
-          ]),
+              const Spacer(),
+              if (widget.canRemove)
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  color: Colors.redAccent,
+                  visualDensity: VisualDensity.compact,
+                  onPressed: widget.onRemove,
+                ),
+            ],
+          ),
           Autocomplete<CatalogItem>(
             displayStringForOption: (option) => option.name,
             optionsBuilder: (textEditingValue) {
@@ -528,8 +623,9 @@ class _BillItemRowState extends State<_BillItemRow> {
                 return const Iterable<CatalogItem>.empty();
               }
               final q = textEditingValue.text.toLowerCase();
-              return widget.catalogSummaries
-                  .where((o) => o.name.toLowerCase().contains(q));
+              return widget.catalogSummaries.where(
+                (o) => o.name.toLowerCase().contains(q),
+              );
             },
             onSelected: (selection) {
               setState(() {
@@ -540,86 +636,93 @@ class _BillItemRowState extends State<_BillItemRow> {
             },
             fieldViewBuilder:
                 (context, textEditingController, focusNode, onFieldSubmitted) {
-              widget.data.nameCtrl = textEditingController;
-              return TextFormField(
-                controller: textEditingController,
-                focusNode: focusNode,
-                decoration: InputDecoration(
-                  labelText: 'Item Name *',
-                  hintText: 'Type to search or enter new name',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                ),
-                onChanged: (text) {
-                  if (widget.data.selected != null &&
-                      text != widget.data.selected!.name) {
-                    setState(() => widget.data.selected = null);
-                  }
-                  widget.onChanged();
+                  widget.data.nameCtrl = textEditingController;
+                  return TextFormField(
+                    controller: textEditingController,
+                    focusNode: focusNode,
+                    decoration: InputDecoration(
+                      labelText: 'Item Name *',
+                      hintText: 'Type to search or enter new name',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onChanged: (text) {
+                      if (widget.data.selected != null &&
+                          text != widget.data.selected!.name) {
+                        setState(() => widget.data.selected = null);
+                      }
+                      widget.onChanged();
+                    },
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? 'Required' : null,
+                  );
                 },
-                validator: (v) =>
-                    v == null || v.trim().isEmpty ? 'Required' : null,
-              );
-            },
           ),
           const SizedBox(height: 10),
-          Row(children: [
-            Expanded(
-              child: TextFormField(
-                controller: widget.data.qtyCtrl,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Qty *',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8)),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: widget.data.qtyCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Qty *',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  validator: (v) {
+                    final q = int.tryParse(v ?? '');
+                    return (q == null || q <= 0) ? 'Invalid' : null;
+                  },
+                  onChanged: (_) => widget.onChanged(),
                 ),
-                validator: (v) {
-                  final q = int.tryParse(v ?? '');
-                  return (q == null || q <= 0) ? 'Invalid' : null;
-                },
-                onChanged: (_) => widget.onChanged(),
               ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextFormField(
-                controller: widget.data.priceCtrl,
-                keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true),
-                decoration: InputDecoration(
-                  labelText: 'Price/unit *',
-                  prefixText: '₹ ',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextFormField(
+                  controller: widget.data.priceCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Price/unit *',
+                    prefixText: '₹ ',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  validator: (v) {
+                    final p = double.tryParse(v ?? '');
+                    return (p == null || p <= 0) ? 'Invalid' : null;
+                  },
+                  onChanged: (_) => widget.onChanged(),
                 ),
-                validator: (v) {
-                  final p = double.tryParse(v ?? '');
-                  return (p == null || p <= 0) ? 'Invalid' : null;
-                },
-                onChanged: (_) => widget.onChanged(),
               ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: DropdownButtonFormField<String>(
-                initialValue: widget.data.unit,
-                decoration: InputDecoration(
-                  labelText: 'Unit',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  initialValue: widget.data.unit,
+                  decoration: InputDecoration(
+                    labelText: 'Unit',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  items: stockUnits
+                      .map((u) => DropdownMenuItem(value: u, child: Text(u)))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) {
+                      setState(() => widget.data.unit = v);
+                      widget.onChanged();
+                    }
+                  },
                 ),
-                items: stockUnits
-                    .map((u) => DropdownMenuItem(value: u, child: Text(u)))
-                    .toList(),
-                onChanged: (v) {
-                  if (v != null) {
-                    setState(() => widget.data.unit = v);
-                    widget.onChanged();
-                  }
-                },
               ),
-            ),
-          ]),
+            ],
+          ),
         ],
       ),
     );
