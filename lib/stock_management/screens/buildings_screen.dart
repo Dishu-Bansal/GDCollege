@@ -176,18 +176,19 @@ class _BuildingCardContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (floors.isEmpty) {
-      return _tile(context, hasDueInspection: false);
+      return _tile(context, dueRooms: const []);
     }
 
     return _MultiFloorRoomWatcher(
       building: building,
       floors: floors,
       service: service,
-      builder: (hasDueInspection) => _tile(context, hasDueInspection: hasDueInspection),
+      builder: (dueRooms) => _tile(context, dueRooms: dueRooms),
     );
   }
 
-  Widget _tile(BuildContext context, {required bool hasDueInspection}) {
+  Widget _tile(BuildContext context,
+      {required List<(RoomModel, String)> dueRooms}) {
     return ListTile(
       contentPadding:
           const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -210,7 +211,7 @@ class _BuildingCardContent extends StatelessWidget {
             child: const Icon(Icons.business,
                 color: Color(0xFF1A3C6E), size: 26),
           ),
-          if (hasDueInspection)
+          if (dueRooms.isNotEmpty)
             const Positioned(
               top: -4,
               right: -4,
@@ -221,13 +222,23 @@ class _BuildingCardContent extends StatelessWidget {
       title: Text(building.name,
           style: const TextStyle(
               fontWeight: FontWeight.w700, fontSize: 15)),
-      subtitle: building.createdAt != null
-          ? Text(
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (building.createdAt != null)
+            Text(
               'Added ${building.createdAt!.day}/${building.createdAt!.month}/${building.createdAt!.year}',
               style: TextStyle(
                   fontSize: 11, color: Colors.grey.shade500),
-            )
-          : null,
+            ),
+          // Feature: Inspection Tracking - compact, expandable list of rooms
+          // due or never inspected across all floors.
+          if (dueRooms.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            InspectionDueList(dueRooms: dueRooms),
+          ],
+        ],
+      ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -271,13 +282,13 @@ class _BuildingCardContent extends StatelessWidget {
   }
 }
 
-/// Watches room streams across multiple floors and reports whether any room
-/// has an inspection due (>14 days or never inspected).
+/// Watches room streams across multiple floors and collects every room whose
+/// inspection is due (>14 days or never inspected), paired with its floor name.
 class _MultiFloorRoomWatcher extends StatelessWidget {
   final BuildingModel building;
   final List<FloorModel> floors;
   final StockRepository service;
-  final Widget Function(bool hasDueInspection) builder;
+  final Widget Function(List<(RoomModel, String)> dueRooms) builder;
 
   const _MultiFloorRoomWatcher({
     required this.building,
@@ -293,7 +304,7 @@ class _MultiFloorRoomWatcher extends StatelessWidget {
       floors: floors,
       index: 0,
       service: service,
-      accumulatedDue: false,
+      accumulated: const [],
       builder: builder,
     );
   }
@@ -304,37 +315,38 @@ class _FloorRoomWatcher extends StatelessWidget {
   final List<FloorModel> floors;
   final int index;
   final StockRepository service;
-  final bool accumulatedDue;
-  final Widget Function(bool) builder;
+  final List<(RoomModel, String)> accumulated;
+  final Widget Function(List<(RoomModel, String)>) builder;
 
   const _FloorRoomWatcher({
     required this.building,
     required this.floors,
     required this.index,
     required this.service,
-    required this.accumulatedDue,
+    required this.accumulated,
     required this.builder,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (index >= floors.length) return builder(accumulatedDue);
+    if (index >= floors.length) return builder(accumulated);
 
     return StreamBuilder<List<RoomModel>>(
       stream: service.watchRooms(building.id!, floors[index].id!),
       builder: (context, snap) {
         final rooms = snap.data ?? [];
-        final floorDue = rooms.any((r) => r.isInspectionDue);
-        final nowDue = accumulatedDue || floorDue;
-
-        if (nowDue) return builder(true);
+        final floorName = floors[index].name;
+        final combined = [
+          ...accumulated,
+          for (final r in rooms.where((r) => r.isInspectionDue)) (r, floorName),
+        ];
 
         return _FloorRoomWatcher(
           building: building,
           floors: floors,
           index: index + 1,
           service: service,
-          accumulatedDue: nowDue,
+          accumulated: combined,
           builder: builder,
         );
       },
