@@ -1849,13 +1849,20 @@ class _ItemFormDialogState extends ConsumerState<_ItemFormDialog> {
     final bill = _billCtrl.text.trim();
 
     // If a catalog item was selected that already exists in this room,
-    // increment the existing item's quantity instead of adding a duplicate.
+    // adjust the existing item's quantity by the difference (the qty field
+    // holds the new absolute quantity when editing).
     if (_selectedCatalogItem != null) {
       final existing = items.where(
           (i) => i.id == _selectedCatalogItem!.id).firstOrNull;
       if (existing != null) {
-        if (qty <= 0) {
+        // In edit mode the qty field holds the new absolute quantity;
+        // in add mode it is the amount to add on top of what's already there.
+        final delta = widget.initial != null
+            ? qty - existing.currentQuantity
+            : qty;
+        if (delta == 0) {
           setState(() => _saving = false);
+          if (mounted) Navigator.pop(context);
           return;
         }
         await _service.adjustQuantity(
@@ -1863,7 +1870,7 @@ class _ItemFormDialogState extends ConsumerState<_ItemFormDialog> {
           floorId: widget.floor.id!,
           roomId: widget.room.id!,
           item: existing,
-          delta: qty,
+          delta: delta,
           note: '',
           buildingName: widget.building.name,
           floorName: widget.floor.name,

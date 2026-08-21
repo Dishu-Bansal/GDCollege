@@ -466,10 +466,42 @@ class FirebaseStockRepository implements StockRepository {
     }).toList();
   }
 
+  /// Removes an item from a room and decrements the catalog total quantity.
   @override
   Future<void> deleteItem(String buildingId, String floorId,
-      String roomId, String itemId) =>
-      _items(buildingId, floorId, roomId).doc(itemId).delete();
+      String roomId, String itemId) async {
+    final itemRef = _items(buildingId, floorId, roomId).doc(itemId);
+    final snap = await itemRef.get();
+    if (!snap.exists) return;
+
+    final data = snap.data();
+    final name = data?['name'] ?? '';
+    final qty = (data?['currentQuantity'] ?? 0) as int;
+    final now = DateTime.now();
+
+    final batch = _db.batch();
+    batch.delete(itemRef);
+    if (qty > 0) {
+      batch.update(_itemsCatalog.doc(itemId), {
+        'totalQuantity': FieldValue.increment(-qty),
+        'updatedAt': now.toIso8601String(),
+      });
+    }
+    final logRef = _logs(buildingId, floorId, roomId).doc();
+    batch.set(logRef, StockLog(
+      itemId: itemId,
+      itemName: name,
+      type: 'decrease',
+      quantity: qty,
+      previousQty: qty,
+      newQty: 0,
+      note: 'Item removed from room',
+      timestamp: now,
+      changedBy: UserSession().currentUser?.email ?? '',
+    ).toFirestore());
+
+    await batch.commit();
+  }
 
   // ── QUANTITY ADJUSTMENT (writes item + log atomically) ────────────────────
 
@@ -504,12 +536,13 @@ class FirebaseStockRepository implements StockRepository {
     final _itemCatalog = _itemsCatalog.doc(item.id);
     batch.update(_itemCatalog, {'totalQuantity': FieldValue.increment(delta), 'updatedAt': DateTime.now().toIso8601String()});
 
-    // Write price history if price/store/bill supplied
-    if (unitPrice > 0 || store.isNotEmpty || bill.isNotEmpty) {
+    // Write price history only for stock increases (purchases/additions);
+    // decreases are tracked in the stock log, not as a purchase entry.
+    if (actualDelta > 0 && (unitPrice > 0 || store.isNotEmpty || bill.isNotEmpty)) {
       final _priceHistory = _itemCatalog.collection("priceHistory");
       batch.set(_priceHistory.doc(), {
         'price': unitPrice,
-        'quantity': actualDelta.abs(),
+        'quantity': actualDelta,
         'timestamp': DateTime.now().toIso8601String(),
         'store': store,
         'bill': bill,
@@ -1028,6 +1061,12 @@ class FirebaseStockRepository implements StockRepository {
       'updatedAt': now.toIso8601String(),
     });
 
+    // Decrease the catalog total quantity
+    batch.update(_itemsCatalog.doc(item.id!), {
+      'totalQuantity': FieldValue.increment(-quantity),
+      'updatedAt': now.toIso8601String(),
+    });
+
     // Stock log
     final logRef = _logs(building.id!, floor.id!, room.id!).doc();
     batch.set(logRef, StockLog(
@@ -1087,6 +1126,12 @@ class FirebaseStockRepository implements StockRepository {
     final newQty = item.currentQuantity + returnQty;
     batch.update(itemRef, {
       'currentQuantity': newQty,
+      'updatedAt': now.toIso8601String(),
+    });
+
+    // Increase the catalog total quantity
+    batch.update(_itemsCatalog.doc(item.id!), {
+      'totalQuantity': FieldValue.increment(returnQty),
       'updatedAt': now.toIso8601String(),
     });
 
