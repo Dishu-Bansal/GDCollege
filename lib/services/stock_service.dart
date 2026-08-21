@@ -302,12 +302,12 @@ class FirebaseStockRepository implements StockRepository {
       }
 
       // Catalog-level change: log into every room that currently stocks the
-      // item so the entry shows in all three log views.
-      final roomsSnap = await _db
-          .collectionGroup('items')
-          .where(FieldPath.documentId, isEqualTo: catalogItemId)
-          .get();
+      // item so the entry shows in all three log views. A collection group
+      // cannot filter on documentId() with a bare id, so read all room items
+      // and filter in memory (same pattern as fetchItemLocationStock).
+      final roomsSnap = await _db.collectionGroup('items').get();
       for (final d in roomsSnap.docs) {
+        if (d.id != catalogItemId) continue;
         final ref = d.reference;
         final roomId = ref.parent.parent!.id;
         final floorId = ref.parent.parent!.parent.parent!.id;
