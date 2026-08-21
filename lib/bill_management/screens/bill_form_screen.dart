@@ -242,19 +242,25 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
       return;
     }
 
+    // A payer without a name does not make sense: the matching date is
+    // dropped even if one was picked earlier.
+    if (paymentBy.isEmpty) _paymentDate = null;
+    if (reimbursedBy.isEmpty) _reimbursementDate = null;
+
     // A bill is paid when it needs no reimbursement and the original payment
     // is recorded, or when it needs reimbursement and both the payment and
-    // the reimbursement details are recorded. A bill already settled stays
-    // settled when re-edited.
+    // the reimbursement details are recorded. The state is always derived
+    // from the current form values, so clearing a payer or leaving the
+    // reimbursement empty returns the bill to pending.
+    final hasPayment = _paymentDate != null && paymentBy.isNotEmpty;
     final hasReimbursement =
         _reimbursementDate != null && reimbursedBy.isNotEmpty;
     final paid =
-        (_isEdit && (widget.existingBill?.paid ?? false)) ||
-        (!_reimbursementRequired && paymentBy.isNotEmpty) ||
-        (_reimbursementRequired && hasReimbursement);
-    final paymentDate =
-        _paymentDate ??
-        ((paid && !_reimbursementRequired) ? DateTime.now() : null);
+        (!_reimbursementRequired && hasPayment) ||
+        (_reimbursementRequired && hasPayment && hasReimbursement);
+    final paymentDate = paymentBy.isEmpty
+        ? null
+        : _paymentDate ?? (paid ? DateTime.now() : null);
 
     final bill = BillModel(
       id: widget.existingBill?.id,
@@ -349,6 +355,9 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
                 'Payment By',
                 hint: 'Name of the person / source',
                 required: _reimbursementRequired,
+                onChanged: (v) => setState(() {
+                  if (v.trim().isEmpty) _paymentDate = null;
+                }),
               ),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
@@ -383,7 +392,9 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
                   'Reimbursed By',
                   hint: 'Who reimbursed this bill',
                   required: false,
-                  onChanged: (_) => setState(() {}),
+                  onChanged: (v) => setState(() {
+                    if (v.trim().isEmpty) _reimbursementDate = null;
+                  }),
                 ),
                 if (_reimbursementDate != null &&
                     _reimbursedByCtrl.text.trim().isNotEmpty)
