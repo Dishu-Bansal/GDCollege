@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../bill_management/screens/bill_management_screen.dart';
 import '../models/home_analytics.dart';
 import '../providers.dart';
 import '../student_management/screens/student_list_screen.dart';
@@ -75,6 +76,17 @@ class HomeScreen extends ConsumerWidget {
                   onTap: () => Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(builder: (_) => const BuildingsScreen()),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _NavCard(
+                  icon: Icons.receipt_long,
+                  label: 'Bill Management',
+                  color: const Color(0xFF00838F),
+                  onTap: () => Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const BillManagementScreen()),
                   ),
                 ),
                 const SizedBox(height: 40),

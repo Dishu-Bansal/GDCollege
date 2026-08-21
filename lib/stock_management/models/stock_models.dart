@@ -125,6 +125,8 @@ class StockItem {
   DateTime? updatedAt;
   String store;
   String bill;
+  String unit; // 'Pieces', 'kg', 'gram', 'metre', 'litres', ...
+  String sourceBillId; // bill that originally added this item to a room
 
   StockItem({
     this.id,
@@ -133,6 +135,8 @@ class StockItem {
     this.currentQuantity = 0,
     this.store = '',
     this.bill = '',
+    this.unit = 'Pieces',
+    this.sourceBillId = '',
     this.createdAt,
     this.updatedAt,
   });
@@ -151,6 +155,8 @@ class StockItem {
         d['updatedAt'] != null ? DateTime.tryParse(d['updatedAt']) : null,
         store: d['store'] ?? '',
         bill: d['bill'] ?? '',
+        unit: d['unit'] ?? 'Pieces',
+        sourceBillId: d['sourceBillId'] ?? '',
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -161,6 +167,8 @@ class StockItem {
     'updatedAt': updatedAt?.toIso8601String(),
     'store': store,
     'bill': bill,
+    'unit': unit,
+    'sourceBillId': sourceBillId,
   };
 }
 

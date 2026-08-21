@@ -3,6 +3,7 @@ import 'package:gd_college/models/user_session.dart';
 import 'package:gd_college/screens/home_screen.dart';
 import 'package:gd_college/screens/login_screen.dart';
 
+import '../bill_management/screens/bill_management_screen.dart';
 import '../staff_management/screens/staff_list_screen.dart';
 import '../stock_management/screens/buildings_screen.dart';
 import '../student_management/screens/student_list_screen.dart';
@@ -56,6 +57,13 @@ getSideDrawer(BuildContext context){
          title: const Text('Stock Management'),
          onTap: () {
            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => BuildingsScreen()));
+         },
+       ),
+       ListTile(
+         leading: const Icon(Icons.receipt_long),
+         title: const Text('Bill Management'),
+         onTap: () {
+           Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const BillManagementScreen()));
          },
        ),
        const Divider(),
