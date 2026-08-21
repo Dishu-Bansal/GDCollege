@@ -61,6 +61,22 @@ abstract class StockRepository {
   Future<void> updateCatalogItemPhoto(
       String catalogItemId, String url);
 
+  /// Records a photo change for a catalog item in the stock logs.
+  ///
+  /// The entry (type 'photo') shows the old and new photo URL and surfaces in
+  /// the item-level, room-level and global (all rooms) logs. When
+  /// [building]/[floor]/[room] are given the entry is written to that room
+  /// only; otherwise it is written to every room that stocks the item.
+  Future<void> logItemPhotoChange({
+    required String catalogItemId,
+    required String itemName,
+    required String oldPhotoUrl,
+    required String newPhotoUrl,
+    BuildingModel? building,
+    FloorModel? floor,
+    RoomModel? room,
+  });
+
   // ── Catalog tab reads ──
   /// Every room-level item on campus, grouped by catalog item id, with
   /// building/floor/room names resolved.

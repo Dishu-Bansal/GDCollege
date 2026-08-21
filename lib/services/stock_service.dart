@@ -261,6 +261,76 @@ class FirebaseStockRepository implements StockRepository {
     await _itemsCatalog.doc(catalogItemId).update({'photoUrl': url});
   }
 
+  @override
+  Future<void> logItemPhotoChange({
+    required String catalogItemId,
+    required String itemName,
+    required String oldPhotoUrl,
+    required String newPhotoUrl,
+    BuildingModel? building,
+    FloorModel? floor,
+    RoomModel? room,
+  }) async {
+    final changedBy = UserSession().currentUser?.email ?? '';
+    final now = DateTime.now();
+
+    void writeLog(String bid, String fid, String rid,
+        String bName, String fName, String rName) {
+      _logs(bid, fid, rid).add(StockLog(
+        itemId: catalogItemId,
+        itemName: itemName,
+        type: 'photo',
+        quantity: 0,
+        previousQty: 0,
+        newQty: 0,
+        timestamp: now,
+        buildingName: bName,
+        floorName: fName,
+        roomName: rName,
+        changedBy: changedBy,
+        oldPhotoUrl: oldPhotoUrl,
+        newPhotoUrl: newPhotoUrl,
+      ).toFirestore());
+    }
+
+    // Logging must never break the photo update itself.
+    try {
+      if (building != null && floor != null && room != null) {
+        writeLog(building.id!, floor.id!, room.id!,
+            building.name, floor.name, room.name);
+        return;
+      }
+
+      // Catalog-level change: log into every room that currently stocks the
+      // item so the entry shows in all three log views. A collection group
+      // cannot filter on documentId() with a bare id, so read all room items
+      // and filter in memory (same pattern as fetchItemLocationStock).
+      final roomsSnap = await _db.collectionGroup('items').get();
+      for (final d in roomsSnap.docs) {
+        if (d.id != catalogItemId) continue;
+        final ref = d.reference;
+        final roomId = ref.parent.parent!.id;
+        final floorId = ref.parent.parent!.parent.parent!.id;
+        final buildingId =
+            ref.parent.parent!.parent.parent!.parent.parent!.id;
+        final bSnap = await _buildings.doc(buildingId).get();
+        final fSnap = await _floors(buildingId).doc(floorId).get();
+        final rSnap = await _rooms(buildingId, floorId).doc(roomId).get();
+        writeLog(
+          buildingId,
+          floorId,
+          roomId,
+          (bSnap.data()?['name'] as String?) ?? buildingId,
+          (fSnap.data()?['name'] as String?) ?? floorId,
+          (rSnap.data()?['name'] as String?) ?? roomId,
+        );
+      }
+    } catch (e) {
+      // Photo change succeeded; the audit log is best-effort.
+      print('Photo log failed: $e');
+    }
+  }
+
   // ── ITEMS ─────────────────────────────────────────────────────────────────
 
   @override

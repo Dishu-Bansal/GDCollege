@@ -324,7 +324,17 @@ class _ItemCardState extends State<_ItemCard> {
         catalogItemId: item.id!,
       );
       if (url != null) {
+        final oldUrl = _catalog?.photoUrl ?? '';
         await service.updateCatalogItemPhoto(item.id!, url);
+        await service.logItemPhotoChange(
+          catalogItemId: item.id!,
+          itemName: item.name,
+          oldPhotoUrl: oldUrl,
+          newPhotoUrl: url,
+          building: building,
+          floor: floor,
+          room: room,
+        );
         if (mounted) setState(() => _catalog?.photoUrl = url);
       }
     } finally {
@@ -355,21 +365,24 @@ class _ItemCardState extends State<_ItemCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top row: photo + name + actions
+            // Top row: photo (or add-photo button when missing) + name + actions
             Row(children: [
-              if (_catalog?.photoUrl != null) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: Image.network(
-                    _catalog!.photoUrl!,
-                    width: 42,
-                    height: 42,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                  ),
+              ItemPhotoButton(
+                service: service,
+                catalogItemId: item.id ?? '',
+                photoUrl: _catalog?.photoUrl,
+                size: 42,
+                borderRadius: 6,
+                itemName: item.name,
+                logRoom: (
+                  building: building,
+                  floor: floor,
+                  room: room,
                 ),
-                const SizedBox(width: 10),
-              ],
+                onPhotoUploaded: (url) =>
+                    setState(() => _catalog?.photoUrl = url),
+              ),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -469,7 +482,17 @@ class _ItemCardState extends State<_ItemCard> {
                   } else if (v == 'photo') {
                     _pickAndUploadPhoto();
                   } else if (v == 'removePhoto') {
+                    final oldUrl = _catalog?.photoUrl ?? '';
                     await service.updateCatalogItemPhoto(item.id!, '');
+                    await service.logItemPhotoChange(
+                      catalogItemId: item.id!,
+                      itemName: item.name,
+                      oldPhotoUrl: oldUrl,
+                      newPhotoUrl: '',
+                      building: building,
+                      floor: floor,
+                      room: room,
+                    );
                     if (mounted) setState(() => _catalog?.photoUrl = null);
                   }
                 },
@@ -2480,13 +2503,16 @@ class _LogTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isPhoto = log.type == 'photo';
     final isInspection = log.type == 'inspection';
     final isIncrease = log.type == 'increase';
-    final color = isInspection
-        ? const Color(0xFF1A3C6E)
-        : isIncrease
-            ? Colors.green.shade700
-            : Colors.red.shade600;
+    final color = isPhoto
+        ? Colors.indigo.shade600
+        : isInspection
+            ? const Color(0xFF1A3C6E)
+            : isIncrease
+                ? Colors.green.shade700
+                : Colors.red.shade600;
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -2504,11 +2530,13 @@ class _LogTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(
-              isInspection
-                  ? Icons.fact_check_outlined
-                  : isIncrease
-                      ? Icons.arrow_upward
-                      : Icons.arrow_downward,
+              isPhoto
+                  ? Icons.photo_camera_outlined
+                  : isInspection
+                      ? Icons.fact_check_outlined
+                      : isIncrease
+                          ? Icons.arrow_upward
+                          : Icons.arrow_downward,
               color: color,
               size: 18),
         ),
@@ -2521,7 +2549,17 @@ class _LogTile extends StatelessWidget {
                     style: const TextStyle(
                         fontWeight: FontWeight.w600, fontSize: 13)),
                 const SizedBox(height: 3),
-                if (isInspection)
+                if (isPhoto)
+                  Row(children: [
+                    LogPhotoThumb(url: log.oldPhotoUrl ?? ''),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6),
+                      child: Icon(Icons.arrow_forward,
+                          size: 14, color: Colors.grey),
+                    ),
+                    LogPhotoThumb(url: log.newPhotoUrl ?? ''),
+                  ])
+                else if (isInspection)
                   Text(
                     log.note,
                     style: TextStyle(
@@ -2571,7 +2609,7 @@ class _LogTile extends StatelessWidget {
                 ]),
               ]),
         ),
-        if (!isInspection) ...[
+        if (!isInspection && !isPhoto) ...[
           const SizedBox(width: 10),
           Container(
             width: 52,
@@ -2911,6 +2949,9 @@ class _InspectionExecutionScreenState
   final _noteCtrl = TextEditingController();
   bool _saving = false;
 
+  /// Photo URLs of the catalog items on the checklist (catalog id → url).
+  final Map<String, String> _catalogPhotos = {};
+
   @override
   void initState() {
     super.initState();
@@ -2927,6 +2968,24 @@ class _InspectionExecutionScreenState
         .map((e) => TextEditingController(text: '${e.actualQty}'))
         .toList();
     _noteCtrl.text = widget.inspection.overallNote;
+    _loadCatalogPhotos();
+  }
+
+  Future<void> _loadCatalogPhotos() async {
+    try {
+      final summaries = await widget.service.getCatalogItemSummaries();
+      if (!mounted) return;
+      setState(() {
+        _catalogPhotos
+          ..clear()
+          ..addEntries(summaries
+              .where((c) =>
+              c.id != null && (c.photoUrl?.isNotEmpty ?? false))
+              .map((c) => MapEntry(c.id!, c.photoUrl!)));
+      });
+    } catch (_) {
+      // Photos are optional; keep the add-photo button if they fail to load.
+    }
   }
 
   @override
@@ -2953,6 +3012,74 @@ class _InspectionExecutionScreenState
   }
 
   bool get _hasDiscrepancy => _items.any((e) => !e.matched);
+
+  /// Opens the stock transfer sheet for a mismatched checklist item. The live
+  /// item is fetched from the room so the sheet shows the current quantity.
+  Future<void> _transferMismatchedItem(int i) async {
+    final entry = _items[i];
+    if (entry.itemId.isEmpty) return;
+
+    final all = await widget.service
+        .watchItems(widget.building.id!, widget.floor.id!, widget.room.id!)
+        .first;
+    final stockItem = all.where((s) => s.id == entry.itemId).firstOrNull;
+    if (stockItem == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Item not found in this room')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => _TransferSheet(
+        building: widget.building,
+        floor: widget.floor,
+        room: widget.room,
+        item: stockItem,
+        service: widget.service,
+      ),
+    );
+  }
+
+  /// Picks and uploads a photo for the catalog item of a mismatched checklist
+  /// item (same flow as the item card's Add Photo action).
+  Future<void> _addItemPhoto(int i) async {
+    final entry = _items[i];
+    if (entry.itemId.isEmpty) return;
+
+    final picker = ImagePicker();
+    final file = await picker.pickImage(
+        source: ImageSource.gallery, imageQuality: 80);
+    if (file == null || !mounted) return;
+
+    try {
+      final url = await widget.service.uploadCatalogItemPhoto(
+        xfile: file,
+        catalogItemId: entry.itemId,
+      );
+      if (url != null) {
+        await widget.service.updateCatalogItemPhoto(entry.itemId, url);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Photo added for ${entry.itemName}')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Photo upload failed: $e')),
+        );
+      }
+    }
+  }
 
   Future<void> _complete() async {
     // If discrepancies found, ask whether to upload media
@@ -3150,6 +3277,19 @@ class _InspectionExecutionScreenState
                     CrossAxisAlignment.start,
                     children: [
                       Row(children: [
+                        // Feature: Item photos - photo slot on the left for
+                        // every checklist item (add-photo when missing).
+                        ItemPhotoButton(
+                          service: widget.service,
+                          catalogItemId: item.itemId,
+                          photoUrl: _catalogPhotos[item.itemId],
+                          size: 38,
+                          borderRadius: 6,
+                          itemName: item.itemName,
+                          onPhotoUploaded: (url) =>
+                              setState(() => _catalogPhotos[item.itemId] = url),
+                        ),
+                        const SizedBox(width: 8),
                         Icon(
                           item.matched
                               ? Icons.check_circle
@@ -3245,6 +3385,40 @@ class _InspectionExecutionScreenState
                             setState(() => _items[i].note = v);
                           },
                         ),
+                        // Feature: Inspection actions - transfer stock out or
+                        // attach an item photo while resolving a mismatch.
+                        const SizedBox(height: 10),
+                        Row(children: [
+                          OutlinedButton.icon(
+                            onPressed:
+                                _saving ? null : () => _transferMismatchedItem(i),
+                            icon: const Icon(Icons.swap_horiz_outlined,
+                                size: 16),
+                            label: const Text('Transfer'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.blue.shade700,
+                              side: BorderSide(color: Colors.blue.shade200),
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          OutlinedButton.icon(
+                            onPressed:
+                                _saving ? null : () => _addItemPhoto(i),
+                            icon: const Icon(Icons.camera_alt_outlined,
+                                size: 16),
+                            label: const Text('Add Photo'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.teal.shade700,
+                              side: BorderSide(color: Colors.teal.shade200),
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                            ),
+                          ),
+                        ]),
                       ],
                     ]),
               );
