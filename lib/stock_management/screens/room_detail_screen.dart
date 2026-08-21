@@ -355,21 +355,18 @@ class _ItemCardState extends State<_ItemCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top row: photo + name + actions
+            // Top row: photo (or add-photo button when missing) + name + actions
             Row(children: [
-              if (_catalog?.photoUrl != null) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: Image.network(
-                    _catalog!.photoUrl!,
-                    width: 42,
-                    height: 42,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                  ),
-                ),
-                const SizedBox(width: 10),
-              ],
+              ItemPhotoButton(
+                service: service,
+                catalogItemId: item.id ?? '',
+                photoUrl: _catalog?.photoUrl,
+                size: 42,
+                borderRadius: 6,
+                onPhotoUploaded: (url) =>
+                    setState(() => _catalog?.photoUrl = url),
+              ),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

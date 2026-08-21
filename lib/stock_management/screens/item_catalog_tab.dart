@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers.dart';
+import '../../widgets/stock_widgets.dart';
 import '../models/stock_models.dart';
 
 /// "Catalog" tab of Stock Management.
@@ -60,6 +61,14 @@ class _ItemCatalogTabState extends ConsumerState<ItemCatalogTab> {
         });
       }
     }
+  }
+
+  void _onItemPhotoUploaded(String itemId, String url) {
+    if (!mounted) return;
+    setState(() {
+      final i = _catalog.indexWhere((c) => c.id == itemId);
+      if (i != -1) _catalog[i].photoUrl = url;
+    });
   }
 
   List<CatalogItem> get _filtered {
@@ -164,6 +173,8 @@ class _ItemCatalogTabState extends ConsumerState<ItemCatalogTab> {
         child: _CatalogItemCard(
           item: items[i],
           locations: _locations[items[i].id] ?? const [],
+          onPhotoUploaded: (url) =>
+              _onItemPhotoUploaded(items[i].id ?? '', url),
         ),
       ),
     );
@@ -175,8 +186,13 @@ class _ItemCatalogTabState extends ConsumerState<ItemCatalogTab> {
 class _CatalogItemCard extends ConsumerWidget {
   final CatalogItem item;
   final List<ItemLocationStock> locations;
+  final ValueChanged<String>? onPhotoUploaded;
 
-  const _CatalogItemCard({required this.item, required this.locations});
+  const _CatalogItemCard({
+    required this.item,
+    required this.locations,
+    this.onPhotoUploaded,
+  });
 
   void _openBreakdown(BuildContext context) {
     showModalBottomSheet(
@@ -201,20 +217,13 @@ class _CatalogItemCard extends ConsumerWidget {
         border: Border.all(color: Colors.grey.shade200),
       ),
       child: Row(children: [
-        // Item picture
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: SizedBox(
-            width: 48,
-            height: 48,
-            child: item.photoUrl == null || item.photoUrl!.isEmpty
-                ? _photoPlaceholder()
-                : Image.network(
-                    item.photoUrl!,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => _photoPlaceholder(),
-                  ),
-          ),
+        // Item picture (or add-photo button when missing)
+        ItemPhotoButton(
+          service: ref.read(stockRepositoryProvider),
+          catalogItemId: item.id ?? '',
+          photoUrl: item.photoUrl,
+          size: 48,
+          onPhotoUploaded: onPhotoUploaded,
         ),
         const SizedBox(width: 12),
         // Name, quantity, price
@@ -248,12 +257,6 @@ class _CatalogItemCard extends ConsumerWidget {
       ]),
     );
   }
-
-  Widget _photoPlaceholder() => Container(
-        color: const Color(0xFF1A3C6E).withValues(alpha: 0.08),
-        child: Icon(Icons.inventory_2_outlined,
-            size: 26, color: Colors.grey.shade500),
-      );
 }
 
 // ── Breakdown bottom sheet ────────────────────────────────────────────────────

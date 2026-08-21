@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import '../repositories/stock_repository.dart';
 import '../stock_management/models/stock_models.dart';
 
 // ── Quick name dialog (add / rename) ─────────────────────────────────────────
@@ -308,6 +310,119 @@ class _InspectionDueListState extends State<InspectionDueList> {
                   floorName: floorName),
             ),
       ],
+    );
+  }
+}
+
+// ── Item photo (add when missing) ─────────────────────────────────────────────
+// Feature: Item photos - every item should have a photo. Shows the item photo
+// when available; otherwise shows a clickable "Add Photo" button that picks an
+// image and uploads it to the item's catalog entry.
+
+class ItemPhotoButton extends StatefulWidget {
+  final StockRepository service;
+  final String catalogItemId;
+  final String? photoUrl;
+  final double size;
+  final double borderRadius;
+  final ValueChanged<String>? onPhotoUploaded;
+
+  const ItemPhotoButton({
+    super.key,
+    required this.service,
+    required this.catalogItemId,
+    this.photoUrl,
+    this.size = 48,
+    this.borderRadius = 8,
+    this.onPhotoUploaded,
+  });
+
+  @override
+  State<ItemPhotoButton> createState() => _ItemPhotoButtonState();
+}
+
+class _ItemPhotoButtonState extends State<ItemPhotoButton> {
+  bool _uploading = false;
+
+  bool get _hasPhoto =>
+      widget.photoUrl != null && widget.photoUrl!.isNotEmpty;
+
+  Future<void> _pickAndUpload() async {
+    if (widget.catalogItemId.isEmpty || _uploading) return;
+
+    final picker = ImagePicker();
+    final file = await picker.pickImage(
+        source: ImageSource.gallery, imageQuality: 80);
+    if (file == null || !mounted) return;
+
+    setState(() => _uploading = true);
+    try {
+      final url = await widget.service.uploadCatalogItemPhoto(
+        xfile: file,
+        catalogItemId: widget.catalogItemId,
+      );
+      if (url != null) {
+        await widget.service.updateCatalogItemPhoto(widget.catalogItemId, url);
+        widget.onPhotoUploaded?.call(url);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Photo upload failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  Widget _addButton() {
+    return Material(
+      color: const Color(0xFF1A3C6E).withValues(alpha: 0.08),
+      child: InkWell(
+        onTap: _uploading ? null : _pickAndUpload,
+        child: _uploading
+            ? const Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            : Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.add_a_photo_outlined,
+                      size: 16, color: Color(0xFF1A3C6E)),
+                  Text(
+                    'Add Photo',
+                    style: TextStyle(
+                      fontSize: 7.5,
+                      color: const Color(0xFF1A3C6E),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(widget.borderRadius),
+      child: SizedBox(
+        width: widget.size,
+        height: widget.size,
+        child: _hasPhoto
+            ? Image.network(
+                widget.photoUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _addButton(),
+              )
+            : _addButton(),
+      ),
     );
   }
 }
