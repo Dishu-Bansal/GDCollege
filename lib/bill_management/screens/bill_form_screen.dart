@@ -38,9 +38,11 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
   final _billNumberCtrl = TextEditingController();
   final _storeNameCtrl = TextEditingController();
   final _paymentByCtrl = TextEditingController();
+  final _reimbursedByCtrl = TextEditingController();
 
   late DateTime _billDate;
   DateTime? _paymentDate;
+  DateTime? _reimbursementDate;
   bool _reimbursementRequired = false;
   bool _saving = false;
 
@@ -59,11 +61,13 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
     final bill = widget.existingBill;
     _billDate = bill?.billDate ?? DateTime.now();
     _paymentDate = bill?.paymentDate;
+    _reimbursementDate = bill?.reimbursementDate;
     _reimbursementRequired = bill?.reimbursementRequired ?? false;
     if (bill != null) {
       _billNumberCtrl.text = bill.billNumber;
       _storeNameCtrl.text = bill.storeName;
       _paymentByCtrl.text = bill.paymentBy;
+      _reimbursedByCtrl.text = bill.reimbursedBy;
       for (final i in bill.items) {
         _items.add(
           _ItemEditData(name: i.name)
@@ -100,6 +104,7 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
     _billNumberCtrl.dispose();
     _storeNameCtrl.dispose();
     _paymentByCtrl.dispose();
+    _reimbursedByCtrl.dispose();
     for (final i in _items) {
       i.dispose();
     }
@@ -124,6 +129,16 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
     if (picked != null) setState(() => _paymentDate = picked);
+  }
+
+  Future<void> _pickReimbursementDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _reimbursementDate ?? _paymentDate ?? _billDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked != null) setState(() => _reimbursementDate = picked);
   }
 
   Future<void> _pickImage() async {
@@ -210,14 +225,35 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
     }
 
     final paymentBy = _paymentByCtrl.text.trim();
-    // A bill stays settled when re-editing one that was already paid or
-    // reimbursed. Otherwise it is paid only when no reimbursement is needed
-    // and an original payer is recorded; reimbursement-required bills stay
-    // pending until the reimbursement is recorded.
+    final reimbursedBy = _reimbursedByCtrl.text.trim();
+
+    // Reimbursement only makes sense when the original payment is recorded.
+    if (_reimbursementRequired && (_paymentDate == null || paymentBy.isEmpty)) {
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Reimbursement requires the payment date and paid by to be '
+            'filled first.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // A bill is paid when it needs no reimbursement and the original payment
+    // is recorded, or when it needs reimbursement and both the payment and
+    // the reimbursement details are recorded. A bill already settled stays
+    // settled when re-edited.
+    final hasReimbursement =
+        _reimbursementDate != null && reimbursedBy.isNotEmpty;
     final paid =
         (_isEdit && (widget.existingBill?.paid ?? false)) ||
-        (!_reimbursementRequired && paymentBy.isNotEmpty);
-    final paymentDate = _paymentDate ??
+        (!_reimbursementRequired && paymentBy.isNotEmpty) ||
+        (_reimbursementRequired && hasReimbursement);
+    final paymentDate =
+        _paymentDate ??
         ((paid && !_reimbursementRequired) ? DateTime.now() : null);
 
     final bill = BillModel(
@@ -227,8 +263,8 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
       billDate: _billDate,
       paymentDate: paymentDate,
       paymentBy: paymentBy,
-      reimbursementDate: widget.existingBill?.reimbursementDate,
-      reimbursedBy: widget.existingBill?.reimbursedBy ?? '',
+      reimbursementDate: _reimbursementDate,
+      reimbursedBy: reimbursedBy,
       reimbursementRequired: _reimbursementRequired,
       paid: paid,
       photoUrl: widget.existingBill?.photoUrl,
@@ -300,16 +336,19 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
                 Icons.event,
               ),
               _buildDateTile(
-                'Payment Date',
+                _reimbursementRequired ? 'Payment Date *' : 'Payment Date',
                 _paymentDate == null ? 'Not set' : _fmtDate(_paymentDate!),
                 _pickPaymentDate,
                 Icons.payments_outlined,
+                error: _reimbursementRequired && _paymentDate == null
+                    ? 'Required for reimbursement'
+                    : null,
               ),
               _buildField(
                 _paymentByCtrl,
                 'Payment By',
                 hint: 'Name of the person / source',
-                required: false,
+                required: _reimbursementRequired,
               ),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
@@ -318,10 +357,47 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
                   'Reimbursement required',
                   style: TextStyle(fontSize: 14),
                 ),
+                subtitle: _reimbursementRequired
+                    ? null
+                    : const Text(
+                        'Bill needs to be reimbursed after payment',
+                        style: TextStyle(fontSize: 12),
+                      ),
                 value: _reimbursementRequired,
                 onChanged: (v) =>
                     setState(() => _reimbursementRequired = v ?? false),
               ),
+              if (_reimbursementRequired) ...[
+                const Divider(height: 1),
+                const SizedBox(height: 12),
+                _buildDateTile(
+                  'Reimbursement Date',
+                  _reimbursementDate == null
+                      ? 'Not set'
+                      : _fmtDate(_reimbursementDate!),
+                  _pickReimbursementDate,
+                  Icons.receipt_long_outlined,
+                ),
+                _buildField(
+                  _reimbursedByCtrl,
+                  'Reimbursed By',
+                  hint: 'Who reimbursed this bill',
+                  required: false,
+                  onChanged: (_) => setState(() {}),
+                ),
+                if (_reimbursementDate != null &&
+                    _reimbursedByCtrl.text.trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      'This bill will be marked as paid.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.green.shade700,
+                      ),
+                    ),
+                  ),
+              ],
             ]),
             const SizedBox(height: 16),
             _sectionCard([
@@ -479,11 +555,13 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
     String label, {
     String? hint,
     bool required = true,
+    ValueChanged<String>? onChanged,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
         controller: ctrl,
+        onChanged: onChanged,
         decoration: InputDecoration(
           labelText: required ? label : '$label (optional)',
           hintText: hint,
@@ -500,8 +578,9 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
     String label,
     String value,
     VoidCallback onTap,
-    IconData icon,
-  ) {
+    IconData icon, {
+    String? error,
+  }) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
@@ -510,6 +589,8 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
         child: InputDecorator(
           decoration: InputDecoration(
             labelText: label,
+            errorText: error,
+            errorMaxLines: 2,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
             suffixIcon: Icon(icon, size: 20),
           ),
