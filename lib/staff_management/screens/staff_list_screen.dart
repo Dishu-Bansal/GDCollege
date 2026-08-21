@@ -233,7 +233,7 @@ class _StaffListScreenState extends ConsumerState<StaffListScreen>
 
 // ── Staff Tab ─────────────────────────────────────────────────────────────────
 
-class _StaffTab extends ConsumerWidget {
+class _StaffTab extends ConsumerStatefulWidget {
   final TextEditingController searchIdCtrl;
   final TextEditingController searchNameCtrl;
   final String? selectedCourse;
@@ -270,16 +270,33 @@ class _StaffTab extends ConsumerWidget {
     required this.onDelete,
   });
 
+  @override
+  ConsumerState<_StaffTab> createState() => _StaffTabState();
+}
+
+class _StaffTabState extends ConsumerState<_StaffTab> {
+  /// Subscribed once so typing in the filters does not rebuild the
+  /// StreamBuilder with a new stream (which would drop focus).
+  late final Stream<List<StaffModel>> _staffStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _staffStream = ref.read(staffRepositoryProvider).watchAll();
+  }
+
   List<StaffModel> _applyFilters(List<StaffModel> all) {
+    final idCtrl = widget.searchIdCtrl;
+    final nameCtrl = widget.searchNameCtrl;
     return all.where((s) {
-      final idMatch = searchIdCtrl.text.isEmpty ||
+      final idMatch = idCtrl.text.isEmpty ||
           s.staffId
               .toLowerCase()
-              .contains(searchIdCtrl.text.toLowerCase());
-      final nameMatch = searchNameCtrl.text.isEmpty ||
+              .contains(idCtrl.text.toLowerCase());
+      final nameMatch = nameCtrl.text.isEmpty ||
           s.name
               .toLowerCase()
-              .contains(searchNameCtrl.text.toLowerCase());
+              .contains(nameCtrl.text.toLowerCase());
       return idMatch && nameMatch;
     }).toList();
   }
@@ -287,7 +304,7 @@ class _StaffTab extends ConsumerWidget {
   List<StaffModel> _applySort(List<StaffModel> list) {
     list.sort((a, b) {
       int cmp;
-      switch (sortColumnIndex) {
+      switch (widget.sortColumnIndex) {
         case 0:
           cmp = int.tryParse(a.staffId)!.compareTo(int.tryParse(b.staffId)!);
           break;
@@ -297,15 +314,15 @@ class _StaffTab extends ConsumerWidget {
         default:
           cmp = 0;
       }
-      return sortAscending ? cmp : -cmp;
+      return widget.sortAscending ? cmp : -cmp;
     });
     return list;
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return StreamBuilder<List<StaffModel>>(
-      stream: ref.watch(staffRepositoryProvider).watchAll(),
+      stream: _staffStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
@@ -336,39 +353,39 @@ class _StaffTab extends ConsumerWidget {
             AnimatedSize(
               duration: const Duration(milliseconds: 280),
               curve: Curves.easeInOut,
-              child: filtersVisible
+              child: widget.filtersVisible
                   ? _FilterPanel(
-                      idCtrl: searchIdCtrl,
-                      nameCtrl: searchNameCtrl,
-                      selectedCourse: selectedCourse,
+                      idCtrl: widget.searchIdCtrl,
+                      nameCtrl: widget.searchNameCtrl,
+                      selectedCourse: widget.selectedCourse,
                       courses: listOfCourses,
-                      selectedYear: selectedYear,
+                      selectedYear: widget.selectedYear,
                       allYears: all
                           .map((s) => s.salary?.toString() ?? '')
                           .where((y) => y.isNotEmpty)
                           .toSet()
                           .toList()
                         ..sort((a, b) => b.compareTo(a)),
-                      hasActiveFilters: hasActiveFilters,
-                      onChanged: onChanged,
-                      onCourseChanged: onCourseChanged,
-                      onYearChanged: onYearChanged,
-                      onClear: onClear,
+                      hasActiveFilters: widget.hasActiveFilters,
+                      onChanged: widget.onChanged,
+                      onCourseChanged: widget.onCourseChanged,
+                      onYearChanged: widget.onYearChanged,
+                      onClear: widget.onClear,
                     )
                   : const SizedBox.shrink(),
             ),
             _StatsBar(total: all.length, showing: filtered.length),
             Expanded(
               child: filtered.isEmpty
-                  ? _EmptyState(hasFilters: hasActiveFilters)
+                  ? _EmptyState(hasFilters: widget.hasActiveFilters)
                   : _StaffTable(
                       staffs: filtered,
-                      sortColumnIndex: sortColumnIndex,
-                      sortAscending: sortAscending,
-                      onSort: onSort,
-                      onView: onView,
-                      onEdit: onEdit,
-                      onDelete: onDelete,
+                      sortColumnIndex: widget.sortColumnIndex,
+                      sortAscending: widget.sortAscending,
+                      onSort: widget.onSort,
+                      onView: widget.onView,
+                      onEdit: widget.onEdit,
+                      onDelete: widget.onDelete,
                     ),
             ),
           ],
