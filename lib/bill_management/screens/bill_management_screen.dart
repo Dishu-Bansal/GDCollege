@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../models/user_session.dart';
 import '../../providers.dart';
 import '../../widgets/drawer.dart';
 import '../models/bill_models.dart';
@@ -45,39 +46,26 @@ class _BillManagementScreenState extends ConsumerState<BillManagementScreen>
     );
   }
 
+  static const _adminEmail = 'dishubansal@lklms.com';
+
+  bool get _isAdmin =>
+      (UserSession().currentUser?.email ?? '').toLowerCase() == _adminEmail;
+
   Future<void> _confirmMarkPaid(BillModel bill) async {
-    final confirm = await showDialog<bool>(
+    final result = await showDialog<(DateTime, String)>(
       context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: const Row(
-          children: [
-            Icon(Icons.payments, color: Color(0xFF2E7D32), size: 24),
-            SizedBox(width: 8),
-            Text('Mark as Paid'),
-          ],
-        ),
-        content: Text(
-          'Confirm that bill #${bill.billNumber} has been paid/reimbursed?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2E7D32),
-            ),
-            child: const Text('Mark as Paid'),
-          ),
-        ],
-      ),
+      builder: (_) => _MarkPaidDialog(billNumber: bill.billNumber),
     );
-    if (confirm != true) return;
+    if (result == null) return;
+    final (paymentDate, paymentBy) = result;
     try {
-      await ref.read(billRepositoryProvider).markBillPaid(bill.id!);
+      await ref
+          .read(billRepositoryProvider)
+          .markBillPaid(
+            bill.id!,
+            paymentDate: paymentDate,
+            paymentBy: paymentBy,
+          );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -122,7 +110,11 @@ class _BillManagementScreenState extends ConsumerState<BillManagementScreen>
       body: TabBarView(
         controller: _tabs,
         children: [
-          _BillsTab(onEdit: _openEdit, onMarkPaid: _confirmMarkPaid),
+          _BillsTab(
+            onEdit: _openEdit,
+            onMarkPaid: _confirmMarkPaid,
+            canManage: _isAdmin,
+          ),
           const _BillLogsTab(),
         ],
       ),
@@ -149,8 +141,13 @@ class _BillManagementScreenState extends ConsumerState<BillManagementScreen>
 class _BillsTab extends ConsumerWidget {
   final void Function(BillModel) onEdit;
   final void Function(BillModel) onMarkPaid;
+  final bool canManage;
 
-  const _BillsTab({required this.onEdit, required this.onMarkPaid});
+  const _BillsTab({
+    required this.onEdit,
+    required this.onMarkPaid,
+    required this.canManage,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -190,6 +187,7 @@ class _BillsTab extends ConsumerWidget {
             bill: list[i],
             onEdit: () => onEdit(list[i]),
             onMarkPaid: () => onMarkPaid(list[i]),
+            canManage: canManage,
           ),
         );
       },
@@ -201,11 +199,13 @@ class _BillCard extends StatelessWidget {
   final BillModel bill;
   final VoidCallback onEdit;
   final VoidCallback onMarkPaid;
+  final bool canManage;
 
   const _BillCard({
     required this.bill,
     required this.onEdit,
     required this.onMarkPaid,
+    required this.canManage,
   });
 
   @override
@@ -319,29 +319,31 @@ class _BillCard extends StatelessWidget {
                   color: Color(0xFF1A3C6E),
                 ),
               ),
-              const SizedBox(width: 12),
-              OutlinedButton.icon(
-                onPressed: onEdit,
-                icon: const Icon(Icons.edit_outlined, size: 16),
-                label: const Text('Edit'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF1A3C6E),
-                  side: const BorderSide(color: Color(0xFF1A3C6E)),
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-              const SizedBox(width: 8),
-              if (pending)
-                FilledButton.icon(
-                  onPressed: onMarkPaid,
-                  icon: const Icon(Icons.payments_outlined, size: 16),
-                  label: const Text('Mark as Paid'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF2E7D32),
-                    foregroundColor: Colors.white,
+              if (canManage) ...[
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  label: const Text('Edit'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF1A3C6E),
+                    side: const BorderSide(color: Color(0xFF1A3C6E)),
                     visualDensity: VisualDensity.compact,
                   ),
                 ),
+                const SizedBox(width: 8),
+                if (pending)
+                  FilledButton.icon(
+                    onPressed: onMarkPaid,
+                    icon: const Icon(Icons.payments_outlined, size: 16),
+                    label: const Text('Mark as Paid'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF2E7D32),
+                      foregroundColor: Colors.white,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+              ],
             ],
           ),
         ],
@@ -464,6 +466,110 @@ class _BillPhoto extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _MarkPaidDialog extends StatefulWidget {
+  final String billNumber;
+  const _MarkPaidDialog({required this.billNumber});
+
+  @override
+  State<_MarkPaidDialog> createState() => _MarkPaidDialogState();
+}
+
+class _MarkPaidDialogState extends State<_MarkPaidDialog> {
+  late DateTime _paymentDate;
+  late final TextEditingController _paidByCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _paymentDate = DateTime.now();
+    _paidByCtrl = TextEditingController(text: 'LKLMS');
+  }
+
+  @override
+  void dispose() {
+    _paidByCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _paymentDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked != null) setState(() => _paymentDate = picked);
+  }
+
+  String _fmt(DateTime d) => '${d.day}/${d.month}/${d.year}';
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      title: const Row(
+        children: [
+          Icon(Icons.payments, color: Color(0xFF2E7D32), size: 24),
+          SizedBox(width: 8),
+          Text('Mark as Paid'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Payment details for bill #${widget.billNumber}',
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: _pickDate,
+            borderRadius: BorderRadius.circular(8),
+            child: InputDecorator(
+              decoration: InputDecoration(
+                labelText: 'Payment Date',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                suffixIcon: const Icon(Icons.event, size: 20),
+              ),
+              child: Text(_fmt(_paymentDate)),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _paidByCtrl,
+            decoration: InputDecoration(
+              labelText: 'Paid By',
+              hintText: 'Who made the payment',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, (
+            date: _paymentDate,
+            by: _paidByCtrl.text.trim(),
+          )),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF2E7D32),
+          ),
+          child: const Text('Mark as Paid'),
+        ),
+      ],
     );
   }
 }

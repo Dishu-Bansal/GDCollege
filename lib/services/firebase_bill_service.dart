@@ -101,18 +101,29 @@ class FirebaseBillRepository implements BillRepository {
   }
 
   @override
-  Future<void> markBillPaid(String billId) async {
+  Future<void> markBillPaid(
+    String billId, {
+    DateTime? paymentDate,
+    String paymentBy = '',
+  }) async {
     final now = DateTime.now();
     final snap = await _bills.doc(billId).get();
     final billNumber = snap.data()?['billNumber'] ?? '';
+    final paidDate = paymentDate ?? now;
 
     await _bills.doc(billId).update({
       'paid': true,
-      'paymentDate': now.toIso8601String(),
+      'paymentDate': paidDate.toIso8601String(),
+      if (paymentBy.isNotEmpty) 'paymentBy': paymentBy,
       'updatedAt': now.toIso8601String(),
       'updatedBy': _currentUser,
     });
-    await _writeLog(billId, billNumber, 'pay', 'Bill marked as paid.');
+    await _writeLog(
+        billId, billNumber, 'pay',
+        paymentBy.isNotEmpty
+            ? 'Bill marked as paid by $paymentBy on '
+                '${paidDate.day}/${paidDate.month}/${paidDate.year}.'
+            : 'Bill marked as paid.');
   }
 
   // ── Photo upload ────────────────────────────────────────────────────────────

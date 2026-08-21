@@ -23,5 +23,9 @@ abstract class BillRepository {
   });
 
   /// Marks a pending-reimbursement bill as paid.
-  Future<void> markBillPaid(String billId);
+  Future<void> markBillPaid(
+    String billId, {
+    DateTime? paymentDate,
+    String paymentBy = '',
+  });
 }
