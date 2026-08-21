@@ -13,21 +13,24 @@ class FirebaseStockRepository implements StockRepository {
 
   // ── Shorthand path builders ───────────────────────────────────────────────
 
-  CollectionReference get _buildings => _db.collection('buildings');
+  CollectionReference<Map<String, dynamic>> get _buildings =>
+      _db.collection('buildings');
 
-  CollectionReference _floors(String buildingId) =>
+  CollectionReference<Map<String, dynamic>> _floors(String buildingId) =>
       _buildings.doc(buildingId).collection('floors');
 
-  CollectionReference _rooms(String buildingId, String floorId) =>
+  CollectionReference<Map<String, dynamic>> _rooms(
+          String buildingId, String floorId) =>
       _floors(buildingId).doc(floorId).collection('rooms');
 
-  CollectionReference _items(
+  CollectionReference<Map<String, dynamic>> _items(
       String buildingId, String floorId, String roomId) =>
       _rooms(buildingId, floorId).doc(roomId).collection('items');
 
-  CollectionReference get _itemsCatalog => _db.collection('itemsCatalog');
+  CollectionReference<Map<String, dynamic>> get _itemsCatalog =>
+      _db.collection('itemsCatalog');
 
-  CollectionReference _logs(
+  CollectionReference<Map<String, dynamic>> _logs(
       String buildingId, String floorId, String roomId) =>
       _rooms(buildingId, floorId).doc(roomId).collection('stockLogs');
 
@@ -48,7 +51,7 @@ class FirebaseStockRepository implements StockRepository {
       .snapshots()
       .map((s) => s.docs
       .map((d) =>
-      BuildingModel.fromFirestore(d.id, d.data() as Map<String, dynamic>))
+      BuildingModel.fromFirestore(d.id, d.data()))
       .toList());
 
   @override
@@ -77,7 +80,7 @@ class FirebaseStockRepository implements StockRepository {
           .snapshots()
           .map((s) => s.docs
           .map((d) => FloorModel.fromFirestore(
-          d.id, d.data() as Map<String, dynamic>))
+          d.id, d.data()))
           .toList());
 
   @override
@@ -107,7 +110,7 @@ class FirebaseStockRepository implements StockRepository {
           .snapshots()
           .map((s) => s.docs
           .map((d) => RoomModel.fromFirestore(
-          d.id, d.data() as Map<String, dynamic>))
+          d.id, d.data()))
           .toList());
 
   @override
@@ -268,7 +271,7 @@ class FirebaseStockRepository implements StockRepository {
           .snapshots()
           .map((s) => s.docs
           .map((d) => StockItem.fromFirestore(
-          d.id, d.data() as Map<String, dynamic>))
+          d.id, d.data()))
           .toList());
 
   @override
@@ -284,7 +287,7 @@ class FirebaseStockRepository implements StockRepository {
       batch.update(_itemCatalog, {'lastPrice': item.unitPrice, 'totalQuantity': FieldValue.increment(item.currentQuantity), 'updatedAt': item.updatedAt!.toIso8601String()});
 
       final _priceHistory = _itemCatalog.collection("priceHistory");
-      batch.set(_priceHistory.doc(), {'price': item.unitPrice, 'quantity':item.currentQuantity,'timestamp': item.updatedAt!.toIso8601String(), 'store':item.store, 'bill':item.bill});
+      batch.set(_priceHistory.doc(), {'price': item.unitPrice, 'quantity':item.currentQuantity,'timestamp': item.updatedAt!.toIso8601String(), 'store':item.store, 'bill':item.bill, 'type': 'increase'});
       final logRef = _logs(buildingId, floorId, roomId).doc();
       batch.set(
           logRef,
@@ -311,7 +314,7 @@ class FirebaseStockRepository implements StockRepository {
         final id = _itemCatalog.id;
         batch.set(_itemCatalog, CatalogItem(id: id, name:  item.name, lastPrice:  item.unitPrice, totalQuantity:  item.currentQuantity, createdAt:  item.createdAt, updatedAt:  item.updatedAt).toFirestore());
         final _priceHistory = _itemCatalog.collection("priceHistory");
-        batch.set(_priceHistory.doc(), {'price': item.unitPrice, 'quantity': item.currentQuantity,'timestamp': item.updatedAt!.toIso8601String(), 'store':item.store, 'bill':item.bill});
+        batch.set(_priceHistory.doc(), {'price': item.unitPrice, 'quantity': item.currentQuantity,'timestamp': item.updatedAt!.toIso8601String(), 'store':item.store, 'bill':item.bill, 'type': 'increase'});
         final logRef = _logs(buildingId, floorId, roomId).doc();
         batch.set(
             logRef,
@@ -382,10 +385,140 @@ class FirebaseStockRepository implements StockRepository {
     }
   }
 
+  /// Returns every room-level item on campus grouped by catalog item id, with
+  /// building/floor/room names resolved via a lightweight structure walk.
+  ///
+  /// Uses a single unfiltered collection-group query on `items` (no custom
+  /// Firestore index required), since each room item's document id is its
+  /// catalog item id.
+  @override
+  Future<Map<String, List<ItemLocationStock>>> fetchItemLocationStock() async {
+    // 1. Structure walk: building/floor/room names keyed by ids.
+    final buildingNames = <String, String>{};
+    final floorNames = <String, String>{}; // '$buildingId/$floorId' -> name
+    final roomNames = <String, String>{}; // '$buildingId/$floorId/$roomId' -> name
+
+    final buildingsSnap = await _buildings.get();
+    for (final b in buildingsSnap.docs) {
+      buildingNames[b.id] = b.data()['name'] ?? b.id;
+      final floorsSnap =
+          await _buildings.doc(b.id).collection('floors').get();
+      for (final f in floorsSnap.docs) {
+        floorNames['${b.id}/${f.id}'] = f.data()['name'] ?? f.id;
+        final roomsSnap = await _buildings
+            .doc(b.id)
+            .collection('floors')
+            .doc(f.id)
+            .collection('rooms')
+            .get();
+        for (final r in roomsSnap.docs) {
+          roomNames['${b.id}/${f.id}/${r.id}'] = r.data()['name'] ?? r.id;
+        }
+      }
+    }
+
+    // 2. One collection-group read for all room items.
+    final itemsSnap = await _db.collectionGroup('items').get();
+
+    final result = <String, List<ItemLocationStock>>{};
+    for (final d in itemsSnap.docs) {
+      // ref: buildings/{b}/floors/{f}/rooms/{r}/items/{itemId}
+      final ref = d.reference;
+      final roomId = ref.parent.parent!.id;
+      final floorId = ref.parent.parent!.parent.parent!.id;
+      final buildingId = ref.parent.parent!.parent.parent!.parent.parent!.id;
+      final qty = (d.data()['currentQuantity'] ?? 0) as int;
+      if (qty <= 0) continue;
+
+      result
+          .putIfAbsent(d.id, () => [])
+          .add(ItemLocationStock(
+        buildingName: buildingNames[buildingId] ?? buildingId,
+        floorName: floorNames['$buildingId/$floorId'] ?? floorId,
+        roomName: roomNames['$buildingId/$floorId/$roomId'] ?? roomId,
+        quantity: qty,
+      ));
+    }
+    return result;
+  }
+
+  /// Reads the most recent [limit] price-history entries for a catalog item.
+  @override
+  Future<List<ItemPriceLog>> fetchItemPriceHistory(
+      String catalogItemId, {int limit = 50}) async {
+    final snap = await _itemsCatalog
+        .doc(catalogItemId)
+        .collection('priceHistory')
+        .orderBy('timestamp', descending: true)
+        .limit(limit)
+        .get();
+    return snap.docs.map((doc) {
+      final d = doc.data();
+      final rawQty = (d['quantity'] ?? 0) as num;
+      // Newer entries carry an explicit type; older ones are purchases, so a
+      // negative quantity (or a missing type) is treated as an increase.
+      final type = (d['type'] as String?) ??
+          (rawQty < 0 ? 'decrease' : 'increase');
+      return ItemPriceLog(
+        timestamp: d['timestamp'] != null
+            ? DateTime.tryParse(d['timestamp']) ?? DateTime.now()
+            : DateTime.now(),
+        price: (d['price'] ?? 0).toDouble(),
+        quantity: rawQty.abs().toInt(),
+        store: d['store'] ?? '',
+        bill: d['bill'] ?? '',
+        type: type,
+      );
+    }).toList();
+  }
+
+  /// Removes an item from a room and decrements the catalog total quantity.
   @override
   Future<void> deleteItem(String buildingId, String floorId,
-      String roomId, String itemId) =>
-      _items(buildingId, floorId, roomId).doc(itemId).delete();
+      String roomId, String itemId) async {
+    final itemRef = _items(buildingId, floorId, roomId).doc(itemId);
+    final snap = await itemRef.get();
+    if (!snap.exists) return;
+
+    final data = snap.data();
+    final name = data?['name'] ?? '';
+    final unitPrice = (data?['unitPrice'] ?? 0).toDouble();
+    final qty = (data?['currentQuantity'] ?? 0) as int;
+    final now = DateTime.now();
+
+    final batch = _db.batch();
+    batch.delete(itemRef);
+    if (qty > 0) {
+      final catalogRef = _itemsCatalog.doc(itemId);
+      batch.update(catalogRef, {
+        'totalQuantity': FieldValue.increment(-qty),
+        'updatedAt': now.toIso8601String(),
+      });
+      final _priceHistory = catalogRef.collection("priceHistory");
+      batch.set(_priceHistory.doc(), {
+        'price': unitPrice,
+        'quantity': -qty,
+        'timestamp': now.toIso8601String(),
+        'store': '',
+        'bill': '',
+        'type': 'decrease',
+      });
+    }
+    final logRef = _logs(buildingId, floorId, roomId).doc();
+    batch.set(logRef, StockLog(
+      itemId: itemId,
+      itemName: name,
+      type: 'decrease',
+      quantity: qty,
+      previousQty: qty,
+      newQty: 0,
+      note: 'Item removed from room',
+      timestamp: now,
+      changedBy: UserSession().currentUser?.email ?? '',
+    ).toFirestore());
+
+    await batch.commit();
+  }
 
   // ── QUANTITY ADJUSTMENT (writes item + log atomically) ────────────────────
 
@@ -420,15 +553,19 @@ class FirebaseStockRepository implements StockRepository {
     final _itemCatalog = _itemsCatalog.doc(item.id);
     batch.update(_itemCatalog, {'totalQuantity': FieldValue.increment(delta), 'updatedAt': DateTime.now().toIso8601String()});
 
-    // Write price history if price/store/bill supplied
-    if (unitPrice > 0 || store.isNotEmpty || bill.isNotEmpty) {
+    // Record every adjustment in the item's price-history log: purchases
+    // (increases) when a price/store/bill is supplied, and all decreases so
+    // stock that leaves anywhere is always locked in the item log.
+    if (actualDelta < 0 ||
+        (unitPrice > 0 || store.isNotEmpty || bill.isNotEmpty)) {
       final _priceHistory = _itemCatalog.collection("priceHistory");
       batch.set(_priceHistory.doc(), {
         'price': unitPrice,
-        'quantity': actualDelta.abs(),
+        'quantity': actualDelta,
         'timestamp': DateTime.now().toIso8601String(),
         'store': store,
         'bill': bill,
+        'type': actualDelta > 0 ? 'increase' : 'decrease',
       });
     }
 
@@ -476,7 +613,7 @@ class FirebaseStockRepository implements StockRepository {
           .snapshots()
           .map((s) => s.docs
               .map((d) => StockLog.fromFirestore(
-                  d.id, d.data() as Map<String, dynamic>))
+                  d.id, d.data()))
               .toList());
 
   @override
@@ -484,16 +621,16 @@ class FirebaseStockRepository implements StockRepository {
     int migrated = 0;
     final buildingsSnap = await _buildings.get();
     for (final bDoc in buildingsSnap.docs) {
-      final buildingName = (bDoc.data() as Map<String, dynamic>)['name'] ?? '';
+      final buildingName = bDoc.data()['name'] ?? '';
       final floorsSnap = await _floors(bDoc.id).get();
       for (final fDoc in floorsSnap.docs) {
-        final floorName = (fDoc.data() as Map<String, dynamic>)['name'] ?? '';
+        final floorName = fDoc.data()['name'] ?? '';
         final roomsSnap = await _rooms(bDoc.id, fDoc.id).get();
         for (final rDoc in roomsSnap.docs) {
-          final roomName = (rDoc.data() as Map<String, dynamic>)['name'] ?? '';
+          final roomName = rDoc.data()['name'] ?? '';
           final logsSnap = await _logs(bDoc.id, fDoc.id, rDoc.id).get();
           for (final lDoc in logsSnap.docs) {
-            final data = lDoc.data() as Map<String, dynamic>;
+            final data = lDoc.data();
             if (data['buildingName'] == null || data['buildingName'] == '') {
               await lDoc.reference.update({
                 'buildingName': buildingName,
@@ -609,7 +746,7 @@ class FirebaseStockRepository implements StockRepository {
     final items = await _items(buildingId, floorId, roomId).get();
     final stockById = <String, int>{};
     for (final d in items.docs) {
-      final data = d.data() as Map<String, dynamic>;
+      final data = d.data();
       stockById[d.id] = (data['currentQuantity'] as num?)?.toInt() ?? 0;
     }
 
@@ -694,6 +831,23 @@ class FirebaseStockRepository implements StockRepository {
           'currentQuantity': ci.actualQty,
           'updatedAt': now.toIso8601String(),
         });
+
+        // Keep the catalog total and the item log in sync with the correction
+        if (ci.itemId.isNotEmpty) {
+          final catalogRef = _itemsCatalog.doc(ci.itemId);
+          batch.update(catalogRef, {
+            'totalQuantity': FieldValue.increment(delta),
+            'updatedAt': now.toIso8601String(),
+          });
+          batch.set(catalogRef.collection("priceHistory").doc(), {
+            'price': 0,
+            'quantity': delta,
+            'timestamp': now.toIso8601String(),
+            'store': '',
+            'bill': '',
+            'type': delta > 0 ? 'increase' : 'decrease',
+          });
+        }
 
         final logRef = _logs(building.id!, floor.id!, room.id!).doc();
         batch.set(logRef, StockLog(
@@ -944,6 +1098,21 @@ class FirebaseStockRepository implements StockRepository {
       'updatedAt': now.toIso8601String(),
     });
 
+    // Decrease the catalog total quantity and lock the assignment in the item log
+    final catalogRef = _itemsCatalog.doc(item.id!);
+    batch.update(catalogRef, {
+      'totalQuantity': FieldValue.increment(-quantity),
+      'updatedAt': now.toIso8601String(),
+    });
+    batch.set(catalogRef.collection("priceHistory").doc(), {
+      'price': item.unitPrice,
+      'quantity': -quantity,
+      'timestamp': now.toIso8601String(),
+      'store': '',
+      'bill': '',
+      'type': 'decrease',
+    });
+
     // Stock log
     final logRef = _logs(building.id!, floor.id!, room.id!).doc();
     batch.set(logRef, StockLog(
@@ -1004,6 +1173,21 @@ class FirebaseStockRepository implements StockRepository {
     batch.update(itemRef, {
       'currentQuantity': newQty,
       'updatedAt': now.toIso8601String(),
+    });
+
+    // Increase the catalog total quantity and log the return in the item log
+    final catalogRef = _itemsCatalog.doc(item.id!);
+    batch.update(catalogRef, {
+      'totalQuantity': FieldValue.increment(returnQty),
+      'updatedAt': now.toIso8601String(),
+    });
+    batch.set(catalogRef.collection("priceHistory").doc(), {
+      'price': item.unitPrice,
+      'quantity': returnQty,
+      'timestamp': now.toIso8601String(),
+      'store': '',
+      'bill': '',
+      'type': 'increase',
     });
 
     // Stock log

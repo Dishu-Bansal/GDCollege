@@ -125,6 +125,8 @@ class StockItem {
   DateTime? updatedAt;
   String store;
   String bill;
+  String unit; // 'Pieces', 'kg', 'gram', 'metre', 'litres', ...
+  String sourceBillId; // bill that originally added this item to a room
 
   StockItem({
     this.id,
@@ -133,6 +135,8 @@ class StockItem {
     this.currentQuantity = 0,
     this.store = '',
     this.bill = '',
+    this.unit = 'Pieces',
+    this.sourceBillId = '',
     this.createdAt,
     this.updatedAt,
   });
@@ -151,6 +155,8 @@ class StockItem {
         d['updatedAt'] != null ? DateTime.tryParse(d['updatedAt']) : null,
         store: d['store'] ?? '',
         bill: d['bill'] ?? '',
+        unit: d['unit'] ?? 'Pieces',
+        sourceBillId: d['sourceBillId'] ?? '',
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -161,7 +167,49 @@ class StockItem {
     'updatedAt': updatedAt?.toIso8601String(),
     'store': store,
     'bill': bill,
+    'unit': unit,
+    'sourceBillId': sourceBillId,
   };
+}
+
+// ── Catalog location / price-history read models ─────────────────────────────
+
+/// Where and how many of a catalog item a single room currently stocks.
+class ItemLocationStock {
+  final String buildingName;
+  final String floorName;
+  final String roomName;
+  final int quantity;
+
+  ItemLocationStock({
+    required this.buildingName,
+    required this.floorName,
+    required this.roomName,
+    required this.quantity,
+  });
+}
+
+/// One purchase/adjustment entry from an item's price history.
+class ItemPriceLog {
+  final DateTime timestamp;
+  final double price;
+
+  /// Magnitude of the quantity change; see [type] for the direction.
+  final int quantity;
+  final String store;
+  final String bill;
+
+  /// 'increase' or 'decrease'.
+  final String type;
+
+  ItemPriceLog({
+    required this.timestamp,
+    required this.price,
+    required this.quantity,
+    required this.store,
+    required this.bill,
+    this.type = 'increase',
+  });
 }
 
 class CatalogItem {
