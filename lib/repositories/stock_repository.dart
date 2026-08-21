@@ -61,6 +61,13 @@ abstract class StockRepository {
   Future<void> updateCatalogItemPhoto(
       String catalogItemId, String url);
 
+  // ── Catalog tab reads ──
+  /// Every room-level item on campus, grouped by catalog item id, with
+  /// building/floor/room names resolved.
+  Future<Map<String, List<ItemLocationStock>>> fetchItemLocationStock();
+  Future<List<ItemPriceLog>> fetchItemPriceHistory(
+      String catalogItemId, {int limit = 50});
+
   // ── Quantity Adjustment ──
   Future<void> adjustQuantity({
     required String buildingId,

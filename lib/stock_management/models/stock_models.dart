@@ -172,6 +172,40 @@ class StockItem {
   };
 }
 
+// ── Catalog location / price-history read models ─────────────────────────────
+
+/// Where and how many of a catalog item a single room currently stocks.
+class ItemLocationStock {
+  final String buildingName;
+  final String floorName;
+  final String roomName;
+  final int quantity;
+
+  ItemLocationStock({
+    required this.buildingName,
+    required this.floorName,
+    required this.roomName,
+    required this.quantity,
+  });
+}
+
+/// One purchase/adjustment entry from an item's price history.
+class ItemPriceLog {
+  final DateTime timestamp;
+  final double price;
+  final int quantity;
+  final String store;
+  final String bill;
+
+  ItemPriceLog({
+    required this.timestamp,
+    required this.price,
+    required this.quantity,
+    required this.store,
+    required this.bill,
+  });
+}
+
 class CatalogItem {
   String? id;
   String name;

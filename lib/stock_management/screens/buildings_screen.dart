@@ -6,6 +6,7 @@ import '../../providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../widgets/stock_widgets.dart';
 import 'floors_screen.dart';
+import 'item_catalog_tab.dart';
 
 class BuildingsScreen extends ConsumerStatefulWidget {
   const BuildingsScreen({super.key});
@@ -24,7 +25,7 @@ class _BuildingsScreenState extends ConsumerState<BuildingsScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 2, vsync: this);
+    _tabs = TabController(length: 3, vsync: this);
     _tabs.addListener(() => setState(() {}));
   }
 
@@ -60,6 +61,9 @@ class _BuildingsScreenState extends ConsumerState<BuildingsScreen>
                 icon: Icon(Icons.business_outlined, size: 18),
                 text: 'Buildings'),
             Tab(
+                icon: Icon(Icons.inventory_2_outlined, size: 18),
+                text: 'Catalog'),
+            Tab(
                 icon: Icon(Icons.history, size: 18),
                 text: 'Global Log'),
           ],
@@ -69,6 +73,7 @@ class _BuildingsScreenState extends ConsumerState<BuildingsScreen>
         controller: _tabs,
         children: [
           _BuildingsTab(service: _service, onAdd: () => _addBuilding(context)),
+          const ItemCatalogTab(),
           _GlobalLogTab(service: _service),
         ],
       ),

@@ -13,21 +13,24 @@ class FirebaseStockRepository implements StockRepository {
 
   // ── Shorthand path builders ───────────────────────────────────────────────
 
-  CollectionReference get _buildings => _db.collection('buildings');
+  CollectionReference<Map<String, dynamic>> get _buildings =>
+      _db.collection('buildings');
 
-  CollectionReference _floors(String buildingId) =>
+  CollectionReference<Map<String, dynamic>> _floors(String buildingId) =>
       _buildings.doc(buildingId).collection('floors');
 
-  CollectionReference _rooms(String buildingId, String floorId) =>
+  CollectionReference<Map<String, dynamic>> _rooms(
+          String buildingId, String floorId) =>
       _floors(buildingId).doc(floorId).collection('rooms');
 
-  CollectionReference _items(
+  CollectionReference<Map<String, dynamic>> _items(
       String buildingId, String floorId, String roomId) =>
       _rooms(buildingId, floorId).doc(roomId).collection('items');
 
-  CollectionReference get _itemsCatalog => _db.collection('itemsCatalog');
+  CollectionReference<Map<String, dynamic>> get _itemsCatalog =>
+      _db.collection('itemsCatalog');
 
-  CollectionReference _logs(
+  CollectionReference<Map<String, dynamic>> _logs(
       String buildingId, String floorId, String roomId) =>
       _rooms(buildingId, floorId).doc(roomId).collection('stockLogs');
 
@@ -48,7 +51,7 @@ class FirebaseStockRepository implements StockRepository {
       .snapshots()
       .map((s) => s.docs
       .map((d) =>
-      BuildingModel.fromFirestore(d.id, d.data() as Map<String, dynamic>))
+      BuildingModel.fromFirestore(d.id, d.data()))
       .toList());
 
   @override
@@ -77,7 +80,7 @@ class FirebaseStockRepository implements StockRepository {
           .snapshots()
           .map((s) => s.docs
           .map((d) => FloorModel.fromFirestore(
-          d.id, d.data() as Map<String, dynamic>))
+          d.id, d.data()))
           .toList());
 
   @override
@@ -107,7 +110,7 @@ class FirebaseStockRepository implements StockRepository {
           .snapshots()
           .map((s) => s.docs
           .map((d) => RoomModel.fromFirestore(
-          d.id, d.data() as Map<String, dynamic>))
+          d.id, d.data()))
           .toList());
 
   @override
@@ -268,7 +271,7 @@ class FirebaseStockRepository implements StockRepository {
           .snapshots()
           .map((s) => s.docs
           .map((d) => StockItem.fromFirestore(
-          d.id, d.data() as Map<String, dynamic>))
+          d.id, d.data()))
           .toList());
 
   @override
@@ -382,6 +385,87 @@ class FirebaseStockRepository implements StockRepository {
     }
   }
 
+  /// Returns every room-level item on campus grouped by catalog item id, with
+  /// building/floor/room names resolved via a lightweight structure walk.
+  ///
+  /// Uses a single unfiltered collection-group query on `items` (no custom
+  /// Firestore index required), since each room item's document id is its
+  /// catalog item id.
+  @override
+  Future<Map<String, List<ItemLocationStock>>> fetchItemLocationStock() async {
+    // 1. Structure walk: building/floor/room names keyed by ids.
+    final buildingNames = <String, String>{};
+    final floorNames = <String, String>{}; // '$buildingId/$floorId' -> name
+    final roomNames = <String, String>{}; // '$buildingId/$floorId/$roomId' -> name
+
+    final buildingsSnap = await _buildings.get();
+    for (final b in buildingsSnap.docs) {
+      buildingNames[b.id] = b.data()['name'] ?? b.id;
+      final floorsSnap =
+          await _buildings.doc(b.id).collection('floors').get();
+      for (final f in floorsSnap.docs) {
+        floorNames['${b.id}/${f.id}'] = f.data()['name'] ?? f.id;
+        final roomsSnap = await _buildings
+            .doc(b.id)
+            .collection('floors')
+            .doc(f.id)
+            .collection('rooms')
+            .get();
+        for (final r in roomsSnap.docs) {
+          roomNames['${b.id}/${f.id}/${r.id}'] = r.data()['name'] ?? r.id;
+        }
+      }
+    }
+
+    // 2. One collection-group read for all room items.
+    final itemsSnap = await _db.collectionGroup('items').get();
+
+    final result = <String, List<ItemLocationStock>>{};
+    for (final d in itemsSnap.docs) {
+      // ref: buildings/{b}/floors/{f}/rooms/{r}/items/{itemId}
+      final ref = d.reference;
+      final roomId = ref.parent.parent!.id;
+      final floorId = ref.parent.parent!.parent.parent!.id;
+      final buildingId = ref.parent.parent!.parent.parent!.parent.parent!.id;
+      final qty = (d.data()['currentQuantity'] ?? 0) as int;
+      if (qty <= 0) continue;
+
+      result
+          .putIfAbsent(d.id, () => [])
+          .add(ItemLocationStock(
+        buildingName: buildingNames[buildingId] ?? buildingId,
+        floorName: floorNames['$buildingId/$floorId'] ?? floorId,
+        roomName: roomNames['$buildingId/$floorId/$roomId'] ?? roomId,
+        quantity: qty,
+      ));
+    }
+    return result;
+  }
+
+  /// Reads the most recent [limit] price-history entries for a catalog item.
+  @override
+  Future<List<ItemPriceLog>> fetchItemPriceHistory(
+      String catalogItemId, {int limit = 50}) async {
+    final snap = await _itemsCatalog
+        .doc(catalogItemId)
+        .collection('priceHistory')
+        .orderBy('timestamp', descending: true)
+        .limit(limit)
+        .get();
+    return snap.docs.map((doc) {
+      final d = doc.data();
+      return ItemPriceLog(
+        timestamp: d['timestamp'] != null
+            ? DateTime.tryParse(d['timestamp']) ?? DateTime.now()
+            : DateTime.now(),
+        price: (d['price'] ?? 0).toDouble(),
+        quantity: d['quantity'] ?? 0,
+        store: d['store'] ?? '',
+        bill: d['bill'] ?? '',
+      );
+    }).toList();
+  }
+
   @override
   Future<void> deleteItem(String buildingId, String floorId,
       String roomId, String itemId) =>
@@ -476,7 +560,7 @@ class FirebaseStockRepository implements StockRepository {
           .snapshots()
           .map((s) => s.docs
               .map((d) => StockLog.fromFirestore(
-                  d.id, d.data() as Map<String, dynamic>))
+                  d.id, d.data()))
               .toList());
 
   @override
@@ -484,16 +568,16 @@ class FirebaseStockRepository implements StockRepository {
     int migrated = 0;
     final buildingsSnap = await _buildings.get();
     for (final bDoc in buildingsSnap.docs) {
-      final buildingName = (bDoc.data() as Map<String, dynamic>)['name'] ?? '';
+      final buildingName = bDoc.data()['name'] ?? '';
       final floorsSnap = await _floors(bDoc.id).get();
       for (final fDoc in floorsSnap.docs) {
-        final floorName = (fDoc.data() as Map<String, dynamic>)['name'] ?? '';
+        final floorName = fDoc.data()['name'] ?? '';
         final roomsSnap = await _rooms(bDoc.id, fDoc.id).get();
         for (final rDoc in roomsSnap.docs) {
-          final roomName = (rDoc.data() as Map<String, dynamic>)['name'] ?? '';
+          final roomName = rDoc.data()['name'] ?? '';
           final logsSnap = await _logs(bDoc.id, fDoc.id, rDoc.id).get();
           for (final lDoc in logsSnap.docs) {
-            final data = lDoc.data() as Map<String, dynamic>;
+            final data = lDoc.data();
             if (data['buildingName'] == null || data['buildingName'] == '') {
               await lDoc.reference.update({
                 'buildingName': buildingName,
@@ -609,7 +693,7 @@ class FirebaseStockRepository implements StockRepository {
     final items = await _items(buildingId, floorId, roomId).get();
     final stockById = <String, int>{};
     for (final d in items.docs) {
-      final data = d.data() as Map<String, dynamic>;
+      final data = d.data();
       stockById[d.id] = (data['currentQuantity'] as num?)?.toInt() ?? 0;
     }
 
