@@ -74,9 +74,11 @@ class _BillManagementScreenState extends ConsumerState<BillManagementScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(bill.reimbursementRequired
-                ? 'Bill marked as reimbursed.'
-                : 'Bill marked as paid.'),
+            content: Text(
+              bill.reimbursementRequired
+                  ? 'Bill marked as reimbursed.'
+                  : 'Bill marked as paid.',
+            ),
             backgroundColor: Color(0xFF2E7D32),
           ),
         );
@@ -555,8 +557,9 @@ class _MarkPaidDialogState extends State<_MarkPaidDialog> {
             borderRadius: BorderRadius.circular(8),
             child: InputDecorator(
               decoration: InputDecoration(
-                labelText:
-                    isReimbursement ? 'Reimbursement Date' : 'Payment Date',
+                labelText: isReimbursement
+                    ? 'Reimbursement Date'
+                    : 'Payment Date',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -586,10 +589,8 @@ class _MarkPaidDialogState extends State<_MarkPaidDialog> {
           child: const Text('Cancel'),
         ),
         ElevatedButton(
-          onPressed: () => Navigator.pop(context, (
-            date: _paymentDate,
-            by: _paidByCtrl.text.trim(),
-          )),
+          onPressed: () =>
+              Navigator.pop(context, (_paymentDate, _paidByCtrl.text.trim())),
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF2E7D32),
           ),
