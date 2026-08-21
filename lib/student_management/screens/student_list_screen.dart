@@ -27,13 +27,10 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
 
   StudentRepository get _service => ref.read(studentRepositoryProvider);
 
-  // Filters
-  final TextEditingController _searchIdCtrl = TextEditingController();
-  final TextEditingController _searchNameCtrl = TextEditingController();
-  String? _selectedCourse;
-  String? _selectedYear;
-
-  bool _filtersVisible = false;
+  // Search & chip filters
+  final TextEditingController _searchCtrl = TextEditingController();
+  final Set<String> _selectedYears = {};
+  final Set<String> _selectedCourses = {};
 
   // Sorting — defaults to Date Added, newest first
   int _sortColumnIndex = 0; // 0 = Date Added
@@ -55,8 +52,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
   void dispose() {
     _pagination.dispose();
     _tabs.dispose();
-    _searchIdCtrl.dispose();
-    _searchNameCtrl.dispose();
+    _searchCtrl.dispose();
     _debounce?.cancel();
     super.dispose();
   }
@@ -72,13 +68,10 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     }
 
     _debounce = Timer(const Duration(milliseconds: 400), () {
-      final query = [_searchNameCtrl.text, _searchIdCtrl.text]
-          .where((s) => s.isNotEmpty)
-          .join(' ');
       _pagination.runSearch(
-        query: query,
-        course: _selectedCourse,
-        year: _selectedYear,
+        query: _searchCtrl.text,
+        years: _selectedYears,
+        courses: _selectedCourses,
       );
     });
   }
@@ -104,39 +97,17 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     return list;
   }
 
-  List<StudentModel> _applyFilters(List<StudentModel> all) {
-    return all.where((s) {
-      final idMatch = _searchIdCtrl.text.isEmpty ||
-          s.studentId
-              .toLowerCase()
-              .contains(_searchIdCtrl.text.toLowerCase());
-      final nameMatch = _searchNameCtrl.text.isEmpty ||
-          s.name
-              .toLowerCase()
-              .contains(_searchNameCtrl.text.toLowerCase());
-      final courseMatch = (_selectedCourse == null ||
-          _selectedCourse == 'All' ||
-          _selectedCourse!.isEmpty) ||
-          s.nameOfCourse == _selectedCourse;
-      final yearMatch = (_selectedYear == null || _selectedYear!.isEmpty) ||
-          s.yearOfAdmission?.toString() == _selectedYear;
-      return idMatch && nameMatch && courseMatch && yearMatch;
-    }).toList();
-  }
-
   void _clearFilters() {
-    _searchIdCtrl.clear();
-    _searchNameCtrl.clear();
-    _selectedCourse = null;
-    _selectedYear = null;
+    _searchCtrl.clear();
+    _selectedYears.clear();
+    _selectedCourses.clear();
     _onFilterChanged();
   }
 
   bool get _hasActiveFilters =>
-      _searchIdCtrl.text.isNotEmpty ||
-      _searchNameCtrl.text.isNotEmpty ||
-      (_selectedCourse != null && _selectedCourse != 'All') ||
-      (_selectedYear != null && _selectedYear!.isNotEmpty);
+      _searchCtrl.text.isNotEmpty ||
+      _selectedYears.isNotEmpty ||
+      _selectedCourses.isNotEmpty;
 
   Future<void> _confirmDelete(StudentModel student) async {
     final confirm = await showDialog<bool>(
@@ -229,13 +200,17 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     );
   }
 
-  void _onCourseChanged(String? v) {
-    setState(() => _selectedCourse = v);
+  void _toggleYear(String year) {
+    setState(() {
+      if (!_selectedYears.remove(year)) _selectedYears.add(year);
+    });
     _onFilterChanged();
   }
 
-  void _onYearChanged(String? v) {
-    setState(() => _selectedYear = v == 'All' ? null : v);
+  void _toggleCourse(String course) {
+    setState(() {
+      if (!_selectedCourses.remove(course)) _selectedCourses.add(course);
+    });
     _onFilterChanged();
   }
 
@@ -254,15 +229,14 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     }
   }
 
-  List<String> get _allYears {
-    final years = _pagination.students
-        .map((s) => s.yearOfAdmission?.toString() ?? '')
-        .where((y) => y.isNotEmpty)
-        .toSet()
-        .toList();
-    years.sort((a, b) => b.compareTo(a));
-    return years;
+  // Chips offer the previous 5 admission years only.
+  List<String> get _yearOptions {
+    final now = DateTime.now().year;
+    return [for (var y = now; y > now - 5; y--) '$y'];
   }
+
+  List<String> get _courseOptions =>
+      listOfCourses.where((c) => c != 'All').toList();
 
   @override
   Widget build(BuildContext context) {
@@ -274,18 +248,6 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
             style: TextStyle(fontWeight: FontWeight.w700)),
         actions: [
           if (_tabs.index == 0) ...[
-            IconButton(
-              icon: Badge(
-                isLabelVisible: _hasActiveFilters,
-                backgroundColor: Colors.amber,
-                child: Icon(
-                  _filtersVisible ? Icons.filter_list_off : Icons.filter_list,
-                ),
-              ),
-              tooltip: 'Toggle Filters',
-              onPressed: () =>
-                  setState(() => _filtersVisible = !_filtersVisible),
-            ),
             IconButton(
               icon: const Icon(Icons.refresh),
               tooltip: 'Refresh',
@@ -321,19 +283,18 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
         children: [
           _StudentsTab(
             pagination: _pagination,
-            filtersVisible: _filtersVisible,
-            searchIdCtrl: _searchIdCtrl,
-            searchNameCtrl: _searchNameCtrl,
-            selectedCourse: _selectedCourse,
-            selectedYear: _selectedYear,
-            allYears: _allYears,
+            searchCtrl: _searchCtrl,
+            yearOptions: _yearOptions,
+            selectedYears: _selectedYears,
+            courseOptions: _courseOptions,
+            selectedCourses: _selectedCourses,
             hasActiveFilters: _hasActiveFilters,
             sortedStudents: _sorted,
             sortColumnIndex: _sortColumnIndex,
             sortAscending: _sortAscending,
             onFilterChanged: _onFilterChanged,
-            onCourseChanged: _onCourseChanged,
-            onYearChanged: _onYearChanged,
+            onYearToggled: _toggleYear,
+            onCourseToggled: _toggleCourse,
             onSort: _onSort,
             onClearFilters: _clearFilters,
             onRetry: _onRetry,
@@ -362,19 +323,18 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
 
 class _StudentsTab extends StatelessWidget {
   final PaginationController pagination;
-  final bool filtersVisible;
-  final TextEditingController searchIdCtrl;
-  final TextEditingController searchNameCtrl;
-  final String? selectedCourse;
-  final String? selectedYear;
-  final List<String> allYears;
+  final TextEditingController searchCtrl;
+  final List<String> yearOptions;
+  final Set<String> selectedYears;
+  final List<String> courseOptions;
+  final Set<String> selectedCourses;
   final bool hasActiveFilters;
   final List<StudentModel> sortedStudents;
   final int sortColumnIndex;
   final bool sortAscending;
   final VoidCallback onFilterChanged;
-  final void Function(String?) onCourseChanged;
-  final void Function(String?) onYearChanged;
+  final void Function(String) onYearToggled;
+  final void Function(String) onCourseToggled;
   final void Function(int, bool) onSort;
   final VoidCallback onClearFilters;
   final VoidCallback onRetry;
@@ -384,19 +344,18 @@ class _StudentsTab extends StatelessWidget {
 
   const _StudentsTab({
     required this.pagination,
-    required this.filtersVisible,
-    required this.searchIdCtrl,
-    required this.searchNameCtrl,
-    required this.selectedCourse,
-    required this.selectedYear,
-    required this.allYears,
+    required this.searchCtrl,
+    required this.yearOptions,
+    required this.selectedYears,
+    required this.courseOptions,
+    required this.selectedCourses,
     required this.hasActiveFilters,
     required this.sortedStudents,
     required this.sortColumnIndex,
     required this.sortAscending,
     required this.onFilterChanged,
-    required this.onCourseChanged,
-    required this.onYearChanged,
+    required this.onYearToggled,
+    required this.onCourseToggled,
     required this.onSort,
     required this.onClearFilters,
     required this.onRetry,
@@ -409,24 +368,17 @@ class _StudentsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        AnimatedSize(
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeInOut,
-          child: filtersVisible
-              ? _FilterPanel(
-                  idCtrl: searchIdCtrl,
-                  nameCtrl: searchNameCtrl,
-                  selectedCourse: selectedCourse,
-                  courses: listOfCourses,
-                  selectedYear: selectedYear,
-                  allYears: allYears,
-                  hasActiveFilters: hasActiveFilters,
-                  onChanged: onFilterChanged,
-                  onCourseChanged: onCourseChanged,
-                  onYearChanged: onYearChanged,
-                  onClear: onClearFilters,
-                )
-              : const SizedBox.shrink(),
+        _SearchChipsPanel(
+          searchCtrl: searchCtrl,
+          yearOptions: yearOptions,
+          selectedYears: selectedYears,
+          courseOptions: courseOptions,
+          selectedCourses: selectedCourses,
+          hasActiveFilters: hasActiveFilters,
+          onSearchChanged: (_) => onFilterChanged(),
+          onYearToggled: onYearToggled,
+          onCourseToggled: onCourseToggled,
+          onClear: onClearFilters,
         ),
         _StatsBar(
           total: pagination.totalCount,
@@ -634,231 +586,208 @@ class _AuditLogTile extends StatelessWidget {
 
 // ── Filter Panel ──────────────────────────────────────────────────────────────
 
-class _FilterPanel extends StatelessWidget {
-  final TextEditingController idCtrl;
-  final TextEditingController nameCtrl;
-  final String? selectedCourse;
-  final List<String> courses;
-  final String? selectedYear;
-  final List<String> allYears;
+// ΓöÇΓöÇ Search & Chip Filters ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+/// Permanent search bar plus multi-select admission-year and course chips.
+class _SearchChipsPanel extends StatelessWidget {
+  final TextEditingController searchCtrl;
+  final List<String> yearOptions;
+  final Set<String> selectedYears;
+  final List<String> courseOptions;
+  final Set<String> selectedCourses;
   final bool hasActiveFilters;
-  final VoidCallback onChanged;
-  final void Function(String?) onCourseChanged;
-  final void Function(String?) onYearChanged;
+  final void Function(String) onSearchChanged;
+  final void Function(String) onYearToggled;
+  final void Function(String) onCourseToggled;
   final VoidCallback onClear;
-
-  const _FilterPanel({
-    required this.idCtrl,
-    required this.nameCtrl,
-    required this.selectedCourse,
-    required this.courses,
-    required this.selectedYear,
-    required this.allYears,
+  const _SearchChipsPanel({
+    required this.searchCtrl,
+    required this.yearOptions,
+    required this.selectedYears,
+    required this.courseOptions,
+    required this.selectedCourses,
     required this.hasActiveFilters,
-    required this.onChanged,
-    required this.onCourseChanged,
-    required this.onYearChanged,
+    required this.onSearchChanged,
+    required this.onYearToggled,
+    required this.onCourseToggled,
     required this.onClear,
   });
-
   @override
   Widget build(BuildContext context) {
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.tune, size: 16, color: Color(0xFF1A3C6E)),
-              const SizedBox(width: 6),
-              const Text(
-                'Filter Students',
-                style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1A3C6E),
-                    fontSize: 13),
+              Expanded(
+                child: TextField(
+                  controller: searchCtrl,
+                  onChanged: onSearchChanged,
+                  decoration: InputDecoration(
+                    hintText: 'Search by name or student ID',
+                    hintStyle:
+                        TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                    prefixIcon: const Icon(Icons.search,
+                        size: 18, color: Color(0xFF1A3C6E)),
+                    suffixIcon: searchCtrl.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 16),
+                            onPressed: () {
+                              searchCtrl.clear();
+                              onSearchChanged('');
+                            },
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          )
+                        : null,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 10),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide:
+                          const BorderSide(color: Color(0xFF1A3C6E), width: 1.5),
+                    ),
+                  ),
+                ),
               ),
-              const Spacer(),
               if (hasActiveFilters)
                 TextButton.icon(
                   onPressed: onClear,
                   icon: const Icon(Icons.clear_all, size: 16),
-                  label: const Text('Clear All',
-                      style: TextStyle(fontSize: 12)),
+                  label: const Text('Clear', style: TextStyle(fontSize: 12)),
                   style: TextButton.styleFrom(
-                      foregroundColor: Colors.red.shade600,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4)),
+                    foregroundColor: Colors.red.shade600,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  ),
                 ),
             ],
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _FilterField(
-                  controller: idCtrl,
-                  label: 'Student ID',
-                  icon: Icons.badge_outlined,
-                  onChanged: (_) => onChanged(),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _FilterField(
-                  controller: nameCtrl,
-                  label: 'Name',
-                  icon: Icons.person_outline,
-                  onChanged: (_) => onChanged(),
-                ),
-              ),
-            ],
+          _ChipGroupRow(
+            label: 'Admission Year',
+            options: yearOptions,
+            selected: selectedYears,
+            onToggled: onYearToggled,
           ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _FilterDropdown(
-                  value: selectedCourse,
-                  hint: 'Course',
-                  icon: Icons.menu_book_outlined,
-                  items: courses,
-                  onChanged: onCourseChanged,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _FilterDropdown(
-                  value: selectedYear,
-                  hint: 'Admission Year',
-                  icon: Icons.calendar_today_outlined,
-                  items: ['All', ...allYears],
-                  onChanged: (v) => onYearChanged(v == 'All' ? null : v),
-                ),
-              ),
-            ],
+          const SizedBox(height: 8),
+          _ChipGroupRow(
+            label: 'Course',
+            options: courseOptions,
+            selected: selectedCourses,
+            onToggled: onCourseToggled,
           ),
         ],
       ),
     );
   }
 }
-
-class _FilterField extends StatelessWidget {
-  final TextEditingController controller;
+/// A labelled row of multi-select chips. Values selected within a group are
+/// OR-ed together (2025 + 2024 -> either admission year).
+class _ChipGroupRow extends StatelessWidget {
   final String label;
-  final IconData icon;
-  final void Function(String) onChanged;
-
-  const _FilterField({
-    required this.controller,
+  final List<String> options;
+  final Set<String> selected;
+  final void Function(String) onToggled;
+  const _ChipGroupRow({
     required this.label,
-    required this.icon,
-    required this.onChanged,
+    required this.options,
+    required this.selected,
+    required this.onToggled,
   });
-
   @override
   Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      onChanged: onChanged,
-      style: const TextStyle(fontSize: 13),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: const TextStyle(fontSize: 12),
-        prefixIcon: Icon(icon, size: 16),
-        isDense: true,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+    return Row(
+      children: [
+        SizedBox(
+          width: 100,
+          child: Text(
+            label,
+            style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+                color: Color(0xFF1A3C6E)),
+          ),
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final o in options)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: _SelectChip(
+                      label: o,
+                      selected: selected.contains(o),
+                      onTap: () => onToggled(o),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide:
-              const BorderSide(color: Color(0xFF1A3C6E), width: 1.5),
+      ],
+    );
+  }
+}
+class _SelectChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _SelectChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF1A3C6E) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? const Color(0xFF1A3C6E) : Colors.grey.shade300,
+          ),
         ),
-        filled: true,
-        fillColor: Colors.grey.shade50,
-        suffixIcon: controller.text.isNotEmpty
-            ? IconButton(
-                icon: const Icon(Icons.clear, size: 14),
-                onPressed: () {
-                  controller.clear();
-                  onChanged('');
-                },
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              )
-            : null,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (selected) ...[
+              const Icon(Icons.check, size: 14, color: Colors.white),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: selected ? Colors.white : Colors.black87,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
-
-class _FilterDropdown extends StatelessWidget {
-  final String? value;
-  final String hint;
-  final IconData icon;
-  final List<String> items;
-  final void Function(String?) onChanged;
-
-  const _FilterDropdown({
-    required this.value,
-    required this.hint,
-    required this.icon,
-    required this.items,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return DropdownButtonFormField<String>(
-      value: value,
-      onChanged: onChanged,
-      isDense: true,
-      isExpanded: true,
-      style: const TextStyle(fontSize: 13, color: Colors.black87),
-      decoration: InputDecoration(
-        labelText: hint,
-        labelStyle: const TextStyle(fontSize: 12),
-        prefixIcon: Icon(icon, size: 16),
-        isDense: true,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide:
-              const BorderSide(color: Color(0xFF1A3C6E), width: 1.5),
-        ),
-        filled: true,
-        fillColor: Colors.grey.shade50,
-      ),
-      items: items
-          .map((e) => DropdownMenuItem(
-              value: e, child: Text(e, style: const TextStyle(fontSize: 13))))
-          .toList(),
-    );
-  }
-}
-
-// ── Stats Bar ─────────────────────────────────────────────────────────────────
-
 class _StatsBar extends StatelessWidget {
   final int total;
   final int showing;
