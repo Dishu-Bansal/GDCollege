@@ -2954,6 +2954,74 @@ class _InspectionExecutionScreenState
 
   bool get _hasDiscrepancy => _items.any((e) => !e.matched);
 
+  /// Opens the stock transfer sheet for a mismatched checklist item. The live
+  /// item is fetched from the room so the sheet shows the current quantity.
+  Future<void> _transferMismatchedItem(int i) async {
+    final entry = _items[i];
+    if (entry.itemId.isEmpty) return;
+
+    final all = await widget.service
+        .watchItems(widget.building.id!, widget.floor.id!, widget.room.id!)
+        .first;
+    final stockItem = all.where((s) => s.id == entry.itemId).firstOrNull;
+    if (stockItem == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Item not found in this room')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => _TransferSheet(
+        building: widget.building,
+        floor: widget.floor,
+        room: widget.room,
+        item: stockItem,
+        service: widget.service,
+      ),
+    );
+  }
+
+  /// Picks and uploads a photo for the catalog item of a mismatched checklist
+  /// item (same flow as the item card's Add Photo action).
+  Future<void> _addItemPhoto(int i) async {
+    final entry = _items[i];
+    if (entry.itemId.isEmpty) return;
+
+    final picker = ImagePicker();
+    final file = await picker.pickImage(
+        source: ImageSource.gallery, imageQuality: 80);
+    if (file == null || !mounted) return;
+
+    try {
+      final url = await widget.service.uploadCatalogItemPhoto(
+        xfile: file,
+        catalogItemId: entry.itemId,
+      );
+      if (url != null) {
+        await widget.service.updateCatalogItemPhoto(entry.itemId, url);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Photo added for ${entry.itemName}')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Photo upload failed: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _complete() async {
     // If discrepancies found, ask whether to upload media
     final hasMedia = widget.room.photoUrls.isNotEmpty ||
@@ -3245,6 +3313,40 @@ class _InspectionExecutionScreenState
                             setState(() => _items[i].note = v);
                           },
                         ),
+                        // Feature: Inspection actions - transfer stock out or
+                        // attach an item photo while resolving a mismatch.
+                        const SizedBox(height: 10),
+                        Row(children: [
+                          OutlinedButton.icon(
+                            onPressed:
+                                _saving ? null : () => _transferMismatchedItem(i),
+                            icon: const Icon(Icons.swap_horiz_outlined,
+                                size: 16),
+                            label: const Text('Transfer'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.blue.shade700,
+                              side: BorderSide(color: Colors.blue.shade200),
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          OutlinedButton.icon(
+                            onPressed:
+                                _saving ? null : () => _addItemPhoto(i),
+                            icon: const Icon(Icons.camera_alt_outlined,
+                                size: 16),
+                            label: const Text('Add Photo'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.teal.shade700,
+                              side: BorderSide(color: Colors.teal.shade200),
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                            ),
+                          ),
+                        ]),
                       ],
                     ]),
               );
