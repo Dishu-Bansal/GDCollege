@@ -238,3 +238,76 @@ class InspectionStatusLine extends StatelessWidget {
     );
   }
 }
+
+// ── Expandable inspection-due list ─────────────────────────────────────────────
+// Feature: Inspection Tracking - compact list of rooms whose inspection is due
+// or that were never inspected. Shows a count header that expands to reveal the
+// full room-wise list (room name + last inspection date). Short lists (<3
+// rooms) start expanded; longer lists start collapsed so cards stay compact.
+
+class InspectionDueList extends StatefulWidget {
+  /// Rooms paired with their floor name (empty string when on a single floor).
+  final List<(RoomModel, String)> dueRooms;
+
+  const InspectionDueList({super.key, required this.dueRooms});
+
+  @override
+  State<InspectionDueList> createState() => _InspectionDueListState();
+}
+
+class _InspectionDueListState extends State<InspectionDueList> {
+  late bool _expanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = widget.dueRooms.length <= 2;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rooms = widget.dueRooms;
+    if (rooms.isEmpty) return const SizedBox.shrink();
+
+    final count = rooms.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _expanded = !_expanded),
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Inspection due for $count room${count == 1 ? '' : 's'}',
+                  style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.red,
+                      fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(width: 2),
+                Icon(
+                  _expanded ? Icons.expand_less : Icons.expand_more,
+                  size: 14,
+                  color: Colors.red,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_expanded)
+          for (final (room, floorName) in rooms)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: InspectionStatusLine(
+                  room: room,
+                  includeRoomName: true,
+                  floorName: floorName),
+            ),
+      ],
+    );
+  }
+}

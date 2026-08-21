@@ -172,24 +172,13 @@ class _FloorCardTile extends StatelessWidget {
                 Text(floor.name,
                     style: const TextStyle(
                         fontWeight: FontWeight.w700, fontSize: 15)),
-                // Feature: Inspection Tracking - list rooms due or never
-                // inspected with their last inspection date.
+                // Feature: Inspection Tracking - compact, expandable list of
+                // rooms due or never inspected with their last inspection date.
                 if (dueRooms.isNotEmpty) ...[
                   const SizedBox(height: 4),
-                  Text(
-                    'Inspection due for ${dueRooms.length} '
-                    'room${dueRooms.length == 1 ? '' : 's'}',
-                    style: const TextStyle(
-                        fontSize: 11,
-                        color: Colors.red,
-                        fontWeight: FontWeight.w500),
+                  InspectionDueList(
+                    dueRooms: [for (final r in dueRooms) (r, '')],
                   ),
-                  for (final r in dueRooms)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: InspectionStatusLine(
-                          room: r, includeRoomName: true),
-                    ),
                 ],
               ],
             ),

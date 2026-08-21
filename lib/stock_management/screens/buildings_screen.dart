@@ -231,26 +231,11 @@ class _BuildingCardContent extends StatelessWidget {
               style: TextStyle(
                   fontSize: 11, color: Colors.grey.shade500),
             ),
-          // Feature: Inspection Tracking - list rooms due or never
-          // inspected across all floors with their last inspection date.
+          // Feature: Inspection Tracking - compact, expandable list of rooms
+          // due or never inspected across all floors.
           if (dueRooms.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(
-              'Inspection due for ${dueRooms.length} '
-              'room${dueRooms.length == 1 ? '' : 's'}',
-              style: const TextStyle(
-                  fontSize: 11,
-                  color: Colors.red,
-                  fontWeight: FontWeight.w500),
-            ),
-            for (final (room, floorName) in dueRooms)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: InspectionStatusLine(
-                    room: room,
-                    includeRoomName: true,
-                    floorName: floorName),
-              ),
+            InspectionDueList(dueRooms: dueRooms),
           ],
         ],
       ),
