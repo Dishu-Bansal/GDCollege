@@ -57,6 +57,8 @@ class BillModel {
   DateTime billDate;
   DateTime? paymentDate;
   String paymentBy;
+  DateTime? reimbursementDate;
+  String reimbursedBy;
   bool reimbursementRequired;
   bool paid;
   String? photoUrl;
@@ -73,6 +75,8 @@ class BillModel {
     DateTime? billDate,
     this.paymentDate,
     this.paymentBy = '',
+    this.reimbursementDate,
+    this.reimbursedBy = '',
     this.reimbursementRequired = false,
     this.paid = false,
     this.photoUrl,
@@ -102,6 +106,10 @@ class BillModel {
             ? DateTime.tryParse(d['paymentDate'])
             : null,
         paymentBy: d['paymentBy'] ?? '',
+        reimbursementDate: d['reimbursementDate'] != null
+            ? DateTime.tryParse(d['reimbursementDate'])
+            : null,
+        reimbursedBy: d['reimbursedBy'] ?? '',
         reimbursementRequired: d['reimbursementRequired'] ?? false,
         paid: d['paid'] ?? false,
         photoUrl: d['photoUrl'],
@@ -124,6 +132,8 @@ class BillModel {
     'billDate': billDate.toIso8601String(),
     'paymentDate': paymentDate?.toIso8601String(),
     'paymentBy': paymentBy,
+    'reimbursementDate': reimbursementDate?.toIso8601String(),
+    'reimbursedBy': reimbursedBy,
     'reimbursementRequired': reimbursementRequired,
     'paid': paid,
     'photoUrl': photoUrl,

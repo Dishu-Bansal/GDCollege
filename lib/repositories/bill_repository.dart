@@ -22,10 +22,14 @@ abstract class BillRepository {
     bool removePhoto = false,
   });
 
-  /// Marks a pending-reimbursement bill as paid.
+  /// Marks a pending-reimbursement bill as paid. For reimbursement-required
+  /// bills this records the reimbursement (date and by); otherwise it records
+  /// the original payment.
   Future<void> markBillPaid(
     String billId, {
     DateTime? paymentDate,
     String paymentBy = '',
+    DateTime? reimbursementDate,
+    String reimbursedBy = '',
   });
 }

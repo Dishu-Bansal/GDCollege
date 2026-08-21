@@ -105,25 +105,40 @@ class FirebaseBillRepository implements BillRepository {
     String billId, {
     DateTime? paymentDate,
     String paymentBy = '',
+    DateTime? reimbursementDate,
+    String reimbursedBy = '',
   }) async {
     final now = DateTime.now();
     final snap = await _bills.doc(billId).get();
-    final billNumber = snap.data()?['billNumber'] ?? '';
-    final paidDate = paymentDate ?? now;
+    final data = snap.data();
+    final billNumber = data?['billNumber'] ?? '';
+    final needsReimbursement = data?['reimbursementRequired'] ?? false;
 
-    await _bills.doc(billId).update({
+    final updates = <String, dynamic>{
       'paid': true,
-      'paymentDate': paidDate.toIso8601String(),
-      if (paymentBy.isNotEmpty) 'paymentBy': paymentBy,
       'updatedAt': now.toIso8601String(),
       'updatedBy': _currentUser,
-    });
-    await _writeLog(
-        billId, billNumber, 'pay',
-        paymentBy.isNotEmpty
-            ? 'Bill marked as paid by $paymentBy on '
-                '${paidDate.day}/${paidDate.month}/${paidDate.year}.'
-            : 'Bill marked as paid.');
+    };
+    String logDetail;
+    if (needsReimbursement) {
+      final date = reimbursementDate ?? now;
+      updates['reimbursementDate'] = date.toIso8601String();
+      if (reimbursedBy.isNotEmpty) updates['reimbursedBy'] = reimbursedBy;
+      logDetail = reimbursedBy.isNotEmpty
+          ? 'Bill reimbursed by $reimbursedBy on '
+              '${date.day}/${date.month}/${date.year}.'
+          : 'Bill marked as reimbursed.';
+    } else {
+      final date = paymentDate ?? now;
+      updates['paymentDate'] = date.toIso8601String();
+      if (paymentBy.isNotEmpty) updates['paymentBy'] = paymentBy;
+      logDetail = paymentBy.isNotEmpty
+          ? 'Bill marked as paid by $paymentBy on '
+              '${date.day}/${date.month}/${date.year}.'
+          : 'Bill marked as paid.';
+    }
+    await _bills.doc(billId).update(updates);
+    await _writeLog(billId, billNumber, 'pay', logDetail);
   }
 
   // ── Photo upload ────────────────────────────────────────────────────────────

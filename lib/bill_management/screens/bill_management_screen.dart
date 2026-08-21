@@ -54,22 +54,29 @@ class _BillManagementScreenState extends ConsumerState<BillManagementScreen>
   Future<void> _confirmMarkPaid(BillModel bill) async {
     final result = await showDialog<(DateTime, String)>(
       context: context,
-      builder: (_) => _MarkPaidDialog(billNumber: bill.billNumber),
+      builder: (_) => _MarkPaidDialog(
+        billNumber: bill.billNumber,
+        reimbursementRequired: bill.reimbursementRequired,
+      ),
     );
     if (result == null) return;
-    final (paymentDate, paymentBy) = result;
+    final (date, by) = result;
     try {
       await ref
           .read(billRepositoryProvider)
           .markBillPaid(
             bill.id!,
-            paymentDate: paymentDate,
-            paymentBy: paymentBy,
+            paymentDate: bill.reimbursementRequired ? null : date,
+            paymentBy: bill.reimbursementRequired ? '' : by,
+            reimbursementDate: bill.reimbursementRequired ? date : null,
+            reimbursedBy: bill.reimbursementRequired ? by : '',
           );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Bill marked as paid.'),
+          SnackBar(
+            content: Text(bill.reimbursementRequired
+                ? 'Bill marked as reimbursed.'
+                : 'Bill marked as paid.'),
             backgroundColor: Color(0xFF2E7D32),
           ),
         );
@@ -265,10 +272,19 @@ class _BillCard extends StatelessWidget {
                         '${bill.paymentBy.isNotEmpty ? ' by ${bill.paymentBy}' : ''}',
                         color: const Color(0xFF2E7D32),
                       ),
+                    if (bill.paid && bill.reimbursementDate != null)
+                      _infoRow(
+                        Icons.receipt_long_outlined,
+                        'Reimbursed on ${_fmtDate(bill.reimbursementDate!)}'
+                        '${bill.reimbursedBy.isNotEmpty ? ' by ${bill.reimbursedBy}' : ''}',
+                        color: const Color(0xFF00897B),
+                      ),
                     if (pending)
                       _infoRow(
                         Icons.pending_actions,
-                        'Payment pending',
+                        bill.reimbursementRequired
+                            ? 'Reimbursement pending'
+                            : 'Payment pending',
                         color: Colors.orange.shade800,
                       ),
                     const SizedBox(height: 6),
@@ -472,7 +488,11 @@ class _BillPhoto extends StatelessWidget {
 
 class _MarkPaidDialog extends StatefulWidget {
   final String billNumber;
-  const _MarkPaidDialog({required this.billNumber});
+  final bool reimbursementRequired;
+  const _MarkPaidDialog({
+    required this.billNumber,
+    required this.reimbursementRequired,
+  });
 
   @override
   State<_MarkPaidDialog> createState() => _MarkPaidDialogState();
@@ -509,6 +529,7 @@ class _MarkPaidDialogState extends State<_MarkPaidDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isReimbursement = widget.reimbursementRequired;
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       title: const Row(
@@ -523,7 +544,9 @@ class _MarkPaidDialogState extends State<_MarkPaidDialog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Payment details for bill #${widget.billNumber}',
+            isReimbursement
+                ? 'Reimbursement details for bill #${widget.billNumber}'
+                : 'Payment details for bill #${widget.billNumber}',
             style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
           ),
           const SizedBox(height: 12),
@@ -532,7 +555,8 @@ class _MarkPaidDialogState extends State<_MarkPaidDialog> {
             borderRadius: BorderRadius.circular(8),
             child: InputDecorator(
               decoration: InputDecoration(
-                labelText: 'Payment Date',
+                labelText:
+                    isReimbursement ? 'Reimbursement Date' : 'Payment Date',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -545,8 +569,10 @@ class _MarkPaidDialogState extends State<_MarkPaidDialog> {
           TextField(
             controller: _paidByCtrl,
             decoration: InputDecoration(
-              labelText: 'Paid By',
-              hintText: 'Who made the payment',
+              labelText: isReimbursement ? 'Reimbursed By' : 'Paid By',
+              hintText: isReimbursement
+                  ? 'Who reimbursed the bill'
+                  : 'Who made the payment',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
               ),

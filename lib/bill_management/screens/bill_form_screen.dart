@@ -210,12 +210,15 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
     }
 
     final paymentBy = _paymentByCtrl.text.trim();
-    // A bill counts as paid only when a payer is recorded; a bill already
-    // marked paid (e.g. via "Mark as Paid") stays paid when re-edited.
+    // A bill stays settled when re-editing one that was already paid or
+    // reimbursed. Otherwise it is paid only when no reimbursement is needed
+    // and an original payer is recorded; reimbursement-required bills stay
+    // pending until the reimbursement is recorded.
     final paid =
-        paymentBy.isNotEmpty ||
-        (_isEdit && (widget.existingBill?.paid ?? false));
-    final paymentDate = _paymentDate ?? (paid ? DateTime.now() : null);
+        (_isEdit && (widget.existingBill?.paid ?? false)) ||
+        (!_reimbursementRequired && paymentBy.isNotEmpty);
+    final paymentDate = _paymentDate ??
+        ((paid && !_reimbursementRequired) ? DateTime.now() : null);
 
     final bill = BillModel(
       id: widget.existingBill?.id,
@@ -224,6 +227,8 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
       billDate: _billDate,
       paymentDate: paymentDate,
       paymentBy: paymentBy,
+      reimbursementDate: widget.existingBill?.reimbursementDate,
+      reimbursedBy: widget.existingBill?.reimbursedBy ?? '',
       reimbursementRequired: _reimbursementRequired,
       paid: paid,
       photoUrl: widget.existingBill?.photoUrl,
