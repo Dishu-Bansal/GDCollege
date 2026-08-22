@@ -147,7 +147,7 @@ class _BillManagementScreenState extends ConsumerState<BillManagementScreen>
 
 // ── Bills tab ─────────────────────────────────────────────────────────────────
 
-class _BillsTab extends ConsumerWidget {
+class _BillsTab extends ConsumerStatefulWidget {
   final void Function(BillModel) onEdit;
   final void Function(BillModel) onMarkPaid;
   final bool canManage;
@@ -159,7 +159,55 @@ class _BillsTab extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_BillsTab> createState() => _BillsTabState();
+}
+
+class _BillsTabState extends ConsumerState<_BillsTab> {
+  final TextEditingController _searchCtrl = TextEditingController();
+  final Set<String> _selectedStatuses = {};
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  bool get _hasActiveFilters =>
+      _searchCtrl.text.isNotEmpty || _selectedStatuses.isNotEmpty;
+
+  List<BillModel> _applyFiltersAndSort(List<BillModel> all) {
+    final query = _searchCtrl.text.toLowerCase().trim();
+    final filtered = all.where((b) {
+      final storeMatch =
+          query.isEmpty || b.storeName.toLowerCase().contains(query);
+      // Status chips are OR-ed within the group.
+      final statusMatch = _selectedStatuses.isEmpty ||
+          (_selectedStatuses.contains('Pending') && !b.paid) ||
+          (_selectedStatuses.contains('Paid') && b.paid);
+      return storeMatch && statusMatch;
+    }).toList();
+    // Latest bill date at the top; createdAt breaks ties for same-day bills.
+    filtered.sort((a, b) {
+      final byDate = b.billDate.compareTo(a.billDate);
+      return byDate != 0 ? byDate : b.createdAt.compareTo(a.createdAt);
+    });
+    return filtered;
+  }
+
+  void _toggleStatus(String status) {
+    setState(() {
+      if (!_selectedStatuses.remove(status)) _selectedStatuses.add(status);
+    });
+  }
+
+  void _clearFilters() {
+    _searchCtrl.clear();
+    _selectedStatuses.clear();
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final bills = ref.watch(billsStreamProvider);
     return bills.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -181,25 +229,213 @@ class _BillsTab extends ConsumerWidget {
         ),
       ),
       data: (list) {
-        if (list.isEmpty) {
-          return const _EmptyState(
-            icon: Icons.receipt_long_outlined,
-            title: 'No bills yet',
-            subtitle: 'Tap "Add Bill" to record your first purchase.',
-          );
-        }
-        return ListView.separated(
-          padding: const EdgeInsets.all(12),
-          itemCount: list.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 10),
-          itemBuilder: (_, i) => _BillCard(
-            bill: list[i],
-            onEdit: () => onEdit(list[i]),
-            onMarkPaid: () => onMarkPaid(list[i]),
-            canManage: canManage,
-          ),
+        final filtered = _applyFiltersAndSort(list);
+        return Column(
+          children: [
+            _BillFilterBar(
+              searchCtrl: _searchCtrl,
+              selectedStatuses: _selectedStatuses,
+              hasActiveFilters: _hasActiveFilters,
+              onSearchChanged: (_) => setState(() {}),
+              onStatusToggled: _toggleStatus,
+              onClear: _clearFilters,
+            ),
+            Expanded(
+              child: list.isEmpty
+                  ? const _EmptyState(
+                      icon: Icons.receipt_long_outlined,
+                      title: 'No bills yet',
+                      subtitle: 'Tap "Add Bill" to record your first purchase.',
+                    )
+                  : filtered.isEmpty
+                      ? const _EmptyState(
+                          icon: Icons.search_off,
+                          title: 'No bills match',
+                          subtitle:
+                              'Try a different store name or clear the status filters.',
+                        )
+                      : ListView.separated(
+                          padding: const EdgeInsets.all(12),
+                          itemCount: filtered.length,
+                          separatorBuilder: (_, _) =>
+                              const SizedBox(height: 10),
+                          itemBuilder: (_, i) => _BillCard(
+                            bill: filtered[i],
+                            onEdit: () => widget.onEdit(filtered[i]),
+                            onMarkPaid: () =>
+                                widget.onMarkPaid(filtered[i]),
+                            canManage: widget.canManage,
+                          ),
+                        ),
+            ),
+          ],
         );
       },
+    );
+  }
+}
+
+/// Search-by-store-name bar plus multi-select Pending/Paid status chips.
+class _BillFilterBar extends StatelessWidget {
+  final TextEditingController searchCtrl;
+  final Set<String> selectedStatuses;
+  final bool hasActiveFilters;
+  final void Function(String) onSearchChanged;
+  final void Function(String) onStatusToggled;
+  final VoidCallback onClear;
+
+  const _BillFilterBar({
+    required this.searchCtrl,
+    required this.selectedStatuses,
+    required this.hasActiveFilters,
+    required this.onSearchChanged,
+    required this.onStatusToggled,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: searchCtrl,
+                  onChanged: onSearchChanged,
+                  decoration: InputDecoration(
+                    hintText: 'Search by store name',
+                    hintStyle:
+                        TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                    prefixIcon: const Icon(Icons.search,
+                        size: 18, color: Color(0xFF1A3C6E)),
+                    suffixIcon: searchCtrl.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 16),
+                            onPressed: () {
+                              searchCtrl.clear();
+                              onSearchChanged('');
+                            },
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          )
+                        : null,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 10),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide:
+                          const BorderSide(color: Color(0xFF1A3C6E), width: 1.5),
+                    ),
+                  ),
+                ),
+              ),
+              if (hasActiveFilters)
+                TextButton.icon(
+                  onPressed: onClear,
+                  icon: const Icon(Icons.clear_all, size: 16),
+                  label: const Text('Clear', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.red.shade600,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const SizedBox(
+                width: 100,
+                child: Text(
+                  'Status',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                    color: Color(0xFF1A3C6E),
+                  ),
+                ),
+              ),
+              _BillStatusChip(
+                label: 'Pending',
+                selected: selectedStatuses.contains('Pending'),
+                color: Colors.orange.shade700,
+                onTap: () => onStatusToggled('Pending'),
+              ),
+              const SizedBox(width: 6),
+              _BillStatusChip(
+                label: 'Paid',
+                selected: selectedStatuses.contains('Paid'),
+                color: const Color(0xFF2E7D32),
+                onTap: () => onStatusToggled('Paid'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BillStatusChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _BillStatusChip({
+    required this.label,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? color : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: selected ? color : Colors.grey.shade300),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (selected) ...[
+              const Icon(Icons.check, size: 14, color: Colors.white),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: selected ? Colors.white : Colors.black87,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -255,6 +491,10 @@ class _BillCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (photoUrl != null) ...[
+                _BillPhoto(photoUrl: photoUrl),
+                const SizedBox(width: 12),
+              ],
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -308,10 +548,6 @@ class _BillCard extends StatelessWidget {
                   ],
                 ),
               ),
-              if (photoUrl != null) ...[
-                const SizedBox(width: 12),
-                _BillPhoto(photoUrl: photoUrl),
-              ],
             ],
           ),
           const SizedBox(height: 12),
