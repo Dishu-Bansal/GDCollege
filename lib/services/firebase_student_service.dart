@@ -305,8 +305,8 @@ class FirebaseStudentRepository implements StudentRepository {
   @override
   Future<List<StudentModel>> search({
     required String query,
-    String? course,
-    String? year,
+    Set<String>? years,
+    Set<String>? courses,
   }) async {
     final clean = query.toLowerCase().trim();
 
@@ -315,17 +315,20 @@ class FirebaseStudentRepository implements StudentRepository {
     if (clean.isNotEmpty) {
       q = q.where('_searchIndex.$clean', isEqualTo: true);
     }
-    if (course != null && course != 'All' && course.isNotEmpty) {
-      q = q.where('nameOfCourse', isEqualTo: course);
+    // Multi-select chips: values are OR-ed within a group and AND-ed across
+    // groups (e.g. years {2025, 2024} -> either year; years {2025} + courses
+    // {B.ED} -> admitted in 2025 studying B.ED). whereIn covers both.
+    final yearValues = (years ?? const <String>{})
+        .map(int.tryParse)
+        .whereType<int>()
+        .toList();
+    if (yearValues.isNotEmpty) {
+      q = q.where('yearOfAdmission', whereIn: yearValues);
     }
-    if (year != null && year.isNotEmpty) {
-      q = q.where('yearOfAdmission', isEqualTo: int.tryParse(year));
-    }
-
-    // If no filter at all somehow reached here, cap at 500 for safety
-    if (clean.isEmpty && (course == null || course == 'All') &&
-        (year == null || year.isEmpty)) {
-      q = q.limit(500);
+    final courseValues =
+        (courses ?? const <String>{}).where((c) => c.isNotEmpty).toList();
+    if (courseValues.isNotEmpty) {
+      q = q.where('nameOfCourse', whereIn: courseValues);
     }
 
     final snap = await q.get();

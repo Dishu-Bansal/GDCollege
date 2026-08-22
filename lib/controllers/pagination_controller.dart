@@ -118,8 +118,8 @@ class PaginationController extends ChangeNotifier {
 
   Future<void> runSearch({
     required String query,
-    String? course,
-    String? year,
+    Set<String>? years,
+    Set<String>? courses,
   }) async {
     if (isLoading) return;
     _mode = PageMode.search;
@@ -131,8 +131,8 @@ class PaginationController extends ChangeNotifier {
     try {
       _allSearchResults = await _service.search(
         query: query,
-        course: course,
-        year: year,
+        years: years,
+        courses: courses,
       );
       // Keep the default view (Date Added, newest first) consistent across
       // pages — Firestore returns search results without a guaranteed order.

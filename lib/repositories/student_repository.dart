@@ -18,8 +18,8 @@ abstract class StudentRepository {
 
   Future<List<StudentModel>> search({
     required String query,
-    String? course,
-    String? year,
+    Set<String>? years,
+    Set<String>? courses,
   });
 
   Future<void> uploadFiles(
