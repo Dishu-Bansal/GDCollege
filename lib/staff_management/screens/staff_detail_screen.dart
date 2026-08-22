@@ -180,6 +180,8 @@ class _DetailsTab extends StatelessWidget {
             _Field('Salary', staff.salary),
             _Field('Designation', staff.designation),
             _Field('Course', staff.course),
+            _Field('Date of Joining', _dateStr(staff.dateOfJoining)),
+            _Field('Date of Relieving', _dateStr(staff.dateOfRelieving)),
             _Field('Increments', staff.increments.map((entry) => entry.amount + " on " + entry.date.toString() + "\n").join()),
           ],
           fileUrls: {
@@ -202,6 +204,12 @@ class _DetailsTab extends StatelessWidget {
   static String _maskAadhar(String n) {
     if (n.length < 4) return n;
     return 'XXXX XXXX ${n.substring(n.length - 4)}';
+  }
+
+  /// dd/MM/yyyy, or empty when the date is unknown (the field is hidden).
+  static String _dateStr(DateTime? d) {
+    if (d == null) return '';
+    return '${d.day}/${d.month}/${d.year}';
   }
 }
 

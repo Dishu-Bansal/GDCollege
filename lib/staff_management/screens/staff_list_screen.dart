@@ -301,6 +301,8 @@ class _StaffTabState extends ConsumerState<_StaffTab> {
     }).toList();
   }
 
+  static final DateTime _noDate = DateTime.fromMillisecondsSinceEpoch(0);
+
   List<StaffModel> _applySort(List<StaffModel> list) {
     list.sort((a, b) {
       int cmp;
@@ -310,6 +312,19 @@ class _StaffTabState extends ConsumerState<_StaffTab> {
           break;
         case 1:
           cmp = a.name.compareTo(b.name);
+          break;
+        case 4:
+          // Current (no relieving date) sorts before Previous.
+          cmp = (a.dateOfRelieving == null ? 0 : 1)
+              .compareTo(b.dateOfRelieving == null ? 0 : 1);
+          break;
+        case 5:
+          cmp = (a.dateOfJoining ?? _noDate)
+              .compareTo(b.dateOfJoining ?? _noDate);
+          break;
+        case 6:
+          cmp = (a.dateOfRelieving ?? _noDate)
+              .compareTo(b.dateOfRelieving ?? _noDate);
           break;
         default:
           cmp = 0;
@@ -986,9 +1001,11 @@ class _DataTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: DataTable(
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 1080),
+        child: DataTable(
         sortColumnIndex: sortColumnIndex,
         sortAscending: sortAscending,
         headingRowColor: WidgetStateProperty.all(
@@ -1020,6 +1037,18 @@ class _DataTable extends StatelessWidget {
           DataColumn(
             label: const Text('Course'),
             onSort: (i, asc) => onSort(3, asc),
+          ),
+          DataColumn(
+            label: const Text('Status'),
+            onSort: (i, asc) => onSort(4, asc),
+          ),
+          DataColumn(
+            label: const Text('Date of Joining'),
+            onSort: (i, asc) => onSort(5, asc),
+          ),
+          DataColumn(
+            label: const Text('Date of Relieving'),
+            onSort: (i, asc) => onSort(6, asc),
           ),
           const DataColumn(label: Text('Actions')),
         ],
@@ -1082,6 +1111,9 @@ class _DataTable extends StatelessWidget {
                 textAlign: TextAlign.right,
               )),
               DataCell(_CourseBadge(course: s.course.toString())),
+              DataCell(_StatusBadge(previous: s.dateOfRelieving != null)),
+              DataCell(Text(_fmtDate(s.dateOfJoining))),
+              DataCell(Text(_fmtDate(s.dateOfRelieving))),
               DataCell(_ActionButtons(
                 staff: s,
                 onView: () => onView(s),
@@ -1091,6 +1123,7 @@ class _DataTable extends StatelessWidget {
             ],
           );
         }).toList(),
+        ),
       ),
     );
   }
@@ -1135,18 +1168,30 @@ class _MobileCardList extends StatelessWidget {
             s.name.isEmpty ? 'Unknown' : s.name,
             style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
           ),
-          subtitle: Wrap(
-            spacing: 6,
-            runSpacing: 4,
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (s.staffId.isNotEmpty)
-                _SmallTag(label: s.staffId, color: const Color(0xFF1A3C6E)),
-              if (s.staffId.isNotEmpty)
-                _SmallTag(label: s.staffId, color: Colors.teal),
-              if (s.staffId != null)
-                _SmallTag(
-                    label: s.staffId.toString(),
-                    color: Colors.amber.shade800),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  if (s.staffId.isNotEmpty)
+                    _SmallTag(
+                        label: s.staffId, color: const Color(0xFF1A3C6E)),
+                  _SmallTag(
+                    label: s.dateOfRelieving != null ? 'Previous' : 'Current',
+                    color: s.dateOfRelieving != null
+                        ? Colors.orange.shade700
+                        : Colors.green.shade700,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 3),
+              Text(
+                'Joined: ${_fmtDate(s.dateOfJoining)}   '
+                'Relieved: ${_fmtDate(s.dateOfRelieving)}',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+              ),
             ],
           ),
           trailing: PopupMenuButton<String>(
@@ -1212,6 +1257,39 @@ class _CourseBadge extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Current (no relieving date) or Previous label pill for the table.
+class _StatusBadge extends StatelessWidget {
+  final bool previous;
+  const _StatusBadge({required this.previous});
+
+  @override
+  Widget build(BuildContext context) {
+    final color =
+        previous ? Colors.orange.shade700 : Colors.green.shade700;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        previous ? 'Previous' : 'Current',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    );
+  }
+}
+
+/// dd/MM/yyyy, or an em dash when the date is unknown.
+String _fmtDate(DateTime? d) {
+  if (d == null) return '—';
+  return '${d.day}/${d.month}/${d.year}';
 }
 
 class _ActionButtons extends StatelessWidget {
