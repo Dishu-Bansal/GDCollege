@@ -2,13 +2,14 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import '../providers.dart';
 import '../staff_management/models/staff_model.dart';
 import '../repositories/staff_repository.dart';
 import '../models/audit_log.dart';
 import '../models/user_session.dart';
 
 class FirebaseStaffRepository implements StaffRepository {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore = db;
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
   static const String _collection = 'staff';

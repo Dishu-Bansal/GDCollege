@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:gd_college/providers.dart';
 import '../bill_management/models/bill_models.dart';
 import '../models/user_session.dart';
 import '../repositories/bill_repository.dart';
@@ -8,7 +9,7 @@ import '../repositories/stock_repository.dart';
 import '../stock_management/models/stock_models.dart';
 
 class FirebaseBillRepository implements BillRepository {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseFirestore _db = db;
   final FirebaseStorage _storage = FirebaseStorage.instance;
   final StockRepository _stock;
 

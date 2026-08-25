@@ -1,5 +1,6 @@
 ﻿import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:gd_college/providers.dart';
 import '../repositories/student_repository.dart';
 import '../student_management/models/student_model.dart';
 
@@ -69,7 +70,7 @@ class PaginationController extends ChangeNotifier {
       }
 
       // Get total from meta doc
-      final meta = await FirebaseFirestore.instance
+      final meta = await db
           .collection('_meta')
           .doc('students')
           .get();

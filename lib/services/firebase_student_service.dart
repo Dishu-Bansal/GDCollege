@@ -2,13 +2,14 @@
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:gd_college/providers.dart';
 import '../student_management/models/student_model.dart';
 import '../repositories/student_repository.dart';
 import '../models/audit_log.dart';
 import '../models/user_session.dart';
 
 class FirebaseStudentRepository implements StudentRepository {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore = db;
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
   static const String _collection = 'students';
