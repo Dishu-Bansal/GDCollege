@@ -1774,6 +1774,16 @@ class _AssignSheetState extends State<_AssignSheet> {
     final name = _nameCtrl.text.trim();
     final qty = int.tryParse(_qtyCtrl.text) ?? 0;
     if (name.isEmpty || qty <= 0) return;
+    // assignConsumable silently no-ops when the quantity exceeds the room's
+    // stock, so refuse up front and keep the sheet open.
+    if (qty > widget.item.currentQuantity) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(
+                'Only ${widget.item.currentQuantity} available to assign')),
+      );
+      return;
+    }
 
     setState(() => _saving = true);
     try {
@@ -1786,7 +1796,9 @@ class _AssignSheetState extends State<_AssignSheet> {
         assignedTo: name,
         note: _noteCtrl.text.trim(),
       );
-      if (mounted) Navigator.pop(context);
+      // Return the assigned quantity so callers (e.g. the inspection screen)
+      // can reflect the stock change immediately.
+      if (mounted) Navigator.pop(context, qty);
     } catch (e) {
       setState(() => _saving = false);
       if (mounted) {
@@ -3476,9 +3488,32 @@ class _InspectionExecutionScreenState
 
   bool get _hasDiscrepancy => _items.any((e) => !e.matched);
 
-  /// Opens the stock transfer sheet for a mismatched checklist item. The live
-  /// item is fetched from the room so the sheet shows the current quantity.
-  Future<void> _transferMismatchedItem(int i) async {
+  /// Applies a stock change (transfer or assign) to checklist item [i]: both
+  /// the expected and the actual quantities shift by [delta], the match
+  /// status is recomputed, the count field refreshes and progress persists.
+  void _applyStockDelta(int i, int delta) {
+    if (delta == 0 || !mounted) return;
+    setState(() {
+      final newExpected = _items[i].expectedQty + delta;
+      final newActual = _items[i].actualQty + delta;
+      _items[i].expectedQty = newExpected < 0 ? 0 : newExpected;
+      _items[i].actualQty = newActual < 0 ? 0 : newActual;
+      _items[i].matched = _items[i].actualQty == _items[i].expectedQty;
+      _ctrls[i].text = '${_items[i].actualQty}';
+    });
+    widget.service.updateInspectionChecklist(
+      buildingId: widget.building.id!,
+      floorId: widget.floor.id!,
+      roomId: widget.room.id!,
+      inspectionId: widget.inspection.id!,
+      checklistItems: _items,
+      overallNote: _noteCtrl.text.trim(),
+    );
+  }
+
+  /// Opens the stock transfer sheet for a checklist item. The live item is
+  /// fetched from the room so the sheet shows the current quantity.
+  Future<void> _transferItem(int i) async {
     final entry = _items[i];
     if (entry.itemId.isEmpty) return;
 
@@ -3513,24 +3548,55 @@ class _InspectionExecutionScreenState
     // Reflect the stock change in this checklist item right away, matching
     // what syncInspectionChecklist would do when the inspection is resumed.
     if (result == null || !mounted || result.netChange == 0) return;
-    setState(() {
-      final updated = _items[i].expectedQty + result.netChange;
-      _items[i].expectedQty = updated < 0 ? 0 : updated;
-      _items[i].matched = _items[i].actualQty == _items[i].expectedQty;
-    });
-    widget.service.updateInspectionChecklist(
-      buildingId: widget.building.id!,
-      floorId: widget.floor.id!,
-      roomId: widget.room.id!,
-      inspectionId: widget.inspection.id!,
-      checklistItems: _items,
-      overallNote: _noteCtrl.text.trim(),
-    );
+    _applyStockDelta(i, result.netChange);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(
-                'Expected updated to ${_items[i].expectedQty} after transfer')),
+                'Transferred ${result.quantity} — expected & actual updated')),
+      );
+    }
+  }
+
+  /// Opens the consumable assignment sheet for a checklist item. Assigning
+  /// always removes stock from this room, so the checklist quantities drop
+  /// by the assigned amount.
+  Future<void> _assignItem(int i) async {
+    final entry = _items[i];
+    if (entry.itemId.isEmpty) return;
+
+    final all = await widget.service
+        .watchItems(widget.building.id!, widget.floor.id!, widget.room.id!)
+        .first;
+    final stockItem = all.where((s) => s.id == entry.itemId).firstOrNull;
+    if (stockItem == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Item not found in this room')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+
+    final qty = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => _AssignSheet(
+        building: widget.building,
+        floor: widget.floor,
+        room: widget.room,
+        item: stockItem,
+        service: widget.service,
+      ),
+    );
+    if (qty == null || qty <= 0 || !mounted) return;
+    _applyStockDelta(i, -qty);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Assigned $qty — expected & actual updated')),
       );
     }
   }
@@ -3872,13 +3938,17 @@ class _InspectionExecutionScreenState
                             setState(() => _items[i].note = v);
                           },
                         ),
-                        // Feature: Inspection actions - transfer stock out or
-                        // attach an item photo while resolving a mismatch.
-                        const SizedBox(height: 10),
-                        Row(children: [
+                      ],
+                      // Feature: Inspection actions - transfer stock, assign a
+                      // consumable or attach a photo. Always available.
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
                           OutlinedButton.icon(
                             onPressed:
-                                _saving ? null : () => _transferMismatchedItem(i),
+                                _saving ? null : () => _transferItem(i),
                             icon: const Icon(Icons.swap_horiz_outlined,
                                 size: 16),
                             label: const Text('Transfer'),
@@ -3890,7 +3960,20 @@ class _InspectionExecutionScreenState
                                   horizontal: 12, vertical: 8),
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          OutlinedButton.icon(
+                            onPressed:
+                                _saving ? null : () => _assignItem(i),
+                            icon: const Icon(Icons.person_add_outlined,
+                                size: 16),
+                            label: const Text('Assign'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.purple.shade700,
+                              side: BorderSide(color: Colors.purple.shade200),
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                            ),
+                          ),
                           OutlinedButton.icon(
                             onPressed:
                                 _saving ? null : () => _addItemPhoto(i),
@@ -3905,8 +3988,8 @@ class _InspectionExecutionScreenState
                                   horizontal: 12, vertical: 8),
                             ),
                           ),
-                        ]),
-                      ],
+                        ],
+                      ),
                     ]),
               );
             },
