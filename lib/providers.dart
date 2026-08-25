@@ -41,7 +41,7 @@ FirebaseFirestore get db {
     // Route to the new test database during development
     return FirebaseFirestore.instanceFor(
       app: Firebase.app(),
-      databaseId: 'testing-db',
+      databaseId: 'test-db',
     );
   }
   // Route to the production '(default)' database in release mode
