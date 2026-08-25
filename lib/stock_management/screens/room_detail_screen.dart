@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 // ignore: avoid_web_libraries_in_flutter
@@ -996,6 +996,31 @@ class _AdjustSheetState extends State<_AdjustSheet> {
 // ── Stock Transfer bottom sheet ───────────────────────────────────────────────
 // Feature: Stock Transfer
 
+/// Result returned by [_TransferSheet] when a transfer is confirmed. Callers
+/// like the inspection screen use it to update the checklist in place without
+/// waiting for a reload.
+class _TransferResult {
+  /// Quantity actually moved.
+  final int quantity;
+
+  /// Whether the current room was the transfer source (stock left the room).
+  final bool fromCurrentRoom;
+
+  /// Whether the current room was the transfer destination (stock arrived).
+  final bool toCurrentRoom;
+
+  const _TransferResult({
+    required this.quantity,
+    required this.fromCurrentRoom,
+    required this.toCurrentRoom,
+  });
+
+  /// Net change to the current room's stock: positive when stock arrives,
+  /// negative when stock leaves.
+  int get netChange => (toCurrentRoom ? quantity : 0) -
+      (fromCurrentRoom ? quantity : 0);
+}
+
 class _TransferSheet extends StatefulWidget {
   final BuildingModel building;
   final FloorModel floor;
@@ -1021,82 +1046,364 @@ class _TransferSheetState extends State<_TransferSheet> {
   bool _saving = false;
 
   List<BuildingModel> _buildings = [];
-  List<FloorModel> _floors = [];
-  List<RoomModel> _rooms = [];
 
+  // From (source) side
+  BuildingModel? _fromBuilding;
+  FloorModel? _fromFloor;
+  RoomModel? _fromRoom;
+  List<FloorModel> _fromFloors = [];
+  List<RoomModel> _fromRooms = [];
+
+  // To (destination) side
   BuildingModel? _toBuilding;
   FloorModel? _toFloor;
   RoomModel? _toRoom;
+  List<FloorModel> _toFloors = [];
+  List<RoomModel> _toRooms = [];
+
+  /// Quantity of the item available at the currently selected From location.
+  /// Kept in sync with the From selection so the helper text and the service
+  /// clamp always reflect the real source stock.
+  int _maxQty = 0;
 
   @override
   void initState() {
     super.initState();
+    // Feature: From is autofilled with the current building/floor/room combo.
+    _fromBuilding = widget.building;
+    _fromFloor = widget.floor;
+    _fromRoom = widget.room;
+    _maxQty = widget.item.currentQuantity;
+    // Seed the From dropdowns with the current location so the autofilled
+    // values render before the full lists stream in (keeps every dropdown
+    // value inside its items list).
+    _buildings = [widget.building];
+    _fromFloors = [widget.floor];
+    _fromRooms = [widget.room];
     _loadBuildings();
+    _loadInitialFromLocation();
+  }
+
+  @override
+  void dispose() {
+    _qtyCtrl.dispose();
+    _noteCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadBuildings() async {
-    widget.service.watchBuildings().first.then((b) {
+    try {
+      final b = await widget.service.watchBuildings().first;
       if (mounted) setState(() => _buildings = b);
-    });
+    } catch (_) {
+      // Buildings are optional; dropdowns simply stay empty on failure.
+    }
   }
 
-  Future<void> _onBuildingChanged(BuildingModel? b) async {
+  /// Preloads the floors and rooms of the autofilled From location so its
+  /// dropdowns show the current building/floor/room immediately.
+  Future<void> _loadInitialFromLocation() async {
+    try {
+      final floors = await widget.service
+          .watchFloors(widget.building.id!)
+          .first;
+      if (!mounted) return;
+      setState(() => _fromFloors = floors);
+      final rooms = await widget.service
+          .watchRooms(widget.building.id!, widget.floor.id!)
+          .first;
+      if (!mounted) return;
+      // Apply the exclusion filter too, in case the To side was already
+      // picked while the From location was still loading.
+      setState(() => _fromRooms = _excludeToRoom(rooms));
+    } catch (_) {
+      // Ignore load failures; the user can re-pick the location manually.
+    }
+  }
+
+  // ── From side handlers ───────────────────────────────────────────────────
+
+  Future<void> _onFromBuildingChanged(BuildingModel? b) async {
+    setState(() {
+      _fromBuilding = b;
+      _fromFloor = null;
+      _fromRoom = null;
+      _fromFloors = [];
+      _fromRooms = [];
+      _maxQty = 0;
+    });
+    if (b == null) return;
+    final floors = await widget.service.watchFloors(b.id!).first;
+    if (mounted && b.id == _fromBuilding?.id) {
+      setState(() => _fromFloors = floors);
+    }
+    _refreshToRooms();
+  }
+
+  Future<void> _onFromFloorChanged(FloorModel? f) async {
+    setState(() {
+      _fromFloor = f;
+      _fromRoom = null;
+      _fromRooms = [];
+      _maxQty = 0;
+    });
+    if (f == null || _fromBuilding == null) return;
+    await _loadRooms(building: _fromBuilding!, floor: f, forFrom: true);
+    _refreshToRooms();
+  }
+
+  void _onFromRoomChanged(RoomModel? r) {
+    setState(() {
+      _fromRoom = r;
+      _maxQty = 0;
+    });
+    _syncFromQuantity();
+    _refreshToRooms();
+  }
+
+  // ── To side handlers ─────────────────────────────────────────────────────
+
+  Future<void> _onToBuildingChanged(BuildingModel? b) async {
     setState(() {
       _toBuilding = b;
       _toFloor = null;
       _toRoom = null;
-      _floors = [];
-      _rooms = [];
+      _toFloors = [];
+      _toRooms = [];
     });
     if (b == null) return;
     final floors = await widget.service.watchFloors(b.id!).first;
-    if (mounted) setState(() => _floors = floors);
+    if (mounted && b.id == _toBuilding?.id) {
+      setState(() => _toFloors = floors);
+    }
+    _refreshFromRooms();
   }
 
-  Future<void> _onFloorChanged(FloorModel? f) async {
+  Future<void> _onToFloorChanged(FloorModel? f) async {
     setState(() {
       _toFloor = f;
       _toRoom = null;
-      _rooms = [];
+      _toRooms = [];
     });
     if (f == null || _toBuilding == null) return;
+    await _loadRooms(building: _toBuilding!, floor: f, forFrom: false);
+    _refreshFromRooms();
+  }
+
+  void _onToRoomChanged(RoomModel? r) {
+    setState(() => _toRoom = r);
+    _refreshFromRooms();
+  }
+
+  // ── Shared helpers ───────────────────────────────────────────────────────
+
+  Future<void> _loadRooms({
+    required BuildingModel building,
+    required FloorModel floor,
+    required bool forFrom,
+  }) async {
+    final buildingId = building.id!;
+    final floorId = floor.id!;
     final rooms = await widget.service
-        .watchRooms(_toBuilding!.id!, f.id!)
+        .watchRooms(buildingId, floorId)
         .first;
-    if (mounted) {
-      setState(() {
-        // Exclude the source room
-        _rooms = rooms
-            .where((r) =>
-        !(r.id == widget.room.id &&
-            f.id == widget.floor.id &&
-            _toBuilding!.id == widget.building.id))
-            .toList();
-      });
+    if (!mounted) return;
+    // Ignore stale responses: only apply if this is still the active
+    // selection on that side.
+    final isCurrent = forFrom
+        ? (_fromBuilding?.id == buildingId && _fromFloor?.id == floorId)
+        : (_toBuilding?.id == buildingId && _toFloor?.id == floorId);
+    if (!isCurrent) return;
+    setState(() {
+      final list = forFrom ? _excludeToRoom(rooms) : _excludeFromRoom(rooms);
+      if (forFrom) {
+        _fromRooms = list;
+      } else {
+        _toRooms = list;
+      }
+    });
+  }
+
+  /// Rebuilds the To room list so it can never point at the From room when
+  /// both sides sit in the same building+floor.
+  Future<void> _refreshToRooms() async {
+    if (_toBuilding == null || _toFloor == null) return;
+    final buildingId = _toBuilding!.id!;
+    final floorId = _toFloor!.id!;
+    final rooms = await widget.service
+        .watchRooms(buildingId, floorId)
+        .first;
+    if (!mounted) return;
+    if (_toBuilding?.id != buildingId || _toFloor?.id != floorId) return;
+    setState(() => _toRooms = _excludeFromRoom(rooms));
+  }
+
+  /// Rebuilds the From room list so it can never point at the To room when
+  /// both sides sit in the same building+floor.
+  Future<void> _refreshFromRooms() async {
+    if (_fromBuilding == null || _fromFloor == null) return;
+    final buildingId = _fromBuilding!.id!;
+    final floorId = _fromFloor!.id!;
+    final rooms = await widget.service
+        .watchRooms(buildingId, floorId)
+        .first;
+    if (!mounted) return;
+    if (_fromBuilding?.id != buildingId || _fromFloor?.id != floorId) return;
+    setState(() => _fromRooms = _excludeToRoom(rooms));
+  }
+
+  List<RoomModel> _excludeToRoom(List<RoomModel> rooms) {
+    final tb = _toBuilding, tf = _toFloor, tr = _toRoom;
+    if (tb != null &&
+        tf != null &&
+        tr != null &&
+        _fromBuilding != null &&
+        _fromFloor != null &&
+        tb.id == _fromBuilding!.id &&
+        tf.id == _fromFloor!.id) {
+      return rooms.where((r) => r.id != tr.id).toList();
     }
+    return rooms;
+  }
+
+  List<RoomModel> _excludeFromRoom(List<RoomModel> rooms) {
+    final fb = _fromBuilding, ff = _fromFloor, fr = _fromRoom;
+    if (fb != null &&
+        ff != null &&
+        fr != null &&
+        _toBuilding != null &&
+        _toFloor != null &&
+        fb.id == _toBuilding!.id &&
+        ff.id == _toFloor!.id) {
+      return rooms.where((r) => r.id != fr.id).toList();
+    }
+    return rooms;
+  }
+
+  /// Keeps [_maxQty] in line with the item's actual stock at the selected
+  /// From location — the autofilled current room, or a room chosen after
+  /// using Reverse.
+  Future<void> _syncFromQuantity() async {
+    final here = _fromBuilding?.id == widget.building.id &&
+        _fromFloor?.id == widget.floor.id &&
+        _fromRoom?.id == widget.room.id;
+    if (here) {
+      if (mounted) setState(() => _maxQty = widget.item.currentQuantity);
+      return;
+    }
+    if (_fromBuilding == null || _fromFloor == null || _fromRoom == null) {
+      if (mounted) setState(() => _maxQty = 0);
+      return;
+    }
+    final buildingId = _fromBuilding!.id!;
+    final floorId = _fromFloor!.id!;
+    final roomId = _fromRoom!.id!;
+    try {
+      final items = await widget.service
+          .watchItems(buildingId, floorId, roomId)
+          .first;
+      final found = items.where((s) => s.id == widget.item.id).firstOrNull;
+      if (!mounted) return;
+      if (_fromBuilding?.id != buildingId ||
+          _fromFloor?.id != floorId ||
+          _fromRoom?.id != roomId) {
+        return;
+      }
+      setState(() => _maxQty = found?.currentQuantity ?? 0);
+    } catch (_) {
+      if (mounted) setState(() => _maxQty = 0);
+    }
+  }
+
+  /// Feature: Reverse swaps From and To, so the current combination becomes
+  /// the destination and the user picks a different source.
+  void _reverse() {
+    setState(() {
+      final tb = _toBuilding, tf = _toFloor, tr = _toRoom;
+      final tfs = _toFloors, trs = _toRooms;
+      _toBuilding = _fromBuilding;
+      _toFloor = _fromFloor;
+      _toRoom = _fromRoom;
+      _toFloors = _fromFloors;
+      _toRooms = _fromRooms;
+      _fromBuilding = tb;
+      _fromFloor = tf;
+      _fromRoom = tr;
+      _fromFloors = tfs;
+      _fromRooms = trs;
+      _maxQty = 0;
+    });
+    _syncFromQuantity();
+    _refreshToRooms();
+    _refreshFromRooms();
   }
 
   Future<void> _confirm() async {
     final qty = int.tryParse(_qtyCtrl.text) ?? 0;
     if (qty <= 0 ||
+        _maxQty <= 0 ||
+        _fromBuilding == null ||
+        _fromFloor == null ||
+        _fromRoom == null ||
         _toBuilding == null ||
         _toFloor == null ||
-        _toRoom == null) return;
+        _toRoom == null) {
+      return;
+    }
+
+    // Safety net: never transfer a room into itself.
+    final sameLocation = _fromBuilding!.id == _toBuilding!.id &&
+        _fromFloor!.id == _toFloor!.id &&
+        _fromRoom!.id == _toRoom!.id;
+    if (sameLocation) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('From and To cannot be the same room')),
+      );
+      return;
+    }
 
     setState(() => _saving = true);
     try {
       await widget.service.transferItem(
-        fromBuilding: widget.building,
-        fromFloor: widget.floor,
-        fromRoom: widget.room,
+        fromBuilding: _fromBuilding!,
+        fromFloor: _fromFloor!,
+        fromRoom: _fromRoom!,
         toBuilding: _toBuilding!,
         toFloor: _toFloor!,
         toRoom: _toRoom!,
-        item: widget.item,
+        // Pass a copy carrying the source room's live quantity so the
+        // service clamps against the actual stock of the From location.
+        item: StockItem(
+          id: widget.item.id,
+          name: widget.item.name,
+          unitPrice: widget.item.unitPrice,
+          currentQuantity: _maxQty,
+          createdAt: widget.item.createdAt,
+          store: widget.item.store,
+          bill: widget.item.bill,
+          unit: widget.item.unit,
+          sourceBillId: widget.item.sourceBillId,
+        ),
         quantity: qty,
         note: _noteCtrl.text.trim(),
       );
-      if (mounted) Navigator.pop(context);
+      // Report what actually moved so the caller (e.g. the inspection
+      // screen) can reflect the stock change immediately.
+      final clamped = qty > _maxQty ? _maxQty : qty;
+      if (mounted) {
+        Navigator.pop(
+          context,
+          _TransferResult(
+            quantity: clamped,
+            fromCurrentRoom: _fromBuilding?.id == widget.building.id &&
+                _fromFloor?.id == widget.floor.id &&
+                _fromRoom?.id == widget.room.id,
+            toCurrentRoom: _toBuilding?.id == widget.building.id &&
+                _toFloor?.id == widget.floor.id &&
+                _toRoom?.id == widget.room.id,
+          ),
+        );
+      }
     } catch (e) {
       setState(() => _saving = false);
       if (mounted) {
@@ -1109,7 +1416,7 @@ class _TransferSheetState extends State<_TransferSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final maxQty = widget.item.currentQuantity;
+    final canConfirm = _fromRoom != null && _toRoom != null && _maxQty > 0;
 
     return Padding(
       padding: EdgeInsets.only(
@@ -1150,69 +1457,71 @@ class _TransferSheetState extends State<_TransferSheet> {
                 onPressed: () => Navigator.pop(context)),
           ]),
 
-          const SizedBox(height: 4),
-          Text(
-            'Available: $maxQty  •  From: ${widget.room.name}',
-            style: TextStyle(
-                fontSize: 12, color: Colors.grey.shade500),
-          ),
+          const SizedBox(height: 8),
 
-          const SizedBox(height: 20),
-
-          // Destination building
-          DropdownButtonFormField<BuildingModel>(
-            value: _toBuilding,
-            decoration: InputDecoration(
-              labelText: 'Destination Building',
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8)),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Available: $_maxQty',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
             ),
-            items: _buildings
-                .map((b) => DropdownMenuItem(
-                value: b, child: Text(b.name)))
-                .toList(),
-            onChanged: _onBuildingChanged,
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
 
-          // Destination floor
-          DropdownButtonFormField<FloorModel>(
-            value: _toFloor,
-            decoration: InputDecoration(
-              labelText: 'Destination Floor',
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8)),
-            ),
-            items: _floors
-                .map((f) => DropdownMenuItem(
-                value: f, child: Text(f.name)))
-                .toList(),
-            onChanged: _toBuilding == null
-                ? null
-                : _onFloorChanged,
+          // From block — autofilled with the current location.
+          _LocationBlock(
+            title: 'From',
+            color: Colors.blue,
+            buildings: _buildings,
+            building: _fromBuilding,
+            floors: _fromFloors,
+            floor: _fromFloor,
+            rooms: _fromRooms,
+            room: _fromRoom,
+            onBuildingChanged: _onFromBuildingChanged,
+            onFloorChanged: _onFromFloorChanged,
+            onRoomChanged: _onFromRoomChanged,
           ),
 
-          const SizedBox(height: 12),
-
-          // Destination room
-          DropdownButtonFormField<RoomModel>(
-            value: _toRoom,
-            decoration: InputDecoration(
-              labelText: 'Destination Room',
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8)),
-            ),
-            items: _rooms
-                .map((r) => DropdownMenuItem(
-                value: r, child: Text(r.name)))
-                .toList(),
-            onChanged: _toFloor == null
-                ? null
-                : (r) => setState(() => _toRoom = r),
+          // Reverse control — swaps From and To.
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(children: [
+              Expanded(child: Divider(color: Colors.grey.shade300)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: OutlinedButton.icon(
+                  onPressed: _reverse,
+                  icon: const Icon(Icons.swap_vert, size: 18),
+                  label: const Text('Reverse'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.orange.shade800,
+                    side: BorderSide(color: Colors.orange.shade300),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ),
+              Expanded(child: Divider(color: Colors.grey.shade300)),
+            ]),
           ),
 
-          const SizedBox(height: 12),
+          // To block — the destination.
+          _LocationBlock(
+            title: 'To',
+            color: Colors.green,
+            buildings: _buildings,
+            building: _toBuilding,
+            floors: _toFloors,
+            floor: _toFloor,
+            rooms: _toRooms,
+            room: _toRoom,
+            onBuildingChanged: _onToBuildingChanged,
+            onFloorChanged: _onToFloorChanged,
+            onRoomChanged: _onToRoomChanged,
+          ),
+
+          const SizedBox(height: 16),
 
           // Quantity
           TextField(
@@ -1223,7 +1532,7 @@ class _TransferSheetState extends State<_TransferSheet> {
             ],
             decoration: InputDecoration(
               labelText: 'Quantity to Transfer',
-              helperText: 'Max: $maxQty',
+              helperText: 'Max: $_maxQty',
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8)),
             ),
@@ -1242,30 +1551,184 @@ class _TransferSheetState extends State<_TransferSheet> {
 
           const SizedBox(height: 20),
 
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed:
-              (_saving || _toRoom == null) ? null : _confirm,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue.shade700,
-                padding:
-                const EdgeInsets.symmetric(vertical: 14),
+          // Cancel + Confirm
+          Row(children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _saving ? null : () => Navigator.pop(context),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                child: const Text('Cancel'),
               ),
-              child: _saving
-                  ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white))
-                  : const Text('Confirm Transfer',
-                  style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600)),
             ),
-          ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: ElevatedButton(
+                onPressed: (_saving || !canConfirm) ? null : _confirm,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue.shade700,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                child: _saving
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white))
+                    : const Text('Confirm Transfer',
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600)),
+              ),
+            ),
+          ]),
         ]),
+      ),
+    );
+  }
+}
+
+/// A From/To location picker used inside the transfer sheet: cascading
+/// building → floor → room dropdowns with a coloured header.
+class _LocationBlock extends StatelessWidget {
+  final String title;
+  final Color color;
+  final List<BuildingModel> buildings;
+  final BuildingModel? building;
+  final List<FloorModel> floors;
+  final FloorModel? floor;
+  final List<RoomModel> rooms;
+  final RoomModel? room;
+  final ValueChanged<BuildingModel?> onBuildingChanged;
+  final ValueChanged<FloorModel?> onFloorChanged;
+  final ValueChanged<RoomModel?> onRoomChanged;
+
+  const _LocationBlock({
+    required this.title,
+    required this.color,
+    required this.buildings,
+    required this.building,
+    required this.floors,
+    required this.floor,
+    required this.rooms,
+    required this.room,
+    required this.onBuildingChanged,
+    required this.onFloorChanged,
+    required this.onRoomChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.arrow_right_alt, size: 16, color: color),
+          const SizedBox(width: 6),
+          Text(title,
+              style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                  letterSpacing: 1.2,
+                  color: color)),
+        ]),
+        const SizedBox(height: 10),
+        _dropdown<BuildingModel>(
+          label: 'Building',
+          value: building,
+          hint: 'Select building',
+          enabled: true,
+          items: buildings
+              .map((b) => DropdownMenuItem(value: b, child: Text(b.name)))
+              .toList(),
+          // Match by id: the autofilled From values come from the sheet's
+          // widget (different instances than the streamed lists), and the
+          // lists are replaced with fresh instances on every load.
+          same: (a, b) => a.id == b.id,
+          onChanged: onBuildingChanged,
+        ),
+        const SizedBox(height: 10),
+        _dropdown<FloorModel>(
+          label: 'Floor',
+          value: floor,
+          hint: 'Select floor',
+          enabled: building != null,
+          items: floors
+              .map((f) => DropdownMenuItem(value: f, child: Text(f.name)))
+              .toList(),
+          same: (a, b) => a.id == b.id,
+          onChanged: onFloorChanged,
+        ),
+        const SizedBox(height: 10),
+        _dropdown<RoomModel>(
+          label: 'Room',
+          value: room,
+          hint: 'Select room',
+          enabled: floor != null,
+          items: rooms
+              .map((r) => DropdownMenuItem(value: r, child: Text(r.name)))
+              .toList(),
+          same: (a, b) => a.id == b.id,
+          onChanged: onRoomChanged,
+        ),
+      ]),
+    );
+  }
+
+  /// A controlled dropdown styled like a form field. `DropdownButtonFormField`
+  /// is not used because its `value` is deprecated and its `initialValue`
+  /// would not track programmatic changes (cascading resets, Reverse).
+  ///
+  /// A `DropdownButton` asserts that its `value` is an item it is given, so
+  /// we resolve the requested [value] to the actual item instance that
+  /// matches via [same] (identity for these models, so [same] compares ids).
+  /// While the matching item is absent — a list still streaming in, or a
+  /// cascade reset — the dropdown shows its hint instead of asserting.
+  Widget _dropdown<T>({
+    required String label,
+    required T? value,
+    required String hint,
+    required bool enabled,
+    required List<DropdownMenuItem<T>> items,
+    required bool Function(T a, T b) same,
+    required ValueChanged<T?> onChanged,
+  }) {
+    T? selected;
+    if (value != null) {
+      for (final i in items) {
+        final itemValue = i.value;
+        if (itemValue != null && same(itemValue, value)) {
+          selected = itemValue;
+          break;
+        }
+      }
+    }
+    return InputDecorator(
+      decoration: InputDecoration(
+        labelText: label,
+        isDense: true,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<T>(
+          value: selected,
+          isExpanded: true,
+          isDense: true,
+          hint: Text(hint,
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade500)),
+          items: items,
+          onChanged: enabled ? onChanged : null,
+        ),
       ),
     );
   }
@@ -1311,6 +1774,16 @@ class _AssignSheetState extends State<_AssignSheet> {
     final name = _nameCtrl.text.trim();
     final qty = int.tryParse(_qtyCtrl.text) ?? 0;
     if (name.isEmpty || qty <= 0) return;
+    // assignConsumable silently no-ops when the quantity exceeds the room's
+    // stock, so refuse up front and keep the sheet open.
+    if (qty > widget.item.currentQuantity) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(
+                'Only ${widget.item.currentQuantity} available to assign')),
+      );
+      return;
+    }
 
     setState(() => _saving = true);
     try {
@@ -1323,7 +1796,9 @@ class _AssignSheetState extends State<_AssignSheet> {
         assignedTo: name,
         note: _noteCtrl.text.trim(),
       );
-      if (mounted) Navigator.pop(context);
+      // Return the assigned quantity so callers (e.g. the inspection screen)
+      // can reflect the stock change immediately.
+      if (mounted) Navigator.pop(context, qty);
     } catch (e) {
       setState(() => _saving = false);
       if (mounted) {
@@ -3013,9 +3488,32 @@ class _InspectionExecutionScreenState
 
   bool get _hasDiscrepancy => _items.any((e) => !e.matched);
 
-  /// Opens the stock transfer sheet for a mismatched checklist item. The live
-  /// item is fetched from the room so the sheet shows the current quantity.
-  Future<void> _transferMismatchedItem(int i) async {
+  /// Applies a stock change (transfer or assign) to checklist item [i]: both
+  /// the expected and the actual quantities shift by [delta], the match
+  /// status is recomputed, the count field refreshes and progress persists.
+  void _applyStockDelta(int i, int delta) {
+    if (delta == 0 || !mounted) return;
+    setState(() {
+      final newExpected = _items[i].expectedQty + delta;
+      final newActual = _items[i].actualQty + delta;
+      _items[i].expectedQty = newExpected < 0 ? 0 : newExpected;
+      _items[i].actualQty = newActual < 0 ? 0 : newActual;
+      _items[i].matched = _items[i].actualQty == _items[i].expectedQty;
+      _ctrls[i].text = '${_items[i].actualQty}';
+    });
+    widget.service.updateInspectionChecklist(
+      buildingId: widget.building.id!,
+      floorId: widget.floor.id!,
+      roomId: widget.room.id!,
+      inspectionId: widget.inspection.id!,
+      checklistItems: _items,
+      overallNote: _noteCtrl.text.trim(),
+    );
+  }
+
+  /// Opens the stock transfer sheet for a checklist item. The live item is
+  /// fetched from the room so the sheet shows the current quantity.
+  Future<void> _transferItem(int i) async {
     final entry = _items[i];
     if (entry.itemId.isEmpty) return;
 
@@ -3033,7 +3531,7 @@ class _InspectionExecutionScreenState
     }
     if (!mounted) return;
 
-    await showModalBottomSheet(
+    final result = await showModalBottomSheet<_TransferResult>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -3046,6 +3544,61 @@ class _InspectionExecutionScreenState
         service: widget.service,
       ),
     );
+
+    // Reflect the stock change in this checklist item right away, matching
+    // what syncInspectionChecklist would do when the inspection is resumed.
+    if (result == null || !mounted || result.netChange == 0) return;
+    _applyStockDelta(i, result.netChange);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(
+                'Transferred ${result.quantity} — expected & actual updated')),
+      );
+    }
+  }
+
+  /// Opens the consumable assignment sheet for a checklist item. Assigning
+  /// always removes stock from this room, so the checklist quantities drop
+  /// by the assigned amount.
+  Future<void> _assignItem(int i) async {
+    final entry = _items[i];
+    if (entry.itemId.isEmpty) return;
+
+    final all = await widget.service
+        .watchItems(widget.building.id!, widget.floor.id!, widget.room.id!)
+        .first;
+    final stockItem = all.where((s) => s.id == entry.itemId).firstOrNull;
+    if (stockItem == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Item not found in this room')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+
+    final qty = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => _AssignSheet(
+        building: widget.building,
+        floor: widget.floor,
+        room: widget.room,
+        item: stockItem,
+        service: widget.service,
+      ),
+    );
+    if (qty == null || qty <= 0 || !mounted) return;
+    _applyStockDelta(i, -qty);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Assigned $qty — expected & actual updated')),
+      );
+    }
   }
 
   /// Picks and uploads a photo for the catalog item of a mismatched checklist
@@ -3385,13 +3938,17 @@ class _InspectionExecutionScreenState
                             setState(() => _items[i].note = v);
                           },
                         ),
-                        // Feature: Inspection actions - transfer stock out or
-                        // attach an item photo while resolving a mismatch.
-                        const SizedBox(height: 10),
-                        Row(children: [
+                      ],
+                      // Feature: Inspection actions - transfer stock, assign a
+                      // consumable or attach a photo. Always available.
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
                           OutlinedButton.icon(
                             onPressed:
-                                _saving ? null : () => _transferMismatchedItem(i),
+                                _saving ? null : () => _transferItem(i),
                             icon: const Icon(Icons.swap_horiz_outlined,
                                 size: 16),
                             label: const Text('Transfer'),
@@ -3403,7 +3960,20 @@ class _InspectionExecutionScreenState
                                   horizontal: 12, vertical: 8),
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          OutlinedButton.icon(
+                            onPressed:
+                                _saving ? null : () => _assignItem(i),
+                            icon: const Icon(Icons.person_add_outlined,
+                                size: 16),
+                            label: const Text('Assign'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.purple.shade700,
+                              side: BorderSide(color: Colors.purple.shade200),
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                            ),
+                          ),
                           OutlinedButton.icon(
                             onPressed:
                                 _saving ? null : () => _addItemPhoto(i),
@@ -3418,8 +3988,8 @@ class _InspectionExecutionScreenState
                                   horizontal: 12, vertical: 8),
                             ),
                           ),
-                        ]),
-                      ],
+                        ],
+                      ),
                     ]),
               );
             },

@@ -10,20 +10,63 @@ Future<String?> showNameDialog(
       required String title,
       String? initial,
       String hint = 'Enter name',
-    }) async {
-  final ctrl = TextEditingController(text: initial ?? '');
-  final result = await showDialog<String>(
+    }) {
+  return showDialog<String>(
     context: context,
-    builder: (_) => AlertDialog(
+    builder: (_) => _NameDialog(
+      title: title,
+      initial: initial,
+      hint: hint,
+    ),
+  );
+}
+
+/// Dialog that owns its [TextEditingController]. The controller must outlive
+/// the dialog's exit animation — disposing it while the route is still
+/// animating out throws "A TextEditingController was used after being
+/// disposed" when the TextField rebuilds.
+class _NameDialog extends StatefulWidget {
+  final String title;
+  final String? initial;
+  final String hint;
+
+  const _NameDialog({
+    required this.title,
+    required this.initial,
+    required this.hint,
+  });
+
+  @override
+  State<_NameDialog> createState() => _NameDialogState();
+}
+
+class _NameDialogState extends State<_NameDialog> {
+  late final TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.initial ?? '');
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      title: Text(title,
+      title: Text(widget.title,
           style: const TextStyle(
               fontWeight: FontWeight.w700, color: Color(0xFF1A3C6E))),
       content: TextField(
-        controller: ctrl,
+        controller: _ctrl,
         autofocus: true,
         decoration: InputDecoration(
-          hintText: hint,
+          hintText: widget.hint,
           border:
           OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
           focusedBorder: OutlineInputBorder(
@@ -42,17 +85,15 @@ Future<String?> showNameDialog(
             child: const Text('Cancel')),
         ElevatedButton(
           onPressed: () {
-            if (ctrl.text.trim().isNotEmpty) {
-              Navigator.pop(context, ctrl.text.trim());
+            if (_ctrl.text.trim().isNotEmpty) {
+              Navigator.pop(context, _ctrl.text.trim());
             }
           },
-          child: Text(initial != null ? 'Save' : 'Add'),
+          child: Text(widget.initial != null ? 'Save' : 'Add'),
         ),
       ],
-    ),
-  );
-  ctrl.dispose();
-  return result;
+    );
+  }
 }
 
 // ── Confirm delete dialog ─────────────────────────────────────────────────────

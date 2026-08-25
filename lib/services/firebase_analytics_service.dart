@@ -1,9 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:gd_college/providers.dart';
 import '../models/home_analytics.dart';
 import '../repositories/analytics_repository.dart';
 
 class FirebaseAnalyticsRepository implements AnalyticsRepository {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseFirestore _db = db;
 
   static const Duration _istOffset = Duration(hours: 5, minutes: 30);
 

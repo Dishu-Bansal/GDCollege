@@ -1,5 +1,6 @@
 import 'dart:io' as io;
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:gd_college/providers.dart';
 import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -8,7 +9,7 @@ import '../repositories/stock_repository.dart';
 import '../models/user_session.dart';
 
 class FirebaseStockRepository implements StockRepository {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseFirestore _db = db;
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
   // ── Shorthand path builders ───────────────────────────────────────────────
