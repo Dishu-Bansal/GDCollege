@@ -1049,6 +1049,12 @@ class _TransferSheetState extends State<_TransferSheet> {
     _fromFloor = widget.floor;
     _fromRoom = widget.room;
     _maxQty = widget.item.currentQuantity;
+    // Seed the From dropdowns with the current location so the autofilled
+    // values render before the full lists stream in (keeps every dropdown
+    // value inside its items list).
+    _buildings = [widget.building];
+    _fromFloors = [widget.floor];
+    _fromRooms = [widget.room];
     _loadBuildings();
     _loadInitialFromLocation();
   }
@@ -1633,6 +1639,11 @@ class _LocationBlock extends StatelessWidget {
   /// A controlled dropdown styled like a form field. `DropdownButtonFormField`
   /// is not used because its `value` is deprecated and its `initialValue`
   /// would not track programmatic changes (cascading resets, Reverse).
+  ///
+  /// A `DropdownButton` asserts that its `value` is present in `items`, so
+  /// while a list is still streaming in (or after a cascade reset) we only
+  /// pass the value through once the matching item exists; otherwise the
+  /// dropdown shows its hint until the list arrives.
   Widget _dropdown<T>({
     required String label,
     required T? value,
@@ -1641,6 +1652,8 @@ class _LocationBlock extends StatelessWidget {
     required List<DropdownMenuItem<T>> items,
     required ValueChanged<T?> onChanged,
   }) {
+    final selected =
+        items.any((i) => i.value == value) ? value : null;
     return InputDecorator(
       decoration: InputDecoration(
         labelText: label,
@@ -1651,7 +1664,7 @@ class _LocationBlock extends StatelessWidget {
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<T>(
-          value: value,
+          value: selected,
           isExpanded: true,
           isDense: true,
           hint: Text(hint,
