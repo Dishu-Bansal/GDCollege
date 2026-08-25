@@ -1608,6 +1608,10 @@ class _LocationBlock extends StatelessWidget {
           items: buildings
               .map((b) => DropdownMenuItem(value: b, child: Text(b.name)))
               .toList(),
+          // Match by id: the autofilled From values come from the sheet's
+          // widget (different instances than the streamed lists), and the
+          // lists are replaced with fresh instances on every load.
+          same: (a, b) => a.id == b.id,
           onChanged: onBuildingChanged,
         ),
         const SizedBox(height: 10),
@@ -1619,6 +1623,7 @@ class _LocationBlock extends StatelessWidget {
           items: floors
               .map((f) => DropdownMenuItem(value: f, child: Text(f.name)))
               .toList(),
+          same: (a, b) => a.id == b.id,
           onChanged: onFloorChanged,
         ),
         const SizedBox(height: 10),
@@ -1630,6 +1635,7 @@ class _LocationBlock extends StatelessWidget {
           items: rooms
               .map((r) => DropdownMenuItem(value: r, child: Text(r.name)))
               .toList(),
+          same: (a, b) => a.id == b.id,
           onChanged: onRoomChanged,
         ),
       ]),
@@ -1640,20 +1646,30 @@ class _LocationBlock extends StatelessWidget {
   /// is not used because its `value` is deprecated and its `initialValue`
   /// would not track programmatic changes (cascading resets, Reverse).
   ///
-  /// A `DropdownButton` asserts that its `value` is present in `items`, so
-  /// while a list is still streaming in (or after a cascade reset) we only
-  /// pass the value through once the matching item exists; otherwise the
-  /// dropdown shows its hint until the list arrives.
+  /// A `DropdownButton` asserts that its `value` is an item it is given, so
+  /// we resolve the requested [value] to the actual item instance that
+  /// matches via [same] (identity for these models, so [same] compares ids).
+  /// While the matching item is absent — a list still streaming in, or a
+  /// cascade reset — the dropdown shows its hint instead of asserting.
   Widget _dropdown<T>({
     required String label,
     required T? value,
     required String hint,
     required bool enabled,
     required List<DropdownMenuItem<T>> items,
+    required bool Function(T a, T b) same,
     required ValueChanged<T?> onChanged,
   }) {
-    final selected =
-        items.any((i) => i.value == value) ? value : null;
+    T? selected;
+    if (value != null) {
+      for (final i in items) {
+        final itemValue = i.value;
+        if (itemValue != null && same(itemValue, value)) {
+          selected = itemValue;
+          break;
+        }
+      }
+    }
     return InputDecorator(
       decoration: InputDecoration(
         labelText: label,
