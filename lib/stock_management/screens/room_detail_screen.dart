@@ -996,6 +996,31 @@ class _AdjustSheetState extends State<_AdjustSheet> {
 // ── Stock Transfer bottom sheet ───────────────────────────────────────────────
 // Feature: Stock Transfer
 
+/// Result returned by [_TransferSheet] when a transfer is confirmed. Callers
+/// like the inspection screen use it to update the checklist in place without
+/// waiting for a reload.
+class _TransferResult {
+  /// Quantity actually moved.
+  final int quantity;
+
+  /// Whether the current room was the transfer source (stock left the room).
+  final bool fromCurrentRoom;
+
+  /// Whether the current room was the transfer destination (stock arrived).
+  final bool toCurrentRoom;
+
+  const _TransferResult({
+    required this.quantity,
+    required this.fromCurrentRoom,
+    required this.toCurrentRoom,
+  });
+
+  /// Net change to the current room's stock: positive when stock arrives,
+  /// negative when stock leaves.
+  int get netChange => (toCurrentRoom ? quantity : 0) -
+      (fromCurrentRoom ? quantity : 0);
+}
+
 class _TransferSheet extends StatefulWidget {
   final BuildingModel building;
   final FloorModel floor;
@@ -1362,7 +1387,23 @@ class _TransferSheetState extends State<_TransferSheet> {
         quantity: qty,
         note: _noteCtrl.text.trim(),
       );
-      if (mounted) Navigator.pop(context);
+      // Report what actually moved so the caller (e.g. the inspection
+      // screen) can reflect the stock change immediately.
+      final clamped = qty > _maxQty ? _maxQty : qty;
+      if (mounted) {
+        Navigator.pop(
+          context,
+          _TransferResult(
+            quantity: clamped,
+            fromCurrentRoom: _fromBuilding?.id == widget.building.id &&
+                _fromFloor?.id == widget.floor.id &&
+                _fromRoom?.id == widget.room.id,
+            toCurrentRoom: _toBuilding?.id == widget.building.id &&
+                _toFloor?.id == widget.floor.id &&
+                _toRoom?.id == widget.room.id,
+          ),
+        );
+      }
     } catch (e) {
       setState(() => _saving = false);
       if (mounted) {
@@ -3455,7 +3496,7 @@ class _InspectionExecutionScreenState
     }
     if (!mounted) return;
 
-    await showModalBottomSheet(
+    final result = await showModalBottomSheet<_TransferResult>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -3468,6 +3509,30 @@ class _InspectionExecutionScreenState
         service: widget.service,
       ),
     );
+
+    // Reflect the stock change in this checklist item right away, matching
+    // what syncInspectionChecklist would do when the inspection is resumed.
+    if (result == null || !mounted || result.netChange == 0) return;
+    setState(() {
+      final updated = _items[i].expectedQty + result.netChange;
+      _items[i].expectedQty = updated < 0 ? 0 : updated;
+      _items[i].matched = _items[i].actualQty == _items[i].expectedQty;
+    });
+    widget.service.updateInspectionChecklist(
+      buildingId: widget.building.id!,
+      floorId: widget.floor.id!,
+      roomId: widget.room.id!,
+      inspectionId: widget.inspection.id!,
+      checklistItems: _items,
+      overallNote: _noteCtrl.text.trim(),
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(
+                'Expected updated to ${_items[i].expectedQty} after transfer')),
+      );
+    }
   }
 
   /// Picks and uploads a photo for the catalog item of a mismatched checklist
