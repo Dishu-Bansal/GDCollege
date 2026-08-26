@@ -14,9 +14,11 @@ class FirebaseVisitorRepository implements VisitorRepository {
 
   @override
   Stream<List<VisitorVisitModel>> watchInside() {
-    // Single equality filter (avoids a composite index); sorted client-side.
+    // Single boolean equality filter (avoids a composite index and behaves
+    // reliably when a document moves out of the result set on check-out);
+    // sorted client-side.
     return _visits
-        .where('checkOutAt', isEqualTo: null)
+        .where('inside', isEqualTo: true)
         .snapshots()
         .map((s) => s.docs
             .map((d) =>
@@ -137,6 +139,7 @@ class FirebaseVisitorRepository implements VisitorRepository {
   @override
   Future<void> checkOut(String visitId) async {
     await _visits.doc(visitId).update({
+      'inside': false,
       'checkOutAt': DateTime.now().toIso8601String(),
       'checkedOutBy': UserSession().currentUser?.email ?? '',
     });

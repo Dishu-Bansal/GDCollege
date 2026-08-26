@@ -115,6 +115,10 @@ class VisitorVisitModel {
     'accompanyingPeople': accompanyingPeople,
     'checkInAt': checkInAt.toIso8601String(),
     'checkOutAt': checkOutAt?.toIso8601String(),
+    // Explicit boolean so the "currently inside" query can use a reliable
+    // equality filter (null-equality filters don't re-evaluate reliably when
+    // a doc's field changes from missing to a value).
+    'inside': checkOutAt == null,
     'checkedInBy': checkedInBy,
     'checkedOutBy': checkedOutBy,
   };
