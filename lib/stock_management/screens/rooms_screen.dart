@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/stock_models.dart';
 import '../../repositories/stock_repository.dart';
@@ -26,6 +26,8 @@ class RoomsScreen extends ConsumerWidget {
               Text(floor.name,
                   style: const TextStyle(fontWeight: FontWeight.w700)),
               Text('${building.name}  ›  Rooms',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                       fontSize: 12, color: Colors.white70)),
             ]),
@@ -154,35 +156,45 @@ class _RoomCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(room.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontWeight: FontWeight.w700, fontSize: 15)),
                   const SizedBox(height: 4),
-                  Row(children: [
-                    if (photoCount > 0) ...[
-                      Icon(Icons.photo_outlined,
-                          size: 13, color: Colors.grey.shade500),
-                      const SizedBox(width: 3),
-                      Text('$photoCount',
-                          style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade500)),
-                      const SizedBox(width: 10),
+                  // Wrap (not Row) so photo/video counts never overflow the
+                  // narrow column on small screens.
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (photoCount > 0)
+                        Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.photo_outlined,
+                              size: 13, color: Colors.grey.shade500),
+                          const SizedBox(width: 3),
+                          Text('$photoCount',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey.shade500)),
+                        ]),
+                      if (videoCount > 0)
+                        Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.videocam_outlined,
+                              size: 13, color: Colors.grey.shade500),
+                          const SizedBox(width: 3),
+                          Text('$videoCount',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey.shade500)),
+                        ]),
+                      if (photoCount == 0 && videoCount == 0)
+                        Text('No media uploaded',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey.shade400)),
                     ],
-                    if (videoCount > 0) ...[
-                      Icon(Icons.videocam_outlined,
-                          size: 13, color: Colors.grey.shade500),
-                      const SizedBox(width: 3),
-                      Text('$videoCount',
-                          style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade500)),
-                    ],
-                    if (photoCount == 0 && videoCount == 0)
-                      Text('No media uploaded',
-                          style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade400)),
-                  ]),
+                  ),
                   // Feature: Inspection Tracking - show last inspection date
                   Padding(
                     padding: const EdgeInsets.only(top: 3),
@@ -235,7 +247,6 @@ class _RoomCard extends StatelessWidget {
                     ])),
               ],
             ),
-            const Icon(Icons.chevron_right, color: Colors.grey),
           ]),
         ),
       ),

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:gd_college/widgets/drawer.dart';
 import '../models/stock_models.dart';
 import '../../repositories/stock_repository.dart';
@@ -220,6 +220,8 @@ class _BuildingCardContent extends StatelessWidget {
         ],
       ),
       title: Text(building.name,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(
               fontWeight: FontWeight.w700, fontSize: 15)),
       subtitle: Column(
@@ -516,11 +518,13 @@ class _GlobalLogTile extends StatelessWidget {
                   ),
                   if (log.changedBy.isNotEmpty) ...[
                     const SizedBox(width: 8),
-                    Text(
-                      'by ${log.changedBy}',
-                      style: TextStyle(
-                          fontSize: 10, color: Colors.grey.shade400),
-                      overflow: TextOverflow.ellipsis,
+                    Expanded(
+                      child: Text(
+                        'by ${log.changedBy}',
+                        style: TextStyle(
+                            fontSize: 10, color: Colors.grey.shade400),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ]),
