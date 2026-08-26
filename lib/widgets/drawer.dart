@@ -7,6 +7,7 @@ import '../bill_management/screens/bill_management_screen.dart';
 import '../staff_management/screens/staff_list_screen.dart';
 import '../stock_management/screens/buildings_screen.dart';
 import '../student_management/screens/student_list_screen.dart';
+import '../visitor_management/screens/visitor_management_screen.dart';
 import 'Helper.dart';
 
 getSideDrawer(BuildContext context){
@@ -64,6 +65,13 @@ getSideDrawer(BuildContext context){
          title: const Text('Bill Management'),
          onTap: () {
            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const BillManagementScreen()));
+         },
+       ),
+       ListTile(
+         leading: const Icon(Icons.how_to_reg),
+         title: const Text('Visitor Management'),
+         onTap: () {
+           Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const VisitorManagementScreen()));
          },
        ),
        const Divider(),
