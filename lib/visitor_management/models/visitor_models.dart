@@ -9,12 +9,20 @@ class VisitorModel {
   DateTime? firstVisitAt;
   DateTime? lastVisitAt;
 
+  /// Last known car license plate (used for autocomplete suggestions).
+  String vehicleNumber;
+
+  /// Last known place the visitor comes from (autocomplete suggestions).
+  String fromPlace;
+
   VisitorModel({
     this.id,
     this.name = '',
     this.visitCount = 0,
     this.firstVisitAt,
     this.lastVisitAt,
+    this.vehicleNumber = '',
+    this.fromPlace = '',
   });
 
   factory VisitorModel.fromFirestore(String id, Map<String, dynamic> d) =>
@@ -28,6 +36,8 @@ class VisitorModel {
         lastVisitAt: d['lastVisitAt'] != null
             ? DateTime.tryParse(d['lastVisitAt'])
             : null,
+        vehicleNumber: d['vehicleNumber'] ?? '',
+        fromPlace: d['fromPlace'] ?? '',
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -38,6 +48,8 @@ class VisitorModel {
     'visitCount': visitCount,
     'firstVisitAt': firstVisitAt?.toIso8601String(),
     'lastVisitAt': lastVisitAt?.toIso8601String(),
+    'vehicleNumber': vehicleNumber,
+    'fromPlace': fromPlace,
   };
 }
 

@@ -31,6 +31,10 @@ class _VisitorEntryFormScreenState
   final _nameCtrl = TextEditingController();
   List<VisitorModel> _visitors = [];
 
+  /// Hides the name suggestions once one has been picked, until the user
+  /// edits the name again.
+  bool _suggestionsDismissed = false;
+
   // Entry details
   final _vehicleCtrl = TextEditingController();
   final _purposeCtrl = TextEditingController();
@@ -79,6 +83,7 @@ class _VisitorEntryFormScreenState
 
   /// Previous visitors whose name matches the typed text (for autocomplete).
   List<VisitorModel> get _nameSuggestions {
+    if (_suggestionsDismissed) return const [];
     final q = _nameCtrl.text.trim().toLowerCase();
     if (q.isEmpty) return const [];
     return _visitors
@@ -87,11 +92,20 @@ class _VisitorEntryFormScreenState
         .toList();
   }
 
+  /// Picks a previous visitor: fills the name, autofills the last known car
+  /// plate and from-place, and collapses the suggestion list.
   void _pickSuggestion(VisitorModel v) {
     setState(() {
+      _suggestionsDismissed = true;
       _nameCtrl.text = v.name;
       _nameCtrl.selection =
           TextSelection.collapsed(offset: _nameCtrl.text.length);
+      if (v.vehicleNumber.isNotEmpty) {
+        _vehicleCtrl.text = v.vehicleNumber;
+      }
+      if (v.fromPlace.isNotEmpty) {
+        _fromCtrl.text = v.fromPlace;
+      }
     });
   }
 
@@ -318,7 +332,7 @@ class _VisitorEntryFormScreenState
           hintText: 'Start typing to see previous visitors',
           prefixIcon: Icon(Icons.person_outline),
         ),
-        onChanged: (_) => setState(() {}),
+        onChanged: (_) => setState(() => _suggestionsDismissed = false),
       ),
       if (suggestions.isNotEmpty) ...[
         const SizedBox(height: 6),
@@ -336,15 +350,50 @@ class _VisitorEntryFormScreenState
                 title: Text(v.name,
                     style: const TextStyle(
                         fontWeight: FontWeight.w600, fontSize: 14)),
-                subtitle: Text(
-                  '${v.visitCount} visit${v.visitCount == 1 ? '' : 's'}',
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                ),
+                subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${v.visitCount} visit${v.visitCount == 1 ? '' : 's'}',
+                        style: TextStyle(
+                            fontSize: 11, color: Colors.grey.shade600),
+                      ),
+                      if (v.vehicleNumber.isNotEmpty ||
+                          v.fromPlace.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Wrap(spacing: 10, runSpacing: 2, children: [
+                            if (v.vehicleNumber.isNotEmpty)
+                              _MiniInfo(
+                                  Icons.directions_car_outlined,
+                                  v.vehicleNumber),
+                            if (v.fromPlace.isNotEmpty)
+                              _MiniInfo(Icons.place_outlined, v.fromPlace),
+                          ]),
+                        ),
+                    ]),
                 onTap: () => _pickSuggestion(v),
               ),
           ]),
         ),
       ],
+    ]);
+  }
+}
+
+class _MiniInfo extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _MiniInfo(this.icon, this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 12, color: Colors.grey.shade500),
+      const SizedBox(width: 3),
+      Text(text,
+          style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
     ]);
   }
 }

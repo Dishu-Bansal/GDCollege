@@ -86,7 +86,13 @@ class FirebaseVisitorRepository implements VisitorRepository {
       // Staff entries are linked to the staff document id.
       personRefId = staffId!;
     } else {
-      personRefId = await _resolveOrCreateVisitor(name.trim(), now, batch);
+      personRefId = await _resolveOrCreateVisitor(
+        name: name.trim(),
+        now: now,
+        batch: batch,
+        vehicleNumber: vehicleNumber.trim(),
+        fromPlace: fromPlace.trim(),
+      );
     }
 
     final visitRef = _visits.doc();
@@ -112,18 +118,33 @@ class FirebaseVisitorRepository implements VisitorRepository {
 
   /// Reuses an existing visitor doc when the name matches an earlier visitor
   /// (case-insensitive), otherwise creates a new one. Returns the doc id.
-  Future<String> _resolveOrCreateVisitor(
-      String name, DateTime now, WriteBatch batch) async {
+  /// The latest car plate / from-place are remembered on the visitor doc so
+  /// the entry form can autofill them next time.
+  Future<String> _resolveOrCreateVisitor({
+    required String name,
+    required DateTime now,
+    required WriteBatch batch,
+    required String vehicleNumber,
+    required String fromPlace,
+  }) async {
     final existing = await _visitors
         .where('nameLower', isEqualTo: name.toLowerCase())
         .limit(1)
         .get();
     if (existing.docs.isNotEmpty) {
       final doc = existing.docs.first;
-      batch.update(doc.reference, {
+      final update = <String, dynamic>{
         'visitCount': FieldValue.increment(1),
         'lastVisitAt': now.toIso8601String(),
-      });
+      };
+      // Only overwrite remembered details when this visit provides them.
+      if (vehicleNumber.isNotEmpty) {
+        update['vehicleNumber'] = vehicleNumber;
+      }
+      if (fromPlace.isNotEmpty) {
+        update['fromPlace'] = fromPlace;
+      }
+      batch.update(doc.reference, update);
       return doc.id;
     }
     final ref = _visitors.doc();
@@ -132,6 +153,8 @@ class FirebaseVisitorRepository implements VisitorRepository {
       visitCount: 1,
       firstVisitAt: now,
       lastVisitAt: now,
+      vehicleNumber: vehicleNumber,
+      fromPlace: fromPlace,
     ).toFirestore());
     return ref.id;
   }
