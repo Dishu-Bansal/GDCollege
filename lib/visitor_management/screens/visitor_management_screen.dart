@@ -143,8 +143,12 @@ class _InfoItem extends StatelessWidget {
     return Row(mainAxisSize: MainAxisSize.min, children: [
       Icon(icon, size: 13, color: Colors.grey.shade500),
       const SizedBox(width: 4),
-      Text(text,
-          style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+      Flexible(
+        child: Text(text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+      ),
     ]);
   }
 }
@@ -236,18 +240,25 @@ class _InsideCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(visit.name,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontWeight: FontWeight.w700, fontSize: 15)),
                   const SizedBox(height: 2),
-                  Row(children: [
-                    _TypeChip(isStaff: visit.isStaff),
-                    const SizedBox(width: 8),
-                    Text(
-                      'In since ${_fmtTime(visit.checkInAt)}',
-                      style: TextStyle(
-                          fontSize: 11, color: Colors.grey.shade500),
-                    ),
-                  ]),
+                  // Wrap (not Row) so the chip and "In since" never overflow
+                  // into the Check Out button on narrow screens.
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 2,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      _TypeChip(isStaff: visit.isStaff),
+                      Text(
+                        'In since ${_fmtTime(visit.checkInAt)}',
+                        style: TextStyle(
+                            fontSize: 11, color: Colors.grey.shade500),
+                      ),
+                    ],
+                  ),
                 ]),
           ),
           OutlinedButton(
@@ -426,23 +437,28 @@ class _LogCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(visit.name,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontWeight: FontWeight.w700, fontSize: 14)),
                   const SizedBox(height: 2),
-                  Row(children: [
-                    _TypeChip(isStaff: visit.isStaff),
-                    const SizedBox(width: 8),
-                    Text(
-                      visit.isInside ? 'Inside' : 'Completed',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: visit.isInside
-                            ? Colors.green.shade700
-                            : Colors.grey.shade500,
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 2,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      _TypeChip(isStaff: visit.isStaff),
+                      Text(
+                        visit.isInside ? 'Inside' : 'Completed',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: visit.isInside
+                              ? Colors.green.shade700
+                              : Colors.grey.shade500,
+                        ),
                       ),
-                    ),
-                  ]),
+                    ],
+                  ),
                 ]),
           ),
           Text(

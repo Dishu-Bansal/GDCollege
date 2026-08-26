@@ -72,6 +72,7 @@ class FirebaseVisitorRepository implements VisitorRepository {
   Future<void> checkIn({
     required bool isStaff,
     required String? staffId,
+    required String? visitorId,
     required String name,
     required String vehicleNumber,
     required String purpose,
@@ -85,14 +86,34 @@ class FirebaseVisitorRepository implements VisitorRepository {
     if (isStaff) {
       // Staff entries are linked to the staff document id.
       personRefId = staffId!;
+    } else if (visitorId != null && visitorId.isNotEmpty) {
+      // The user explicitly picked this visitor from the autocomplete list:
+      // reuse their profile and remember the latest car plate / from-place.
+      final update = <String, dynamic>{
+        'visitCount': FieldValue.increment(1),
+        'lastVisitAt': now.toIso8601String(),
+      };
+      if (vehicleNumber.trim().isNotEmpty) {
+        update['vehicleNumber'] = vehicleNumber.trim();
+      }
+      if (fromPlace.trim().isNotEmpty) {
+        update['fromPlace'] = fromPlace.trim();
+      }
+      batch.update(_visitors.doc(visitorId), update);
+      personRefId = visitorId;
     } else {
-      personRefId = await _resolveOrCreateVisitor(
+      // No suggestion was picked: always create a new visitor, even when
+      // the name matches an existing one (two visitors can share a name).
+      final ref = _visitors.doc();
+      batch.set(ref, VisitorModel(
         name: name.trim(),
-        now: now,
-        batch: batch,
+        visitCount: 1,
+        firstVisitAt: now,
+        lastVisitAt: now,
         vehicleNumber: vehicleNumber.trim(),
         fromPlace: fromPlace.trim(),
-      );
+      ).toFirestore());
+      personRefId = ref.id;
     }
 
     final visitRef = _visits.doc();
@@ -114,49 +135,6 @@ class FirebaseVisitorRepository implements VisitorRepository {
         ).toFirestore());
 
     await batch.commit();
-  }
-
-  /// Reuses an existing visitor doc when the name matches an earlier visitor
-  /// (case-insensitive), otherwise creates a new one. Returns the doc id.
-  /// The latest car plate / from-place are remembered on the visitor doc so
-  /// the entry form can autofill them next time.
-  Future<String> _resolveOrCreateVisitor({
-    required String name,
-    required DateTime now,
-    required WriteBatch batch,
-    required String vehicleNumber,
-    required String fromPlace,
-  }) async {
-    final existing = await _visitors
-        .where('nameLower', isEqualTo: name.toLowerCase())
-        .limit(1)
-        .get();
-    if (existing.docs.isNotEmpty) {
-      final doc = existing.docs.first;
-      final update = <String, dynamic>{
-        'visitCount': FieldValue.increment(1),
-        'lastVisitAt': now.toIso8601String(),
-      };
-      // Only overwrite remembered details when this visit provides them.
-      if (vehicleNumber.isNotEmpty) {
-        update['vehicleNumber'] = vehicleNumber;
-      }
-      if (fromPlace.isNotEmpty) {
-        update['fromPlace'] = fromPlace;
-      }
-      batch.update(doc.reference, update);
-      return doc.id;
-    }
-    final ref = _visitors.doc();
-    batch.set(ref, VisitorModel(
-      name: name,
-      visitCount: 1,
-      firstVisitAt: now,
-      lastVisitAt: now,
-      vehicleNumber: vehicleNumber,
-      fromPlace: fromPlace,
-    ).toFirestore());
-    return ref.id;
   }
 
   @override

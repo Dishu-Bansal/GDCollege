@@ -29,10 +29,15 @@ class _VisitorEntryFormScreenState
 
   // Visitor mode
   final _nameCtrl = TextEditingController();
+  final _nameFocusNode = FocusNode();
   List<VisitorModel> _visitors = [];
 
-  /// Hides the name suggestions once one has been picked, until the user
-  /// edits the name again.
+  /// The visitor picked from the autocomplete list, if any. Only a picked
+  /// suggestion reuses the visitor profile — anything else is a new visitor.
+  VisitorModel? _selectedVisitor;
+
+  /// Hides the name suggestions once one has been picked (or focus moved
+  /// away), until the user edits the name again.
   bool _suggestionsDismissed = false;
 
   // Entry details
@@ -57,6 +62,7 @@ class _VisitorEntryFormScreenState
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _nameFocusNode.dispose();
     _vehicleCtrl.dispose();
     _purposeCtrl.dispose();
     _fromCtrl.dispose();
@@ -82,8 +88,10 @@ class _VisitorEntryFormScreenState
       .toList();
 
   /// Previous visitors whose name matches the typed text (for autocomplete).
+  /// Only shown while the name field is focused and no suggestion has been
+  /// picked yet.
   List<VisitorModel> get _nameSuggestions {
-    if (_suggestionsDismissed) return const [];
+    if (_suggestionsDismissed || !_nameFocusNode.hasFocus) return const [];
     final q = _nameCtrl.text.trim().toLowerCase();
     if (q.isEmpty) return const [];
     return _visitors
@@ -92,11 +100,13 @@ class _VisitorEntryFormScreenState
         .toList();
   }
 
-  /// Picks a previous visitor: fills the name, autofills the last known car
-  /// plate and from-place, and collapses the suggestion list.
+  /// Picks a previous visitor: remembers the selection, fills the name,
+  /// autofills the last known car plate and from-place, and collapses the
+  /// suggestion list.
   void _pickSuggestion(VisitorModel v) {
     setState(() {
       _suggestionsDismissed = true;
+      _selectedVisitor = v;
       _nameCtrl.text = v.name;
       _nameCtrl.selection =
           TextSelection.collapsed(offset: _nameCtrl.text.length);
@@ -120,16 +130,25 @@ class _VisitorEntryFormScreenState
       );
       return;
     }
+    final fromPlace = _fromCtrl.text.trim();
+    if (fromPlace.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter where the visitor is from')),
+      );
+      return;
+    }
 
     setState(() => _saving = true);
     try {
       await _visitorService.checkIn(
         isStaff: _isStaff,
         staffId: _selectedStaff?.docId,
+        // Only reuse a visitor profile when a suggestion was actually picked.
+        visitorId: _isStaff ? null : _selectedVisitor?.id,
         name: name,
         vehicleNumber: _vehicleCtrl.text,
         purpose: _purposeCtrl.text,
-        fromPlace: _fromCtrl.text,
+        fromPlace: fromPlace,
         accompanyingPeople: _accompanyingNames,
       );
       if (!mounted) return;
@@ -217,7 +236,7 @@ class _VisitorEntryFormScreenState
               TextField(
                 controller: _fromCtrl,
                 decoration: const InputDecoration(
-                  labelText: 'Where are they from? (optional)',
+                  labelText: 'Where are they from? *',
                   prefixIcon: Icon(Icons.place_outlined),
                 ),
               ),
@@ -326,13 +345,19 @@ class _VisitorEntryFormScreenState
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       TextField(
         controller: _nameCtrl,
+        focusNode: _nameFocusNode,
         textCapitalization: TextCapitalization.words,
         decoration: const InputDecoration(
           labelText: 'Visitor Name',
           hintText: 'Start typing to see previous visitors',
           prefixIcon: Icon(Icons.person_outline),
         ),
-        onChanged: (_) => setState(() => _suggestionsDismissed = false),
+        // Any manual edit invalidates a picked suggestion and re-enables
+        // the suggestion list.
+        onChanged: (_) => setState(() {
+          _suggestionsDismissed = false;
+          _selectedVisitor = null;
+        }),
       ),
       if (suggestions.isNotEmpty) ...[
         const SizedBox(height: 6),

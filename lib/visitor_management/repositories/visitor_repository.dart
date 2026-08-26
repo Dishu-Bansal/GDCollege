@@ -16,12 +16,16 @@ abstract class VisitorRepository {
   Stream<List<VisitorVisitModel>> watchVisitorVisits(String visitorId);
 
   /// Checks in a staff member or an external visitor, stamping the current
-  /// time as the check-in time. For visitors, the unique visitor doc is
-  /// reused when the name matches an earlier visitor (case-insensitive),
-  /// otherwise a new one is created.
+  /// time as the check-in time.
+  ///
+  /// For visitors, pass [visitorId] (the unique visitor doc picked from the
+  /// autocomplete) to reuse that visitor's profile; when it is null the
+  /// entry always creates a new visitor, even if the name matches an
+  /// existing one.
   Future<void> checkIn({
     required bool isStaff,
     required String? staffId,
+    required String? visitorId,
     required String name,
     required String vehicleNumber,
     required String purpose,
