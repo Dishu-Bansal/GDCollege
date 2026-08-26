@@ -6,6 +6,7 @@ import '../providers.dart';
 import '../student_management/screens/student_list_screen.dart';
 import '../staff_management/screens/staff_list_screen.dart';
 import '../stock_management/screens/buildings_screen.dart';
+import '../visitor_management/screens/visitor_management_screen.dart';
 import '../widgets/drawer.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -87,6 +88,17 @@ class HomeScreen extends ConsumerWidget {
                     context,
                     MaterialPageRoute(
                         builder: (_) => const BillManagementScreen()),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _NavCard(
+                  icon: Icons.how_to_reg,
+                  label: 'Visitor Management',
+                  color: const Color(0xFFAD1457),
+                  onTap: () => Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const VisitorManagementScreen()),
                   ),
                 ),
                 const SizedBox(height: 40),
