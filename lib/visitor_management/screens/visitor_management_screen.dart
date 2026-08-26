@@ -343,11 +343,28 @@ class _VisitorsTab extends StatelessWidget {
                 ),
                 title: Text(v.name,
                     style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text(
-                  '${v.visitCount} visit${v.visitCount == 1 ? '' : 's'}'
-                  '${v.lastVisitAt != null ? '  •  Last: ${_fmtDateTime(v.lastVisitAt!)}' : ''}',
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                ),
+                subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${v.visitCount} visit${v.visitCount == 1 ? '' : 's'}'
+                        '${v.lastVisitAt != null ? '  •  Last: ${_fmtDateTime(v.lastVisitAt!)}' : ''}',
+                        style: TextStyle(
+                            fontSize: 11, color: Colors.grey.shade600),
+                      ),
+                      if (v.vehicleNumber.isNotEmpty ||
+                          v.fromPlace.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 3),
+                          child: Wrap(spacing: 10, runSpacing: 2, children: [
+                            if (v.vehicleNumber.isNotEmpty)
+                              _InfoItem(Icons.directions_car_outlined,
+                                  v.vehicleNumber),
+                            if (v.fromPlace.isNotEmpty)
+                              _InfoItem(Icons.place_outlined, v.fromPlace),
+                          ]),
+                        ),
+                    ]),
                 trailing: const Icon(Icons.chevron_right, color: Colors.grey),
                 onTap: () {
                   Navigator.push(

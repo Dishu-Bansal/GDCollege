@@ -51,12 +51,19 @@ class _VisitorEntryFormScreenState
   @override
   void initState() {
     super.initState();
+    // Rebuild when the name field gains/loses focus so the suggestion list
+    // appears and dismisses with focus.
+    _nameFocusNode.addListener(_onNameFocusChanged);
     _staffService.watchNames().first.then((s) {
       if (mounted) setState(() => _staff = s);
     });
     _visitorService.watchVisitors().first.then((v) {
       if (mounted) setState(() => _visitors = v);
     });
+  }
+
+  void _onNameFocusChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -96,7 +103,6 @@ class _VisitorEntryFormScreenState
     if (q.isEmpty) return const [];
     return _visitors
         .where((v) => v.name.toLowerCase().contains(q))
-        .take(5)
         .toList();
   }
 
@@ -321,6 +327,7 @@ class _VisitorEntryFormScreenState
     }
     return DropdownButtonFormField<StaffModel>(
       initialValue: _selectedStaff,
+      itemHeight: 56,
       decoration: const InputDecoration(
         labelText: 'Staff Member',
         prefixIcon: Icon(Icons.badge_outlined),
@@ -328,11 +335,18 @@ class _VisitorEntryFormScreenState
       items: _staff
           .map((s) => DropdownMenuItem(
                 value: s,
-                child: Text(
-                  s.designation != null && s.designation!.isNotEmpty
-                      ? '${s.name} — ${s.designation}'
-                      : s.name,
-                  overflow: TextOverflow.ellipsis,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(s.name,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 14)),
+                    if (s.village.isNotEmpty)
+                      Text(s.village,
+                          style: TextStyle(
+                              fontSize: 11, color: Colors.grey.shade600)),
+                  ],
                 ),
               ))
           .toList(),
@@ -367,39 +381,51 @@ class _VisitorEntryFormScreenState
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: Colors.grey.shade300),
           ),
-          child: Column(children: [
-            for (final v in suggestions)
-              ListTile(
-                dense: true,
-                leading: const Icon(Icons.history, size: 18),
-                title: Text(v.name,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 14)),
-                subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${v.visitCount} visit${v.visitCount == 1 ? '' : 's'}',
-                        style: TextStyle(
-                            fontSize: 11, color: Colors.grey.shade600),
-                      ),
-                      if (v.vehicleNumber.isNotEmpty ||
-                          v.fromPlace.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Wrap(spacing: 10, runSpacing: 2, children: [
-                            if (v.vehicleNumber.isNotEmpty)
-                              _MiniInfo(
-                                  Icons.directions_car_outlined,
-                                  v.vehicleNumber),
-                            if (v.fromPlace.isNotEmpty)
-                              _MiniInfo(Icons.place_outlined, v.fromPlace),
-                          ]),
+          // Scrollable so many same-name visitors don't stretch the form.
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 220),
+            child: ListView.separated(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              itemCount: suggestions.length,
+              separatorBuilder: (_, _) =>
+                  Divider(height: 1, color: Colors.grey.shade100),
+              itemBuilder: (_, i) {
+                final v = suggestions[i];
+                return ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.history, size: 18),
+                  title: Text(v.name,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 14)),
+                  subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${v.visitCount} visit${v.visitCount == 1 ? '' : 's'}',
+                          style: TextStyle(
+                              fontSize: 11, color: Colors.grey.shade600),
                         ),
-                    ]),
-                onTap: () => _pickSuggestion(v),
-              ),
-          ]),
+                        if (v.vehicleNumber.isNotEmpty ||
+                            v.fromPlace.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child:
+                                Wrap(spacing: 10, runSpacing: 2, children: [
+                              if (v.vehicleNumber.isNotEmpty)
+                                _MiniInfo(Icons.directions_car_outlined,
+                                    v.vehicleNumber),
+                              if (v.fromPlace.isNotEmpty)
+                                _MiniInfo(
+                                    Icons.place_outlined, v.fromPlace),
+                            ]),
+                          ),
+                      ]),
+                  onTap: () => _pickSuggestion(v),
+                );
+              },
+            ),
+          ),
         ),
       ],
     ]);
