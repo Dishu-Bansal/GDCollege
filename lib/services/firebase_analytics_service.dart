@@ -19,6 +19,25 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
     return (start: start, end: end);
   }
 
+  /// Email of the user who performed the activity, or '' when unknown.
+  String _actorOf(QueryDocumentSnapshot<Map<String, dynamic>> doc) =>
+      (doc.data()['changedBy'] as String?) ?? '';
+
+  static void _add(Map<String, int> tally, String account, int amount) {
+    tally[account] = (tally[account] ?? 0) + amount;
+  }
+
+  static int _sum(Map<String, int> tally) =>
+      tally.values.fold(0, (a, b) => a + b);
+
+  /// Folds the difference between [total] and what [tally] already accounts
+  /// for into the '' (unknown-account) bucket, so breakdowns always add up
+  /// to their total even when part of the source data lacks an actor.
+  static void _foldUnattributed(Map<String, int> tally, int total) {
+    final rest = total - _sum(tally);
+    if (rest > 0) _add(tally, '', rest);
+  }
+
   @override
   Future<HomeAnalytics> fetchPreviousDayAnalytics() async {
     final day = _previousIstDay();
@@ -62,58 +81,99 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
     final stockLogs = results[2].docs;
     final assignments = results[3].docs;
 
-    int studentsCreated = 0, studentsUpdated = 0, studentsDeleted = 0;
+    // ── Students: tally each create/update/delete by the acting account ──
+    final studentsCreatedBy = <String, int>{};
+    final studentsUpdatedBy = <String, int>{};
+    final studentsDeletedBy = <String, int>{};
     for (final d in studentLogs) {
+      final actor = _actorOf(d);
       switch (d.data()['action']) {
         case 'create':
-          studentsCreated++;
+          _add(studentsCreatedBy, actor, 1);
         case 'update':
-          studentsUpdated++;
+          _add(studentsUpdatedBy, actor, 1);
         case 'delete':
-          studentsDeleted++;
+          _add(studentsDeletedBy, actor, 1);
         default:
           break;
       }
     }
 
-    int staffCreated = 0, staffUpdated = 0, staffDeleted = 0;
+    // ── Staff: same as students ──────────────────────────────────────────
+    final staffCreatedBy = <String, int>{};
+    final staffUpdatedBy = <String, int>{};
+    final staffDeletedBy = <String, int>{};
     for (final d in staffLogs) {
+      final actor = _actorOf(d);
       switch (d.data()['action']) {
         case 'create':
-          staffCreated++;
+          _add(staffCreatedBy, actor, 1);
         case 'update':
-          staffUpdated++;
+          _add(staffUpdatedBy, actor, 1);
         case 'delete':
-          staffDeleted++;
+          _add(staffDeletedBy, actor, 1);
         default:
           break;
       }
     }
 
-    int itemsAdded = 0, itemsRemoved = 0;
+    // ── Stock ────────────────────────────────────────────────────────────
+    // The stockLogs of a day carry every item increase/decrease (each log
+    // records the acting account). Inspection completions and consumable
+    // assignments also write a dedicated stock log entry, which lets us
+    // attribute those activities to an account too.
+    final itemsAddedBy = <String, int>{};
+    final itemsRemovedBy = <String, int>{};
+    final inspectionsLoggedBy = <String, int>{};
+    final assignmentsLoggedBy = <String, int>{};
     for (final d in stockLogs) {
       final data = d.data();
+      final actor = _actorOf(d);
       final type = data['type'];
       final qty = (data['quantity'] as num?)?.toInt() ?? 0;
-      if (type == 'increase') {
-        itemsAdded += qty;
-      } else if (type == 'decrease') {
-        itemsRemoved += qty;
+      final note = (data['note'] as String?) ?? '';
+      if (type == 'increase' && qty > 0) {
+        _add(itemsAddedBy, actor, qty);
+      } else if (type == 'decrease' && qty > 0) {
+        _add(itemsRemovedBy, actor, qty);
+      }
+      if (type == 'inspection' && note.startsWith('Inspection completed')) {
+        _add(inspectionsLoggedBy, actor, 1);
+      } else if (type == 'decrease' && note.startsWith('Assigned to ')) {
+        _add(assignmentsLoggedBy, actor, 1);
       }
     }
+
+    // Inspections/assignments totals come from their own collections (which
+    // do not always record an actor); attribute what the daily logs explain
+    // and fold any remainder into the unknown-account bucket.
+    final inspectionsBy = Map<String, int>.of(inspectionsLoggedBy);
+    _foldUnattributed(inspectionsBy, inspectionsDone);
+    final assignmentsBy = Map<String, int>.of(assignmentsLoggedBy);
+    _foldUnattributed(assignmentsBy, assignments.length);
 
     return HomeAnalytics(
       day: day.start,
-      studentsCreated: studentsCreated,
-      studentsUpdated: studentsUpdated,
-      studentsDeleted: studentsDeleted,
-      staffCreated: staffCreated,
-      staffUpdated: staffUpdated,
-      staffDeleted: staffDeleted,
+      studentsCreated: _sum(studentsCreatedBy),
+      studentsUpdated: _sum(studentsUpdatedBy),
+      studentsDeleted: _sum(studentsDeletedBy),
+      staffCreated: _sum(staffCreatedBy),
+      staffUpdated: _sum(staffUpdatedBy),
+      staffDeleted: _sum(staffDeletedBy),
       inspectionsDone: inspectionsDone,
-      itemsAdded: itemsAdded,
-      itemsRemoved: itemsRemoved,
+      itemsAdded: _sum(itemsAddedBy),
+      itemsRemoved: _sum(itemsRemovedBy),
       assignmentsDone: assignments.length,
+      studentsCreatedAccounts: accountSharesFromTally(studentsCreatedBy),
+      studentsUpdatedAccounts: accountSharesFromTally(studentsUpdatedBy),
+      studentsDeletedAccounts: accountSharesFromTally(studentsDeletedBy),
+      staffCreatedAccounts: accountSharesFromTally(staffCreatedBy),
+      staffUpdatedAccounts: accountSharesFromTally(staffUpdatedBy),
+      staffDeletedAccounts: accountSharesFromTally(staffDeletedBy),
+      inspectionsAccounts: accountSharesFromTally(inspectionsBy),
+      itemsAddedAccounts: accountSharesFromTally(itemsAddedBy),
+      itemsRemovedAccounts: accountSharesFromTally(itemsRemovedBy),
+      assignmentsAccounts: accountSharesFromTally(assignmentsBy),
     );
   }
 
@@ -122,11 +182,9 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
   /// Inspections live in `rooms/{roomId}/inspections` subcollections and are
   /// stamped `status: 'completed'` with `completedAt` on completion, so we
   /// walk the building → floor → room tree and read each room's inspections.
-  Future<int> _countCompletedInspections(
-      String startIso, String endIso) async {
+  Future<int> _countCompletedInspections(String startIso, String endIso) async {
     final buildings = await _db.collection('buildings').get();
-    final roomQueries =
-        <Future<QuerySnapshot<Map<String, dynamic>>>>[];
+    final roomQueries = <Future<QuerySnapshot<Map<String, dynamic>>>>[];
     for (final b in buildings.docs) {
       final floors = await _db
           .collection('buildings')
@@ -142,17 +200,19 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
             .collection('rooms')
             .get();
         for (final r in rooms.docs) {
-          roomQueries.add(_db
-              .collection('buildings')
-              .doc(b.id)
-              .collection('floors')
-              .doc(f.id)
-              .collection('rooms')
-              .doc(r.id)
-              .collection('inspections')
-              .where('completedAt', isGreaterThanOrEqualTo: startIso)
-              .where('completedAt', isLessThan: endIso)
-              .get());
+          roomQueries.add(
+            _db
+                .collection('buildings')
+                .doc(b.id)
+                .collection('floors')
+                .doc(f.id)
+                .collection('rooms')
+                .doc(r.id)
+                .collection('inspections')
+                .where('completedAt', isGreaterThanOrEqualTo: startIso)
+                .where('completedAt', isLessThan: endIso)
+                .get(),
+          );
         }
       }
     }
