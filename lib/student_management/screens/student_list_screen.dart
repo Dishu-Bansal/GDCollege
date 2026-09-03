@@ -375,8 +375,6 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
         ],
         bottom: TabBar(
           controller: _tabs,
-          isScrollable: true,
-          tabAlignment: TabAlignment.start,
           indicatorColor: Colors.amber,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white60,
