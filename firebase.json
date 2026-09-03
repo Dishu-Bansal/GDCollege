@@ -25,7 +25,14 @@
       }
     ]
   },
-  "firestore": {
-    "indexes": "firestore.indexes.json"
-  }
+  "firestore": [
+    {
+      "database": "(default)",
+      "indexes": "firestore.indexes.default.json"
+    },
+    {
+      "database": "test-db",
+      "indexes": "firestore.indexes.test-db.json"
+    }
+  ]
 }

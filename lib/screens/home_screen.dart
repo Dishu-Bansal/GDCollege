@@ -6,6 +6,7 @@ import '../providers.dart';
 import '../student_management/screens/student_list_screen.dart';
 import '../staff_management/screens/staff_list_screen.dart';
 import '../stock_management/screens/buildings_screen.dart';
+import '../visitor_management/screens/visitor_management_screen.dart';
 import '../widgets/drawer.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -32,9 +33,9 @@ class HomeScreen extends ConsumerWidget {
                 const SizedBox(height: 16),
                 Text(
                   'Welcome to',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: Colors.grey[600],
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(color: Colors.grey[600]),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -55,7 +56,9 @@ class HomeScreen extends ConsumerWidget {
                   color: const Color(0xFF1565C0),
                   onTap: () => Navigator.pushReplacement(
                     context,
-                    MaterialPageRoute(builder: (_) => const StudentListScreen()),
+                    MaterialPageRoute(
+                      builder: (_) => const StudentListScreen(),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -86,7 +89,20 @@ class HomeScreen extends ConsumerWidget {
                   onTap: () => Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(
-                        builder: (_) => const BillManagementScreen()),
+                      builder: (_) => const BillManagementScreen(),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _NavCard(
+                  icon: Icons.how_to_reg,
+                  label: 'Visitor Management',
+                  color: const Color(0xFFAD1457),
+                  onTap: () => Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const VisitorManagementScreen(),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 40),
@@ -114,8 +130,9 @@ class _AnalyticsCard extends ConsumerWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border:
-            Border.all(color: const Color(0xFF1A3C6E).withValues(alpha: 0.15)),
+        border: Border.all(
+          color: const Color(0xFF1A3C6E).withValues(alpha: 0.15),
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -127,34 +144,38 @@ class _AnalyticsCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A3C6E).withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(Icons.query_stats,
-                  size: 18, color: Color(0xFF1A3C6E)),
-            ),
-            const SizedBox(width: 10),
-            const Expanded(
-              child: Text(
-                'Daily Activity',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A3C6E).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.query_stats,
+                  size: 18,
                   color: Color(0xFF1A3C6E),
                 ),
               ),
-            ),
-            IconButton(
-              tooltip: 'Refresh',
-              icon: const Icon(Icons.refresh, size: 20),
-              onPressed: () =>
-                  ref.invalidate(homeAnalyticsProvider),
-            ),
-          ]),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Daily Activity',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    color: Color(0xFF1A3C6E),
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Refresh',
+                icon: const Icon(Icons.refresh, size: 20),
+                onPressed: () => ref.invalidate(homeAnalyticsProvider),
+              ),
+            ],
+          ),
           const SizedBox(height: 2),
           analytics.when(
             loading: () => const Padding(
@@ -169,17 +190,25 @@ class _AnalyticsCard extends ConsumerWidget {
             ),
             error: (e, _) => Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Row(children: [
-                Icon(Icons.error_outline, size: 18, color: Colors.red.shade600),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Could not load analytics: $e',
-                    style: TextStyle(
-                        fontSize: 12, color: Colors.red.shade700),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 18,
+                    color: Colors.red.shade600,
                   ),
-                ),
-              ]),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Could not load analytics: $e',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.red.shade700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
             data: (data) => Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -195,7 +224,9 @@ class _AnalyticsCard extends ConsumerWidget {
                     child: Text(
                       'No activity recorded for yesterday.',
                       style: TextStyle(
-                          fontSize: 13, color: Colors.grey.shade500),
+                        fontSize: 13,
+                        color: Colors.grey.shade500,
+                      ),
                     ),
                   )
                 else ...[
@@ -204,9 +235,21 @@ class _AnalyticsCard extends ConsumerWidget {
                     icon: Icons.people_alt,
                     color: const Color(0xFF1565C0),
                     stats: [
-                      (label: 'Created', value: data.studentsCreated),
-                      (label: 'Updated', value: data.studentsUpdated),
-                      (label: 'Deleted', value: data.studentsDeleted),
+                      (
+                        label: 'Created',
+                        value: data.studentsCreated,
+                        accounts: data.studentsCreatedAccounts,
+                      ),
+                      (
+                        label: 'Updated',
+                        value: data.studentsUpdated,
+                        accounts: data.studentsUpdatedAccounts,
+                      ),
+                      (
+                        label: 'Deleted',
+                        value: data.studentsDeleted,
+                        accounts: data.studentsDeletedAccounts,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -215,9 +258,21 @@ class _AnalyticsCard extends ConsumerWidget {
                     icon: Icons.badge,
                     color: const Color(0xFF2E7D32),
                     stats: [
-                      (label: 'Created', value: data.staffCreated),
-                      (label: 'Updated', value: data.staffUpdated),
-                      (label: 'Deleted', value: data.staffDeleted),
+                      (
+                        label: 'Created',
+                        value: data.staffCreated,
+                        accounts: data.staffCreatedAccounts,
+                      ),
+                      (
+                        label: 'Updated',
+                        value: data.staffUpdated,
+                        accounts: data.staffUpdatedAccounts,
+                      ),
+                      (
+                        label: 'Deleted',
+                        value: data.staffDeleted,
+                        accounts: data.staffDeletedAccounts,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -226,10 +281,26 @@ class _AnalyticsCard extends ConsumerWidget {
                     icon: Icons.inventory_2,
                     color: const Color(0xFF6A1B9A),
                     stats: [
-                      (label: 'Inspections', value: data.inspectionsDone),
-                      (label: 'Items Added', value: data.itemsAdded),
-                      (label: 'Items Removed', value: data.itemsRemoved),
-                      (label: 'Assignments', value: data.assignmentsDone),
+                      (
+                        label: 'Inspections',
+                        value: data.inspectionsDone,
+                        accounts: data.inspectionsAccounts,
+                      ),
+                      (
+                        label: 'Items Added',
+                        value: data.itemsAdded,
+                        accounts: data.itemsAddedAccounts,
+                      ),
+                      (
+                        label: 'Items Removed',
+                        value: data.itemsRemoved,
+                        accounts: data.itemsRemovedAccounts,
+                      ),
+                      (
+                        label: 'Assignments',
+                        value: data.assignmentsDone,
+                        accounts: data.assignmentsAccounts,
+                      ),
                     ],
                   ),
                 ],
@@ -241,15 +312,14 @@ class _AnalyticsCard extends ConsumerWidget {
     );
   }
 
-  String _fmtDay(DateTime d) =>
-      '${d.day}/${d.month}/${d.year}';
+  String _fmtDay(DateTime d) => '${d.day}/${d.month}/${d.year}';
 }
 
 class _AnalyticsGroup extends StatelessWidget {
   final String title;
   final IconData icon;
   final Color color;
-  final List<({String label, int value})> stats;
+  final List<({String label, int value, List<AccountAmount> accounts})> stats;
 
   const _AnalyticsGroup({
     required this.title,
@@ -260,6 +330,7 @@ class _AnalyticsGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasBreakdowns = stats.any((s) => s.accounts.isNotEmpty);
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -270,22 +341,138 @@ class _AnalyticsGroup extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Icon(icon, size: 16, color: color),
-            const SizedBox(width: 6),
-            Text(
-              title,
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
+          Row(
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 6),
+              Text(
+                title,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (!hasBreakdowns)
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final s in stats)
+                  _StatChip(label: s.label, value: s.value, color: color),
+              ],
+            )
+          else
+            for (var i = 0; i < stats.length; i++) ...[
+              _ActivityBox(
+                label: stats[i].label,
+                value: stats[i].value,
+                accounts: stats[i].accounts,
                 color: color,
               ),
-            ),
-          ]),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final s in stats) _StatChip(label: s.label, value: s.value, color: color),
-          ]),
+              if (i != stats.length - 1) const SizedBox(height: 10),
+            ],
+        ],
+      ),
+    );
+  }
+}
+
+/// One activity in a single box: the total on the first row and the
+/// account-wise breakdown (each account's share) listed beneath it, e.g.
+/// "Total 20" followed by "email1 13 / email2 4 / email3 3".
+class _ActivityBox extends StatelessWidget {
+  final String label;
+  final int value;
+  final List<AccountAmount> accounts;
+  final Color color;
+
+  const _ActivityBox({
+    required this.label,
+    required this.value,
+    required this.accounts,
+    required this.color,
+  });
+
+  String _accountLabel(String account) =>
+      account.isEmpty ? 'Unknown account' : account;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Total row: activity name on the left, "Total" + count on the right.
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12.5,
+                    color: color,
+                  ),
+                ),
+              ),
+              Text(
+                'Total',
+                style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '$value',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+          if (accounts.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Divider(height: 1, color: color.withValues(alpha: 0.15)),
+            const SizedBox(height: 2),
+            for (final a in accounts)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2.5),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _accountLabel(a.account),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: Colors.grey.shade700,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      '${a.amount}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: color,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
         ],
       ),
     );
@@ -312,21 +499,31 @@ class _StatChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Text(
-          '$value',
-          style: TextStyle(
-              fontWeight: FontWeight.w700, color: color, fontSize: 13),
-        ),
-        const SizedBox(width: 5),
-        Text(
-          label,
-          style: TextStyle(fontSize: 11, color: color.withValues(alpha: 0.75)),
-        ),
-      ]),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '$value',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: color,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: color.withValues(alpha: 0.75),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
+
 class _NavCard extends StatelessWidget {
   final IconData icon;
   final String label;

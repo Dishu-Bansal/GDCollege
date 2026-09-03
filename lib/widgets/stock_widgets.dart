@@ -322,14 +322,16 @@ class _InspectionDueListState extends State<InspectionDueList> {
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 2),
             child: Row(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  'Inspection due for $count room${count == 1 ? '' : 's'}',
-                  style: const TextStyle(
-                      fontSize: 11,
-                      color: Colors.red,
-                      fontWeight: FontWeight.w500),
+                Flexible(
+                  child: Text(
+                    'Inspection due for $count room${count == 1 ? '' : 's'}',
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.red,
+                        fontWeight: FontWeight.w500),
+                  ),
                 ),
                 const SizedBox(width: 2),
                 Icon(
