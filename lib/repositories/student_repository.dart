@@ -16,6 +16,11 @@ abstract class StudentRepository {
     DocumentSnapshot? startAfter,
   });
 
+  /// Fetches every student document at once. Used by the student records
+  /// screen, which splits the students into course-group tabs and filters,
+  /// sorts and paginates them client-side.
+  Future<List<StudentModel>> fetchAllStudents();
+
   Future<List<StudentModel>> search({
     required String query,
     Set<String>? years,
