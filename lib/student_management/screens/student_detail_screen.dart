@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_network/image_network.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -170,10 +170,11 @@ class _DetailsTab extends StatelessWidget {
             _Field('Year of Admission',
                 student.yearOfAdmission?.toString()),
             _Field('Placement Details', student.placementDetails),
-            _Field('Fee – 1st Year', student.feeDetails1stYear),
-            _Field('Fee – 2nd Year', student.feeDetails2ndYear),
-            _Field('Fine', student.fineIfAny),
-            _Field('Exam Fee', student.examFee),
+            _Field('Fee – 1st Year', _money(student.feeDetails1stYear)),
+            _Field('Fee – 2nd Year', _money(student.feeDetails2ndYear)),
+            _Field('Fee – 3rd Year', _money(student.feeDetails3rdYear)),
+            for (final f in student.otherFees)
+              if (_feeHasValue(f)) _Field(_feeLabel(f), _feeSummary(f)),
           ],
           fileUrls: {
             for (int i = 0; i < student.otherFileUrls.length; i++)
@@ -191,6 +192,29 @@ class _DetailsTab extends StatelessWidget {
   static String _maskAadhar(String n) {
     if (n.length < 4) return n;
     return 'XXXX XXXX ${n.substring(n.length - 4)}';
+  }
+
+  /// Prefixes a whole-rupee amount with the ₹ symbol ('' stays empty).
+  static String _money(String amount) {
+    final a = amount.trim();
+    return a.isEmpty ? '' : '₹ $a';
+  }
+
+  static bool _feeHasValue(Map<String, String> f) =>
+      (f['type'] ?? '').trim().isNotEmpty ||
+      (f['amount'] ?? '').trim().isNotEmpty ||
+      (f['comment'] ?? '').trim().isNotEmpty;
+
+  static String _feeLabel(Map<String, String> f) {
+    final type = (f['type'] ?? '').trim();
+    return type.isEmpty ? 'Fee' : 'Fee · $type';
+  }
+
+  static String _feeSummary(Map<String, String> f) {
+    final amount = _money(f['amount'] ?? '');
+    final comment = (f['comment'] ?? '').trim();
+    if (amount.isNotEmpty && comment.isNotEmpty) return '$amount ($comment)';
+    return amount.isNotEmpty ? amount : comment;
   }
 }
 

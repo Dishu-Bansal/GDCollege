@@ -121,7 +121,7 @@ class FirebaseStudentRepository implements StudentRepository {
     'aadharNumber': 'Aadhar', 'panCard': 'PAN', 'familyId': 'Family ID',
     'nameOfCourse': 'Course', 'yearOfAdmission': 'Year',
     'feeDetails1stYear': '1st Year Fee', 'feeDetails2ndYear': '2nd Year Fee',
-    'fineIfAny': 'Fine', 'examFee': 'Exam Fee', 'placementDetails': 'Placement',
+    'feeDetails3rdYear': '3rd Year Fee', 'placementDetails': 'Placement',
     'tenthUrl': '10th Cert', 'twelfthUrl': '12th Cert',
     'graduationUrl': 'Graduation', 'postGraduationUrl': 'Post Grad', 'diplomaUrl': 'Diploma',
     'photoUrl': 'Photo', 'aadharUrl': 'Aadhar File', 'panUrl': 'PAN File',
