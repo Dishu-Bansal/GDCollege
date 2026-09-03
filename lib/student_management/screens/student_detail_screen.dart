@@ -109,6 +109,7 @@ class _DetailsTab extends StatelessWidget {
           title: 'Personal Information',
           icon: Icons.person_outline,
           fields: [
+            _Field('Full Name', student.name),
             _Field('Father\'s Name', student.fatherName),
             _Field('Mother\'s Name', student.motherName),
             _Field('Date of Birth',
@@ -143,6 +144,8 @@ class _DetailsTab extends StatelessWidget {
             _Field('Family ID', student.familyId),
           ],
           fileUrls: {
+            'Aadhar Card': student.aadharUrl,
+            'PAN Card': student.panUrl,
             'SC Certificate': student.scCertificateUrl,
             'BC Certificate': student.bcCertificateUrl,
             'Sports Certificate': student.sportsCertificateUrl,
@@ -177,6 +180,8 @@ class _DetailsTab extends StatelessWidget {
               if (_feeHasValue(f)) _Field(_feeLabel(f), _feeSummary(f)),
           ],
           fileUrls: {
+            if (student.otherFileUrls.isEmpty)
+              'Supporting Files': null,
             for (int i = 0; i < student.otherFileUrls.length; i++)
               'File ${i + 1}': student.otherFileUrls[i],
           },
@@ -510,15 +515,8 @@ class _DetailCardState extends State<_DetailCard> {
 
   @override
   Widget build(BuildContext context) {
-    final nonEmpty = widget.fields
-        .where((f) => f.value != null && f.value!.isNotEmpty)
-        .toList();
-    final nonEmptyFiles = widget.fileUrls.entries
-        .where((e) => e.value != null && e.value!.isNotEmpty)
-        .toList();
-
-    if (nonEmpty.isEmpty && nonEmptyFiles.isEmpty) return const SizedBox();
-
+    // Every field and file slot is rendered, even when empty: an empty
+    // value shows as '—' instead of hiding the row (or the whole card).
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 12),
@@ -564,8 +562,9 @@ class _DetailCardState extends State<_DetailCard> {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  ...nonEmpty.map((f) => _FieldRow(f.label, f.value!)),
-                  ...nonEmptyFiles.map((e) => _FileRow(e.key, e.value!)),
+                  for (final f in widget.fields) _FieldRow(f.label, f.value),
+                  for (final e in widget.fileUrls.entries)
+                    _FileRow(e.key, e.value),
                 ],
               ),
             ),
@@ -578,8 +577,10 @@ class _DetailCardState extends State<_DetailCard> {
 
 class _FieldRow extends StatelessWidget {
   final String label;
-  final String value;
+  final String? value;
   const _FieldRow(this.label, this.value);
+
+  bool get _isEmpty => value == null || value!.trim().isEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -600,9 +601,14 @@ class _FieldRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(value,
-                style: const TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w500)),
+            child: Text(
+              _isEmpty ? '—' : value!.trim(),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: _isEmpty ? Colors.grey.shade400 : null,
+              ),
+            ),
           ),
         ],
       ),
@@ -612,8 +618,10 @@ class _FieldRow extends StatelessWidget {
 
 class _FileRow extends StatelessWidget {
   final String label;
-  final String url;
+  final String? url;
   const _FileRow(this.label, this.url);
+
+  bool get _isEmpty => url == null || url!.isEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -632,21 +640,28 @@ class _FileRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          TextButton.icon(
-            onPressed: () async {
-              await launchUrl(Uri.parse(url));
-              // Open URL — use url_launcher in production
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Open: $url')),
-              );
-            },
-            icon: const Icon(Icons.open_in_new, size: 14),
-            label: const Text('View File', style: TextStyle(fontSize: 12)),
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF1A3C6E),
-              padding: EdgeInsets.zero,
+          if (_isEmpty)
+            Expanded(
+              child: Text('—',
+                  style: TextStyle(
+                      fontSize: 13, color: Colors.grey.shade400)),
+            )
+          else
+            TextButton.icon(
+              onPressed: () async {
+                await launchUrl(Uri.parse(url!));
+                // Open URL — use url_launcher in production
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Open: $url')),
+                );
+              },
+              icon: const Icon(Icons.open_in_new, size: 14),
+              label: const Text('View File', style: TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF1A3C6E),
+                padding: EdgeInsets.zero,
+              ),
             ),
-          ),
         ],
       ),
     );
