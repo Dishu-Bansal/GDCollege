@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -121,7 +121,7 @@ class FirebaseStudentRepository implements StudentRepository {
     'aadharNumber': 'Aadhar', 'panCard': 'PAN', 'familyId': 'Family ID',
     'nameOfCourse': 'Course', 'yearOfAdmission': 'Year',
     'feeDetails1stYear': '1st Year Fee', 'feeDetails2ndYear': '2nd Year Fee',
-    'fineIfAny': 'Fine', 'examFee': 'Exam Fee', 'placementDetails': 'Placement',
+    'feeDetails3rdYear': '3rd Year Fee', 'placementDetails': 'Placement',
     'tenthUrl': '10th Cert', 'twelfthUrl': '12th Cert',
     'graduationUrl': 'Graduation', 'postGraduationUrl': 'Post Grad', 'diplomaUrl': 'Diploma',
     'photoUrl': 'Photo', 'aadharUrl': 'Aadhar File', 'panUrl': 'PAN File',
@@ -302,6 +302,14 @@ class FirebaseStudentRepository implements StudentRepository {
   // ── SEARCH (filters active) — fetch all matches, return full list ─────────
   // We fetch all matching docs and let the controller paginate client-side.
   // With n-gram index this is a single indexed Firestore query.
+
+  @override
+  Future<List<StudentModel>> fetchAllStudents() async {
+    final snap = await _firestore.collection(_collection).get();
+    return snap.docs
+        .map((d) => StudentModel.fromFirestore(d.id, d.data()))
+        .toList();
+  }
 
   @override
   Future<List<StudentModel>> search({

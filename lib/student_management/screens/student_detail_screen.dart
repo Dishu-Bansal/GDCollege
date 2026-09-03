@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_network/image_network.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -109,6 +109,7 @@ class _DetailsTab extends StatelessWidget {
           title: 'Personal Information',
           icon: Icons.person_outline,
           fields: [
+            _Field('Full Name', student.name),
             _Field('Father\'s Name', student.fatherName),
             _Field('Mother\'s Name', student.motherName),
             _Field('Date of Birth',
@@ -143,6 +144,8 @@ class _DetailsTab extends StatelessWidget {
             _Field('Family ID', student.familyId),
           ],
           fileUrls: {
+            'Aadhar Card': student.aadharUrl,
+            'PAN Card': student.panUrl,
             'SC Certificate': student.scCertificateUrl,
             'BC Certificate': student.bcCertificateUrl,
             'Sports Certificate': student.sportsCertificateUrl,
@@ -170,12 +173,15 @@ class _DetailsTab extends StatelessWidget {
             _Field('Year of Admission',
                 student.yearOfAdmission?.toString()),
             _Field('Placement Details', student.placementDetails),
-            _Field('Fee – 1st Year', student.feeDetails1stYear),
-            _Field('Fee – 2nd Year', student.feeDetails2ndYear),
-            _Field('Fine', student.fineIfAny),
-            _Field('Exam Fee', student.examFee),
+            _Field('Fee – 1st Year', _money(student.feeDetails1stYear)),
+            _Field('Fee – 2nd Year', _money(student.feeDetails2ndYear)),
+            _Field('Fee – 3rd Year', _money(student.feeDetails3rdYear)),
+            for (final f in student.otherFees)
+              if (_feeHasValue(f)) _Field(_feeLabel(f), _feeSummary(f)),
           ],
           fileUrls: {
+            if (student.otherFileUrls.isEmpty)
+              'Supporting Files': null,
             for (int i = 0; i < student.otherFileUrls.length; i++)
               'File ${i + 1}': student.otherFileUrls[i],
           },
@@ -191,6 +197,29 @@ class _DetailsTab extends StatelessWidget {
   static String _maskAadhar(String n) {
     if (n.length < 4) return n;
     return 'XXXX XXXX ${n.substring(n.length - 4)}';
+  }
+
+  /// Prefixes a whole-rupee amount with the ₹ symbol ('' stays empty).
+  static String _money(String amount) {
+    final a = amount.trim();
+    return a.isEmpty ? '' : '₹ $a';
+  }
+
+  static bool _feeHasValue(Map<String, String> f) =>
+      (f['type'] ?? '').trim().isNotEmpty ||
+      (f['amount'] ?? '').trim().isNotEmpty ||
+      (f['comment'] ?? '').trim().isNotEmpty;
+
+  static String _feeLabel(Map<String, String> f) {
+    final type = (f['type'] ?? '').trim();
+    return type.isEmpty ? 'Fee' : 'Fee · $type';
+  }
+
+  static String _feeSummary(Map<String, String> f) {
+    final amount = _money(f['amount'] ?? '');
+    final comment = (f['comment'] ?? '').trim();
+    if (amount.isNotEmpty && comment.isNotEmpty) return '$amount ($comment)';
+    return amount.isNotEmpty ? amount : comment;
   }
 }
 
@@ -486,15 +515,8 @@ class _DetailCardState extends State<_DetailCard> {
 
   @override
   Widget build(BuildContext context) {
-    final nonEmpty = widget.fields
-        .where((f) => f.value != null && f.value!.isNotEmpty)
-        .toList();
-    final nonEmptyFiles = widget.fileUrls.entries
-        .where((e) => e.value != null && e.value!.isNotEmpty)
-        .toList();
-
-    if (nonEmpty.isEmpty && nonEmptyFiles.isEmpty) return const SizedBox();
-
+    // Every field and file slot is rendered, even when empty: an empty
+    // value shows as '—' instead of hiding the row (or the whole card).
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 12),
@@ -540,8 +562,9 @@ class _DetailCardState extends State<_DetailCard> {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  ...nonEmpty.map((f) => _FieldRow(f.label, f.value!)),
-                  ...nonEmptyFiles.map((e) => _FileRow(e.key, e.value!)),
+                  for (final f in widget.fields) _FieldRow(f.label, f.value),
+                  for (final e in widget.fileUrls.entries)
+                    _FileRow(e.key, e.value),
                 ],
               ),
             ),
@@ -554,8 +577,10 @@ class _DetailCardState extends State<_DetailCard> {
 
 class _FieldRow extends StatelessWidget {
   final String label;
-  final String value;
+  final String? value;
   const _FieldRow(this.label, this.value);
+
+  bool get _isEmpty => value == null || value!.trim().isEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -576,9 +601,14 @@ class _FieldRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(value,
-                style: const TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w500)),
+            child: Text(
+              _isEmpty ? '—' : value!.trim(),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: _isEmpty ? Colors.grey.shade400 : null,
+              ),
+            ),
           ),
         ],
       ),
@@ -588,8 +618,10 @@ class _FieldRow extends StatelessWidget {
 
 class _FileRow extends StatelessWidget {
   final String label;
-  final String url;
+  final String? url;
   const _FileRow(this.label, this.url);
+
+  bool get _isEmpty => url == null || url!.isEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -608,21 +640,28 @@ class _FileRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          TextButton.icon(
-            onPressed: () async {
-              await launchUrl(Uri.parse(url));
-              // Open URL — use url_launcher in production
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Open: $url')),
-              );
-            },
-            icon: const Icon(Icons.open_in_new, size: 14),
-            label: const Text('View File', style: TextStyle(fontSize: 12)),
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF1A3C6E),
-              padding: EdgeInsets.zero,
+          if (_isEmpty)
+            Expanded(
+              child: Text('—',
+                  style: TextStyle(
+                      fontSize: 13, color: Colors.grey.shade400)),
+            )
+          else
+            TextButton.icon(
+              onPressed: () async {
+                await launchUrl(Uri.parse(url!));
+                // Open URL — use url_launcher in production
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Open: $url')),
+                );
+              },
+              icon: const Icon(Icons.open_in_new, size: 14),
+              label: const Text('View File', style: TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF1A3C6E),
+                padding: EdgeInsets.zero,
+              ),
             ),
-          ),
         ],
       ),
     );

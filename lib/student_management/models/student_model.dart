@@ -56,8 +56,11 @@ class StudentModel {
   String placementDetails;
   String feeDetails1stYear;
   String feeDetails2ndYear;
-  String fineIfAny;
-  String examFee;
+  String feeDetails3rdYear;
+
+  /// Additional fee rows added by the user. Each entry is a map with
+  /// `type` (fee name), `amount` (whole rupees as a string) and `comment`.
+  List<Map<String, String>> otherFees;
   String studentId;
 
   // File paths (local) or Firebase URLs
@@ -114,8 +117,8 @@ class StudentModel {
     this.placementDetails = '',
     this.feeDetails1stYear = '',
     this.feeDetails2ndYear = '',
-    this.fineIfAny = '',
-    this.examFee = '',
+    this.feeDetails3rdYear = '',
+    this.otherFees = const [],
     this.studentId = '',
     this.tenthData,
     this.tenthName,
@@ -191,8 +194,8 @@ class StudentModel {
       'placementDetails': placementDetails,
       'feeDetails1stYear': feeDetails1stYear,
       'feeDetails2ndYear': feeDetails2ndYear,
-      'fineIfAny': fineIfAny,
-      'examFee': examFee,
+      'feeDetails3rdYear': feeDetails3rdYear,
+      'otherFees': otherFees,
       'studentId': studentId,
       'photoUrl': photoUrl,
       'scCertificateUrl': scCertificateUrl,
@@ -222,7 +225,11 @@ class StudentModel {
       placementDetails: placementDetails,
       feeDetails1stYear: feeDetails1stYear,
       feeDetails2ndYear: feeDetails2ndYear,
-      fineIfAny: fineIfAny, examFee: examFee, studentId: studentId,
+      feeDetails3rdYear: feeDetails3rdYear,
+      otherFees: [
+        for (final f in otherFees) Map<String, String>.of(f),
+      ],
+      studentId: studentId,
       photoUrl: photoUrl,
       scCertificateUrl: scCertificateUrl,
       bcCertificateUrl: bcCertificateUrl,
@@ -234,6 +241,21 @@ class StudentModel {
     );
   }
 
+
+  /// Normalises stored `otherFees` documents into the model's map shape,
+  /// tolerating legacy shapes (numbers, missing keys).
+  static List<Map<String, String>> _parseOtherFees(Object? raw) {
+    if (raw is! List) return [];
+    return [
+      for (final e in raw)
+        if (e is Map)
+          {
+            'type': e['type']?.toString() ?? '',
+            'amount': e['amount']?.toString() ?? '',
+            'comment': e['comment']?.toString() ?? '',
+          }
+    ];
+  }
 
   factory StudentModel.fromFirestore(String id, Map<String, dynamic> data) {
     return StudentModel(
@@ -266,8 +288,8 @@ class StudentModel {
       placementDetails: data['placementDetails'] ?? '',
       feeDetails1stYear: data['feeDetails1stYear'] ?? '',
       feeDetails2ndYear: data['feeDetails2ndYear'] ?? '',
-      fineIfAny: data['fineIfAny'] ?? '',
-      examFee: data['examFee'] ?? '',
+      feeDetails3rdYear: data['feeDetails3rdYear'] ?? '',
+      otherFees: _parseOtherFees(data['otherFees']),
       studentId: data['studentId'] ?? '',
       photoUrl: data['photoUrl'],
       scCertificateUrl: data['scCertificateUrl'],
