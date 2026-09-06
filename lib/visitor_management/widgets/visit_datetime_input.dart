@@ -71,45 +71,44 @@ class _VisitDateTimeInputState extends State<VisitDateTimeInput> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        OutlinedButton.icon(
+          onPressed: _pickDate,
+          icon: const Icon(Icons.calendar_today, size: 16),
+          label: Text(
+            'Date: ${_pad(_date.day)}/${_pad(_date.month)}/${_date.year}',
+            style: const TextStyle(fontSize: 14),
+          ),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xFF1A3C6E),
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          ),
+        ),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _pickDate,
-                icon: const Icon(Icons.calendar_today, size: 16),
-                label: Text(
-                  'Date: ${_pad(_date.day)}/${_pad(_date.month)}/${_date.year}',
-                  style: const TextStyle(fontSize: 14),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF1A3C6E),
-                  alignment: Alignment.centerLeft,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 14,
-                  ),
-                ),
+              child: _clockField(
+                label: 'Hour',
+                value: _hour,
+                options: [for (var h = 0; h < 24; h++) h],
+                onChanged: (v) {
+                  setState(() => _hour = v);
+                  _emit();
+                },
               ),
             ),
             const SizedBox(width: 10),
-            _clockField(
-              label: 'Hour',
-              value: _hour,
-              options: [for (var h = 0; h < 24; h++) h],
-              onChanged: (v) {
-                setState(() => _hour = v);
-                _emit();
-              },
-            ),
-            const SizedBox(width: 10),
-            _clockField(
-              label: 'Minute',
-              value: _minute,
-              options: [for (var m = 0; m < 60; m++) m],
-              onChanged: (v) {
-                setState(() => _minute = v);
-                _emit();
-              },
+            Expanded(
+              child: _clockField(
+                label: 'Minute',
+                value: _minute,
+                options: [for (var m = 0; m < 60; m++) m],
+                onChanged: (v) {
+                  setState(() => _minute = v);
+                  _emit();
+                },
+              ),
             ),
           ],
         ),
