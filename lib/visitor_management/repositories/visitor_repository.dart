@@ -15,8 +15,8 @@ abstract class VisitorRepository {
   /// All visits of a single visitor, newest first (visitor detail screen).
   Stream<List<VisitorVisitModel>> watchVisitorVisits(String visitorId);
 
-  /// Checks in a staff member or an external visitor, stamping the current
-  /// time as the check-in time.
+  /// Checks in a staff member or an external visitor, stamping [at] (or the
+  /// current time when omitted) as the check-in time.
   ///
   /// For visitors, pass [visitorId] (the unique visitor doc picked from the
   /// autocomplete) to reuse that visitor's profile; when it is null the
@@ -31,9 +31,11 @@ abstract class VisitorRepository {
     required String purpose,
     required String fromPlace,
     required List<String> accompanyingPeople,
+    DateTime? at,
   });
 
-  /// Checks out an open visit, stamping the current time as the check-out
-  /// time.
-  Future<void> checkOut(String visitId);
+  /// Checks out an open visit, stamping [at] (or the current time when
+  /// omitted) as the check-out time. Throws when [at] is before the visit's
+  /// check-in time.
+  Future<void> checkOut(String visitId, {DateTime? at});
 }

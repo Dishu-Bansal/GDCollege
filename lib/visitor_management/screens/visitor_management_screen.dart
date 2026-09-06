@@ -6,6 +6,7 @@ import '../../widgets/drawer.dart';
 import '../../widgets/stock_widgets.dart';
 import '../models/visitor_models.dart';
 import '../repositories/visitor_repository.dart';
+import '../widgets/visit_datetime_input.dart';
 import 'visitor_detail_screen.dart';
 import 'visitor_entry_form_screen.dart';
 
@@ -161,11 +162,16 @@ class _InsideTab extends StatelessWidget {
   const _InsideTab({required this.service});
 
   Future<void> _checkOut(BuildContext context, VisitorVisitModel visit) async {
+    final picked = await _pickCheckOutTime(context, visit);
+    if (picked == null || !context.mounted) return;
     try {
-      await service.checkOut(visit.id!);
+      await service.checkOut(visit.id!, at: picked);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${visit.name} checked out')),
+          SnackBar(
+            content:
+                Text('${visit.name} checked out at ${_fmtDateTime(picked)}'),
+          ),
         );
       }
     } catch (e) {
@@ -175,6 +181,78 @@ class _InsideTab extends StatelessWidget {
         );
       }
     }
+  }
+
+  /// Asks for the check-out date, hour and minute, and refuses a time that
+  /// is before the check-in or in the future.
+  Future<DateTime?> _pickCheckOutTime(
+      BuildContext context, VisitorVisitModel visit) async {
+    final now = DateTime.now();
+    DateTime? result;
+    String? errorText;
+
+    return showDialog<DateTime>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          void validateAndSubmit() {
+            final v = result ?? now;
+            if (v.isBefore(visit.checkInAt)) {
+              setDialogState(() => errorText =
+                  'Check-out cannot be before check-in '
+                  '(${_fmtDateTime(visit.checkInAt)}).');
+              return;
+            }
+            if (v.isAfter(now)) {
+              setDialogState(
+                  () => errorText = 'Check-out time cannot be in the future.');
+              return;
+            }
+            Navigator.pop(ctx, v);
+          }
+
+          return AlertDialog(
+            title: Text('Check Out ${visit.name}'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Checked in at ${_fmtDateTime(visit.checkInAt)}',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 12),
+                VisitDateTimeInput(
+                  initial: now,
+                  onChanged: (v) => result = v,
+                ),
+                if (errorText != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    errorText!,
+                    style: TextStyle(
+                        fontSize: 12, color: Colors.red.shade700),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: validateAndSubmit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                ),
+                child: const Text('Check Out'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   @override
