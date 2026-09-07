@@ -5,9 +5,11 @@ import '../../repositories/staff_repository.dart';
 import '../../staff_management/models/staff_model.dart';
 import '../models/visitor_models.dart';
 import '../repositories/visitor_repository.dart';
+import '../widgets/visit_datetime_input.dart';
 
 /// Creates a check-in entry for a staff member or an external visitor.
-/// Checking in stamps the current time automatically.
+/// The check-in date, hour and minute are chosen by the user (defaults to
+/// the current time).
 class VisitorEntryFormScreen extends ConsumerStatefulWidget {
   const VisitorEntryFormScreen({super.key});
 
@@ -48,9 +50,15 @@ class _VisitorEntryFormScreenState
 
   bool _saving = false;
 
+  /// Chosen check-in moment (defaults to now, minute precision).
+  late DateTime _checkInAt;
+
   @override
   void initState() {
     super.initState();
+    final now = DateTime.now();
+    _checkInAt =
+        DateTime(now.year, now.month, now.day, now.hour, now.minute);
     // Rebuild when the name field gains/loses focus so the suggestion list
     // appears and dismisses with focus.
     _nameFocusNode.addListener(_onNameFocusChanged);
@@ -65,6 +73,11 @@ class _VisitorEntryFormScreenState
   void _onNameFocusChanged() {
     if (mounted) setState(() {});
   }
+
+  static String _fmt(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/'
+      '${d.year}  ${d.hour.toString().padLeft(2, '0')}:'
+      '${d.minute.toString().padLeft(2, '0')}';
 
   @override
   void dispose() {
@@ -143,6 +156,12 @@ class _VisitorEntryFormScreenState
       );
       return;
     }
+    if (_checkInAt.isAfter(DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Check-in time cannot be in the future')),
+      );
+      return;
+    }
 
     setState(() => _saving = true);
     try {
@@ -156,15 +175,13 @@ class _VisitorEntryFormScreenState
         purpose: _purposeCtrl.text,
         fromPlace: fromPlace,
         accompanyingPeople: _accompanyingNames,
+        at: _checkInAt,
       );
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
       Navigator.pop(context);
-      final now = DateTime.now();
-      final time =
-          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
       messenger.showSnackBar(
-        SnackBar(content: Text('$name checked in at $time')),
+        SnackBar(content: Text('$name checked in at ${_fmt(_checkInAt)}')),
       );
     } catch (e) {
       setState(() => _saving = false);
@@ -246,7 +263,18 @@ class _VisitorEntryFormScreenState
                   prefixIcon: Icon(Icons.place_outlined),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
+
+              // Check-in date & time (date, hour, minute)
+              const Text('Check-in Date & Time',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 14)),
+              const SizedBox(height: 8),
+              VisitDateTimeInput(
+                initial: _checkInAt,
+                onChanged: (v) => _checkInAt = v,
+              ),
+              const SizedBox(height: 20),
 
               // Accompanying people
               Row(children: [

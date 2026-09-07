@@ -78,8 +78,9 @@ class FirebaseVisitorRepository implements VisitorRepository {
     required String purpose,
     required String fromPlace,
     required List<String> accompanyingPeople,
+    DateTime? at,
   }) async {
-    final now = DateTime.now();
+    final now = at ?? DateTime.now();
     final batch = _db.batch();
 
     final String personRefId;
@@ -138,10 +139,26 @@ class FirebaseVisitorRepository implements VisitorRepository {
   }
 
   @override
-  Future<void> checkOut(String visitId) async {
+  Future<void> checkOut(String visitId, {DateTime? at}) async {
+    final chosen = at ?? DateTime.now();
+
+    // Enforce that a check-out cannot be before its check-in. The stored
+    // timestamps are ISO-8601 wall-clock strings, parsed back to local time.
+    final snap = await _visits.doc(visitId).get();
+    if (!snap.exists) {
+      throw ArgumentError('Visit no longer exists.');
+    }
+    final data = snap.data() as Map<String, dynamic>? ?? {};
+    final checkIn = data['checkInAt'] != null
+        ? DateTime.tryParse(data['checkInAt'].toString())
+        : null;
+    if (checkIn != null && chosen.isBefore(checkIn)) {
+      throw ArgumentError('Check-out time cannot be before check-in time.');
+    }
+
     await _visits.doc(visitId).update({
       'inside': false,
-      'checkOutAt': DateTime.now().toIso8601String(),
+      'checkOutAt': chosen.toIso8601String(),
       'checkedOutBy': UserSession().currentUser?.email ?? '',
     });
   }
