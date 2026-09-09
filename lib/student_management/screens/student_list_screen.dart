@@ -1,10 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:gd_college/constants.dart';
 import 'package:gd_college/widgets/drawer.dart';
+import '../../controllers/pagination_controller.dart';
 import '../../models/audit_log.dart';
+import '../models/student_facets.dart';
 import '../models/student_model.dart';
 import '../../repositories/student_repository.dart';
 import '../../providers.dart';
+import '../../widgets/pagination_bar.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'student_form_screen.dart';
 import 'student_detail_screen.dart';
@@ -23,15 +28,19 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
   static final int _groupCount = StudentGroup.values.length;
 
   late final TabController _tabs;
+  int _tabIndex = 0;
 
   StudentRepository get _service => ref.read(studentRepositoryProvider);
 
-  // Full dataset loaded once and split into the three groups.
-  List<StudentModel> _all = [];
-  bool _loading = true;
-  String? _error;
+  // One pagination controller per course-group tab. Each tab queries exactly
+  // its own students server-side (browse pages, group search, DB totals).
+  late final List<PaginationController> _pageCtrls;
 
-  // Per-group filter/sort state.
+  // Whole-collection chip options per group (one small meta read).
+  StudentFacets _facets = StudentFacets.empty;
+
+  // Per-group filter state (search text + chips). Results live in the
+  // tab's PaginationController.
   final List<TextEditingController> _searchCtrls = List.generate(
     _groupCount,
     (_) => TextEditingController(),
@@ -44,18 +53,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     _groupCount,
     (_) => <String>{},
   );
-  final List<List<StudentModel>> _groupBase = List.generate(
-    _groupCount,
-    (_) => <StudentModel>[],
-  );
-  final List<List<String>> _yearOptions = List.generate(
-    _groupCount,
-    (_) => <String>[],
-  );
-  final List<List<String>> _courseOptions = List.generate(
-    _groupCount,
-    (_) => <String>[],
-  );
+  final List<Timer?> _debounce = List.generate(_groupCount, (_) => null);
 
   int _sortColumnIndex = 0; // 0 = Date Added
   bool _sortAscending = false;
@@ -64,76 +62,66 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
   void initState() {
     super.initState();
     _tabs = TabController(length: _groupCount + 1, vsync: this);
-    _tabs.addListener(() => setState(() {}));
-    _load();
+    _tabs.addListener(_onTabChanged);
+    final service = ref.read(studentRepositoryProvider);
+    _pageCtrls = [
+      for (final group in StudentGroup.values)
+        PaginationController(service, group: group)..sorter = _compareStudents,
+    ];
+    for (final c in _pageCtrls) {
+      c.loadBrowsePage(1);
+    }
+    _loadFacets();
+  }
+
+  void _onTabChanged() {
+    // Rebuild only when the settled tab actually changes — not on every
+    // animation tick while swiping.
+    if (_tabs.index != _tabIndex && mounted) {
+      setState(() => _tabIndex = _tabs.index);
+    }
   }
 
   @override
   void dispose() {
+    _tabs.removeListener(_onTabChanged);
     _tabs.dispose();
+    for (final t in _debounce) {
+      t?.cancel();
+    }
     for (final c in _searchCtrls) {
+      c.dispose();
+    }
+    for (final c in _pageCtrls) {
       c.dispose();
     }
     super.dispose();
   }
 
-  // ── Data loading ─────────────────────────────────────────────────────────
+  // ── Whole-collection chip options ──────────────────────────────────
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _loadFacets() async {
     try {
-      final students = await _service.fetchAllStudents();
+      final facets = await _service.fetchStudentFacets();
       if (!mounted) return;
-      _buildGroups(students);
-      setState(() {
-        _all = students;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
+      setState(() => _facets = facets);
+    } catch (_) {
+      // Chips stay empty; the list itself still works.
     }
   }
 
-  void _buildGroups(List<StudentModel> students) {
-    for (var g = 0; g < _groupCount; g++) {
-      final group = StudentGroup.values[g];
-      final members = students
-          .where((s) => studentGroupOfCourse(s.nameOfCourse) == group)
-          .toList();
-      _groupBase[g] = members;
-      _yearOptions[g] = _uniqueYearsOf(members);
-      _courseOptions[g] = _uniqueCoursesOf(members);
-    }
+  /// Admission-year chips for tab [g]: every year present in the group's
+  /// entire collection, newest first.
+  List<String> _yearOptions(int g) {
+    final group = StudentGroup.values[g].name;
+    return [for (final y in _facets.yearsOf(group)) '$y'];
   }
 
-  /// Admission years that actually exist in [members], newest first.
-  List<String> _uniqueYearsOf(List<StudentModel> members) {
-    final years =
-        members
-            .map((s) => s.yearOfAdmission)
-            .whereType<int>()
-            .where((y) => y > 0)
-            .toSet()
-            .toList()
-          ..sort((a, b) => b.compareTo(a));
-    return [for (final y in years) '$y'];
-  }
-
-  /// Distinct courses in [members], ordered by the canonical course list
-  /// (unknown/legacy values sort after it alphabetically).
-  List<String> _uniqueCoursesOf(List<StudentModel> members) {
-    final courses = members
-        .map((s) => s.nameOfCourse.trim())
-        .where((c) => c.isNotEmpty)
-        .toSet()
-        .toList();
+  /// Course chips for tab [g]: every course present in the group's entire
+  /// collection, in canonical course-list order.
+  List<String> _courseOptions(int g) {
+    final group = StudentGroup.values[g].name;
+    final courses = _facets.coursesOf(group).toList();
     courses.sort((a, b) {
       final ia = listOfCourses.indexWhere(
         (x) => x.toLowerCase() == a.toLowerCase(),
@@ -148,16 +136,12 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     });
     return courses;
   }
-
-  bool _studentMatches(StudentModel s, String needle) {
-    bool hit(String? v) => v != null && v.toLowerCase().contains(needle);
-    return hit(s.name) ||
-        hit(s.studentId) ||
-        hit(s.fatherName) ||
-        hit(s.mobileNo1);
-  }
-
-  // ── Derived per-group views ──────────────────────────────────────────────
+  // ── Server-side search ───────────────────────────────────────────────
+  //
+  // When a tab has an active search text or chip filter, its content comes
+  // from `StudentRepository.searchInGroup`, which queries the tab's group
+  // across the ENTIRE collection (n-gram index for text, whereIn for
+  // chips) — never just the loaded pages.
 
   bool _hasActiveFilters(int g) =>
       _searchCtrls[g].text.isNotEmpty ||
@@ -188,60 +172,76 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     return _sortAscending ? cmp : -cmp;
   }
 
-  /// Students of group [g] after applying its search text, admission-year and
-  /// course chips, sorted with the current sort column.
-  List<StudentModel> _visibleStudents(int g) {
-    final base = _groupBase[g];
-    final needle = _searchCtrls[g].text.trim().toLowerCase();
-    final years = _selectedYears[g];
-    final courses = _selectedCourses[g];
-
-    final filtered = base.where((s) {
-      if (needle.isNotEmpty && !_studentMatches(s, needle)) return false;
-      if (years.isNotEmpty) {
-        final year = s.yearOfAdmission?.toString();
-        if (year == null || !years.contains(year)) return false;
-      }
-      if (courses.isNotEmpty && !courses.contains(s.nameOfCourse)) {
-        return false;
-      }
-      return true;
-    }).toList();
-
-    filtered.sort(_compareStudents);
-    return filtered;
+  /// Runs the tab's group search over the whole collection. Selections are
+  /// read live from the tab's filter state.
+  Future<void> _runSearch(int g) {
+    return _pageCtrls[g].runSearch(
+      query: _searchCtrls[g].text.trim(),
+      years: _selectedYears[g],
+      courses: _selectedCourses[g],
+    );
   }
 
   // ── Filter / sort handlers ───────────────────────────────────────────────
 
-  void _onSearchChanged(int g, String _) => setState(() {});
+  void _onSearchChanged(int g, String _) {
+    // Debounce: wait for a typing pause before hitting the server.
+    _debounce[g]?.cancel();
+    if (!_hasActiveFilters(g)) {
+      _pageCtrls[g].resetToBrowse();
+      return;
+    }
+    _debounce[g] = Timer(
+      const Duration(milliseconds: 350),
+      () => _runSearch(g),
+    );
+  }
 
   void _toggleYear(int g, String year) {
     setState(() {
       if (!_selectedYears[g].remove(year)) _selectedYears[g].add(year);
     });
+    _filterChipsChanged(g);
   }
 
   void _toggleCourse(int g, String course) {
     setState(() {
       if (!_selectedCourses[g].remove(course)) _selectedCourses[g].add(course);
     });
+    _filterChipsChanged(g);
+  }
+
+  /// Chips apply immediately (no debounce): group search, or back to the
+  /// tab's browse pages when no filter remains.
+  void _filterChipsChanged(int g) {
+    if (!_hasActiveFilters(g)) {
+      _pageCtrls[g].resetToBrowse();
+      return;
+    }
+    _runSearch(g);
   }
 
   void _clearFilters(int g) {
+    _debounce[g]?.cancel();
     setState(() {
       _searchCtrls[g].clear();
       _selectedYears[g].clear();
       _selectedCourses[g].clear();
     });
+    _pageCtrls[g].resetToBrowse();
   }
 
-  void _clearAllFilters() {
+  Future<void> _clearAllFilters() async {
     for (var g = 0; g < _groupCount; g++) {
+      _debounce[g]?.cancel();
       _searchCtrls[g].clear();
       _selectedYears[g].clear();
       _selectedCourses[g].clear();
     }
+    setState(() {});
+    // Back to page 1 of each tab's browse view, then fresh chip options.
+    await Future.wait([for (final c in _pageCtrls) c.resetToBrowse()]);
+    if (mounted) await _loadFacets();
   }
 
   void _onSort(int col, bool asc) {
@@ -249,6 +249,11 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
       _sortColumnIndex = col;
       _sortAscending = asc;
     });
+    // Re-apply the new ordering to whatever each tab currently shows.
+    for (final c in _pageCtrls) {
+      c.sorter = _compareStudents;
+      c.resort();
+    }
   }
 
   // ── Actions ──────────────────────────────────────────────────────────────
@@ -298,7 +303,10 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     if (confirm == true && student.docId != null) {
       try {
         await ref.read(studentRepositoryProvider).delete(student.docId!);
-        await _load();
+        if (!mounted) return;
+        // A delete can empty a chip value or shift pages: re-read the
+        // current views (pages + DB totals) and the chip options.
+        await _refreshAfterMutation();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -333,7 +341,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
         builder: (_) => StudentFormScreen(existingStudent: student),
       ),
     );
-    if (mounted) await _load();
+    if (mounted) await _refreshAfterMutation();
   }
 
   Future<void> _openAdd() async {
@@ -341,12 +349,20 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
       context,
       MaterialPageRoute(builder: (_) => const StudentFormScreen()),
     );
-    if (mounted) await _load();
+    if (mounted) await _refreshAfterMutation();
+  }
+
+  /// Re-reads every tab's current view (pages + DB totals) and the
+  /// whole-collection chip options. Used after add/edit/delete, where group
+  /// membership, totals, or facet values may have changed.
+  Future<void> _refreshAfterMutation() async {
+    await Future.wait([for (final c in _pageCtrls) c.refresh()]);
+    if (mounted) await _loadFacets();
   }
 
   @override
   Widget build(BuildContext context) {
-    final bool showGroupActions = _tabs.index < _groupCount;
+    final bool showGroupActions = _tabIndex < _groupCount;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
@@ -361,10 +377,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
             IconButton(
               icon: const Icon(Icons.refresh),
               tooltip: 'Refresh',
-              onPressed: () {
-                _clearAllFilters();
-                _load();
-              },
+              onPressed: _clearAllFilters,
             ),
             IconButton(
               icon: const Icon(Icons.add_circle_outline),
@@ -385,58 +398,33 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
           ],
         ),
       ),
-      body: _loading && _all.isEmpty
-          ? const Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation(Color(0xFF1A3C6E)),
-              ),
-            )
-          : _error != null && _all.isEmpty
-          ? _LoadError(error: _error!, onRetry: _load)
-          : TabBarView(
-              controller: _tabs,
-              children: [
-                for (var g = 0; g < _groupCount; g++)
-                  _GroupStudentsTab(
-                    title: StudentGroup.values[g].label,
-                    baseCount: _groupBase[g].length,
-                    error: _error,
-                    searchCtrl: _searchCtrls[g],
-                    yearOptions: _yearOptions[g],
-                    selectedYears: _selectedYears[g],
-                    courseOptions: _courseOptions[g],
-                    selectedCourses: _selectedCourses[g],
-                    hasActiveFilters: _hasActiveFilters(g),
-                    results: _visibleStudents(g),
-                    sortColumnIndex: _sortColumnIndex,
-                    sortAscending: _sortAscending,
-                    onSort: _onSort,
-                    onSearchChanged: (v) => _onSearchChanged(g, v),
-                    onYearToggled: (v) => _toggleYear(g, v),
-                    onCourseToggled: (v) => _toggleCourse(g, v),
-                    onClear: () => _clearFilters(g),
-                    onRetry: _load,
-                    onView: _openDetail,
-                    onEdit: _openEdit,
-                    onDelete: _confirmDelete,
-                  ),
-                _StudentGlobalLogTab(service: _service),
-              ],
+      body: TabBarView(
+        controller: _tabs,
+        children: [
+          for (var g = 0; g < _groupCount; g++)
+            _GroupStudentsTab(
+              title: StudentGroup.values[g].label,
+              controller: _pageCtrls[g],
+              searchCtrl: _searchCtrls[g],
+              yearOptions: _yearOptions(g),
+              selectedYears: _selectedYears[g],
+              courseOptions: _courseOptions(g),
+              selectedCourses: _selectedCourses[g],
+              hasActiveFilters: _hasActiveFilters(g),
+              sortColumnIndex: _sortColumnIndex,
+              sortAscending: _sortAscending,
+              onSort: _onSort,
+              onSearchChanged: (v) => _onSearchChanged(g, v),
+              onYearToggled: (v) => _toggleYear(g, v),
+              onCourseToggled: (v) => _toggleCourse(g, v),
+              onClear: () => _clearFilters(g),
+              onView: _openDetail,
+              onEdit: _openEdit,
+              onDelete: _confirmDelete,
             ),
-      floatingActionButton: showGroupActions
-          ? FloatingActionButton.extended(
-              onPressed: _openAdd,
-              backgroundColor: const Color(0xFF1A3C6E),
-              icon: const Icon(Icons.person_add, color: Colors.white),
-              label: const Text(
-                'Add Student',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            )
-          : null,
+          _StudentGlobalLogTab(service: _service),
+        ],
+      ),
     );
   }
 
@@ -452,54 +440,20 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
   }
 }
 
-// ── Load error ───────────────────────────────────────────────────────────────
-
-class _LoadError extends StatelessWidget {
-  final String error;
-  final VoidCallback onRetry;
-  const _LoadError({required this.error, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, size: 48, color: Colors.red),
-            const SizedBox(height: 12),
-            Text(
-              'Unable to load students.\n$error',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // ── One course-group tab (GD College / MLSN / Skill India) ─────────────────
+// The tab shows exactly its group's students: paged browse or whole-group
+// search, driven by its PaginationController. Totals and chip options come
+// from the database, never from loaded pages.
 
 class _GroupStudentsTab extends StatelessWidget {
   final String title;
-  final int baseCount;
-  final String? error;
+  final PaginationController controller;
   final TextEditingController searchCtrl;
   final List<String> yearOptions;
   final Set<String> selectedYears;
   final List<String> courseOptions;
   final Set<String> selectedCourses;
   final bool hasActiveFilters;
-  final List<StudentModel> results;
   final int sortColumnIndex;
   final bool sortAscending;
   final void Function(int, bool) onSort;
@@ -507,22 +461,19 @@ class _GroupStudentsTab extends StatelessWidget {
   final void Function(String) onYearToggled;
   final void Function(String) onCourseToggled;
   final VoidCallback onClear;
-  final VoidCallback onRetry;
   final void Function(StudentModel) onView;
   final void Function(StudentModel) onEdit;
   final void Function(StudentModel) onDelete;
 
   const _GroupStudentsTab({
     required this.title,
-    required this.baseCount,
-    required this.error,
+    required this.controller,
     required this.searchCtrl,
     required this.yearOptions,
     required this.selectedYears,
     required this.courseOptions,
     required this.selectedCourses,
     required this.hasActiveFilters,
-    required this.results,
     required this.sortColumnIndex,
     required this.sortAscending,
     required this.onSort,
@@ -530,7 +481,6 @@ class _GroupStudentsTab extends StatelessWidget {
     required this.onYearToggled,
     required this.onCourseToggled,
     required this.onClear,
-    required this.onRetry,
     required this.onView,
     required this.onEdit,
     required this.onDelete,
@@ -538,123 +488,79 @@ class _GroupStudentsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _SearchChipsPanel(
-          searchCtrl: searchCtrl,
-          yearOptions: yearOptions,
-          selectedYears: selectedYears,
-          courseOptions: courseOptions,
-          selectedCourses: selectedCourses,
-          hasActiveFilters: hasActiveFilters,
-          onSearchChanged: onSearchChanged,
-          onYearToggled: onYearToggled,
-          onCourseToggled: onCourseToggled,
-          onClear: onClear,
-        ),
-        if (error != null)
-          Container(
-            color: Colors.red.shade50,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                const Icon(Icons.error_outline, color: Colors.red, size: 16),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    error!,
-                    style: const TextStyle(color: Colors.red, fontSize: 12),
-                  ),
-                ),
-                TextButton(onPressed: onRetry, child: const Text('Retry')),
-              ],
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final loadingInitial =
+            controller.isLoading && controller.students.isEmpty;
+        return Column(
+          children: [
+            _SearchChipsPanel(
+              searchCtrl: searchCtrl,
+              yearOptions: yearOptions,
+              selectedYears: selectedYears,
+              courseOptions: courseOptions,
+              selectedCourses: selectedCourses,
+              hasActiveFilters: hasActiveFilters,
+              onSearchChanged: onSearchChanged,
+              onYearToggled: onYearToggled,
+              onCourseToggled: onCourseToggled,
+              onClear: onClear,
             ),
-          ),
-        _GroupStatsRow(
-          count: results.length,
-          baseCount: baseCount,
-          hasActiveFilters: hasActiveFilters,
-        ),
-        Expanded(
-          child: results.isEmpty
-              ? _EmptyState(
-                  hasFilters: baseCount > 0 && hasActiveFilters,
-                  emptyTitle: baseCount == 0 ? 'No $title students yet' : null,
-                )
-              : _StudentTable(
-                  students: results,
-                  sortColumnIndex: sortColumnIndex,
-                  sortAscending: sortAscending,
-                  onSort: onSort,
-                  onView: onView,
-                  onEdit: onEdit,
-                  onDelete: onDelete,
+            if (controller.error != null)
+              Container(
+                color: Colors.red.shade50,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.error_outline,
+                        color: Colors.red, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        controller.error!,
+                        style:
+                            const TextStyle(color: Colors.red, fontSize: 12),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: controller.refresh,
+                      child: const Text('Retry'),
+                    ),
+                  ],
                 ),
-        ),
-      ],
-    );
-  }
-}
-
-class _GroupStatsRow extends StatelessWidget {
-  final int count;
-  final int baseCount;
-  final bool hasActiveFilters;
-
-  const _GroupStatsRow({
-    required this.count,
-    required this.baseCount,
-    required this.hasActiveFilters,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = hasActiveFilters
-        ? Colors.amber.shade700
-        : const Color(0xFF1A3C6E);
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: accent.withValues(alpha: 0.3)),
+              ),
+            Expanded(
+              child: loadingInitial
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        valueColor:
+                            AlwaysStoppedAnimation(Color(0xFF1A3C6E)),
+                      ),
+                    )
+                  : controller.students.isEmpty
+                      ? _EmptyState(
+                          hasFilters: hasActiveFilters,
+                          emptyTitle: !hasActiveFilters &&
+                                  controller.totalCount == 0
+                              ? 'No $title students yet'
+                              : null,
+                        )
+                      : _StudentTable(
+                          students: controller.students,
+                          sortColumnIndex: sortColumnIndex,
+                          sortAscending: sortAscending,
+                          onSort: onSort,
+                          onView: onView,
+                          onEdit: onEdit,
+                          onDelete: onDelete,
+                        ),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '$count',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: accent,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  hasActiveFilters ? 'results' : 'students',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: accent.withValues(alpha: 0.8),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Spacer(),
-          Text(
-            hasActiveFilters
-                ? '$count of $baseCount matched'
-                : '$baseCount total',
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-          ),
-        ],
-      ),
+            PaginationBar(controller: controller),
+          ],
+        );
+      },
     );
   }
 }

@@ -1,0 +1,12 @@
+{
+  "name": "gd-college-functions",
+  "description": "Automatic _meta upkeep for student records (group stamping + facets).",
+  "private": true,
+  "engines": {
+    "node": "22"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.1.0"
+  }
+}

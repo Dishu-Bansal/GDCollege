@@ -34,5 +34,11 @@
       "database": "test-db",
       "indexes": "firestore.indexes.test-db.json"
     }
+  ],
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default"
+    }
   ]
 }

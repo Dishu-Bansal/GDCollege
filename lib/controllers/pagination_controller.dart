@@ -1,17 +1,39 @@
-﻿import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import 'package:gd_college/providers.dart';
+import '../constants.dart';
 import '../repositories/student_repository.dart';
 import '../student_management/models/student_model.dart';
 
 enum PageMode { browse, search }
 
+/// Per-tab pagination over exactly one course group.
+///
+/// Browse mode pages server-side through the tab's own students
+/// ([StudentRepository.fetchGroupPage]); search mode runs
+/// ([StudentRepository.searchInGroup]) over the whole collection restricted
+/// to the tab's group and slices client-side. Totals always come from the
+/// database ([StudentRepository.countGroup]), never from loaded pages.
 class PaginationController extends ChangeNotifier {
   static final DateTime _oldest = DateTime.fromMillisecondsSinceEpoch(0);
 
   final StudentRepository _service;
+  final StudentGroup group;
 
-  PaginationController(this._service);
+  PaginationController(this._service, {required this.group});
+
+  /// Client-side ordering applied to loaded pages/results. Defaults to Date
+  /// Added, newest first (matches the server browse order, so it is a no-op
+  /// until the user picks another sort column).
+  Comparator<StudentModel> sorter = _byDateAddedDesc;
+
+  static int _byDateAddedDesc(StudentModel a, StudentModel b) =>
+      (b.createdAt ?? _oldest).compareTo(a.createdAt ?? _oldest);
+
+  /// Re-applies [sorter] to whatever is currently displayed.
+  void resort() {
+    students.sort(sorter);
+    notifyListeners();
+  }
 
   // Shared state
   List<StudentModel> students = [];
@@ -26,6 +48,10 @@ class PaginationController extends ChangeNotifier {
   // ── Search state ──────────────────────────────────────────────────────────
   List<StudentModel> _allSearchResults = [];
   int _searchPage = 1;
+  String _lastQuery = '';
+  Set<String> _lastYears = const {};
+  Set<String> _lastCourses = const {};
+  int _searchSeq = 0;
 
   // ── Mode ──────────────────────────────────────────────────────────────────
   PageMode _mode = PageMode.browse;
@@ -63,20 +89,18 @@ class PaginationController extends ChangeNotifier {
         return;
       }
 
-      final result = await _service.fetchPage(startAfter: startAfter);
+      final result = await _service.fetchGroupPage(
+        group: group,
+        startAfter: startAfter,
+      );
 
       if (result.lastDoc != null) {
         _cursors[page] = result.lastDoc!;
       }
 
-      // Get total from meta doc
-      final meta = await db
-          .collection('_meta')
-          .doc('students')
-          .get();
-      _browseTotal = (meta.data()?['count'] ?? 0) as int;
+      _browseTotal = await _service.countGroup(group);
 
-      students = result.students;
+      students = List<StudentModel>.of(result.students)..sort(sorter);
       _browsePage = page;
     } catch (e) {
       error = e.toString();
@@ -100,17 +124,21 @@ class PaginationController extends ChangeNotifier {
     }
 
     for (int p = startPage; p <= target; p++) {
-      final result = await _service.fetchPage(startAfter: cursor);
+      final result = await _service.fetchGroupPage(
+        group: group,
+        startAfter: cursor,
+      );
       if (result.lastDoc != null) {
         _cursors[p] = result.lastDoc!;
         cursor = result.lastDoc;
       }
       if (p == target) {
-        students = result.students;
+        students = List<StudentModel>.of(result.students)..sort(sorter);
         _browsePage = target;
       }
     }
 
+    _browseTotal = await _service.countGroup(group);
     isLoading = false;
     notifyListeners();
   }
@@ -122,31 +150,38 @@ class PaginationController extends ChangeNotifier {
     Set<String>? years,
     Set<String>? courses,
   }) async {
-    if (isLoading) return;
+    final seq = ++_searchSeq;
     _mode = PageMode.search;
     isLoading = true;
     error = null;
     _searchPage = 1;
+    _lastQuery = query;
+    _lastYears = years ?? const {};
+    _lastCourses = courses ?? const {};
     notifyListeners();
 
     try {
-      _allSearchResults = await _service.search(
+      final results = await _service.searchInGroup(
+        group: group,
         query: query,
         years: years,
         courses: courses,
       );
-      // Keep the default view (Date Added, newest first) consistent across
-      // pages — Firestore returns search results without a guaranteed order.
-      _allSearchResults.sort((a, b) =>
-          (b.createdAt ?? _oldest).compareTo(a.createdAt ?? _oldest));
+      // Drop stale responses from an older keystroke/chip tap.
+      if (seq != _searchSeq) return;
+      results.sort(sorter);
+      _allSearchResults = results;
       students = _pageSlice(1);
     } catch (e) {
+      if (seq != _searchSeq) return;
       error = e.toString();
       _allSearchResults = [];
       students = [];
     } finally {
-      isLoading = false;
-      notifyListeners();
+      if (seq == _searchSeq) {
+        isLoading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -189,16 +224,39 @@ class PaginationController extends ChangeNotifier {
     }
   }
 
+  // ── Refresh ───────────────────────────────────────────────────────────────
+  // Re-reads the current view after a mutation. Falls back to page 1 when
+  // the current page can no longer load.
+
+  Future<void> refresh() async {
+    if (isSearchMode) {
+      await runSearch(
+        query: _lastQuery,
+        years: _lastYears,
+        courses: _lastCourses,
+      );
+      return;
+    }
+    await loadBrowsePage(currentPage);
+    if (error != null) {
+      _cursors.clear();
+      await loadBrowsePage(1);
+    }
+  }
+
   // ── Reset ─────────────────────────────────────────────────────────────────
 
-  void resetToBrowse() {
+  Future<void> resetToBrowse() async {
     _mode = PageMode.browse;
     _allSearchResults = [];
     _searchPage = 1;
+    _lastQuery = '';
+    _lastYears = const {};
+    _lastCourses = const {};
     _cursors.clear();
     students = [];
     _browsePage = 1;
     _browseTotal = 0;
-    loadBrowsePage(1);
+    await loadBrowsePage(1);
   }
 }

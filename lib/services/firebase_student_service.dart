@@ -2,7 +2,9 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:gd_college/constants.dart';
 import 'package:gd_college/providers.dart';
+import '../student_management/models/student_facets.dart';
 import '../student_management/models/student_model.dart';
 import '../repositories/student_repository.dart';
 import '../models/audit_log.dart';
@@ -53,16 +55,9 @@ class FirebaseStudentRepository implements StudentRepository {
   }
 
   // ── Count helpers ─────────────────────────────────────────────────────────
-
-  Future<void> _incrementCount() async {
-    await _firestore.collection('_meta').doc('students').set(
-        {'count': FieldValue.increment(1)}, SetOptions(merge: true));
-  }
-
-  Future<void> _decrementCount() async {
-    await _firestore.collection('_meta').doc('students').set(
-        {'count': FieldValue.increment(-1)}, SetOptions(merge: true));
-  }
+  // NOTE: `_meta/students` counters are maintained by the syncStudentMeta
+  // Cloud Function (atomic increments). The app never writes them — that
+  // would double-count.
 
   @override
   Stream<int> watchTotalCount() {
@@ -71,6 +66,20 @@ class FirebaseStudentRepository implements StudentRepository {
         .doc('students')
         .snapshots()
         .map((s) => (s.data()?['count'] ?? 0) as int);
+  }
+
+  // ── Consolidated student meta (function-owned) ──────────────────────────
+  // `_meta/students` holds {count, countByGroup, facets, updatedAt} and is
+  // written ONLY by the syncStudentMeta Cloud Function. The app reads
+  // totals + chip options from this single small document.
+
+  DocumentReference<Map<String, dynamic>> get _metaDoc =>
+      _firestore.collection('_meta').doc('students');
+
+  @override
+  Future<StudentFacets> fetchStudentFacets() async {
+    final snap = await _metaDoc.get();
+    return StudentFacets.fromFirestore(snap.data());
   }
 
   // ── CREATE ────────────────────────────────────────────────────────────────
@@ -83,7 +92,6 @@ class FirebaseStudentRepository implements StudentRepository {
     final data = student.toFirestore();
     data['_searchIndex'] = _buildSearchIndex(student);
     final docRef = await _firestore.collection(_collection).add(data);
-    await _incrementCount();
     final createDetail = 'Created: ${student.name}, ${student.nameOfCourse}, ${student.yearOfAdmission ?? '—'}';
     await _writeLog(docRef.id, student.name, 'create', createDetail);
     return docRef.id;
@@ -106,6 +114,9 @@ class FirebaseStudentRepository implements StudentRepository {
     final data = student.toFirestore();
     data['_searchIndex'] = _buildSearchIndex(student);
     await _firestore.collection(_collection).doc(docId).update(data);
+
+    // NOTE: `group` is (re)stamped by toFirestore(), while `_meta`
+    // facets are maintained by the syncStudentMeta Cloud Function.
 
     if (writeLog) {
       final detail = _buildUpdateDetail(oldData!, data);
@@ -168,7 +179,7 @@ class FirebaseStudentRepository implements StudentRepository {
     final deleteDetail = 'Deleted: $name, $course, ${year ?? '—'}';
     await _writeLog(docId, name, 'delete', deleteDetail);
     await _firestore.collection(_collection).doc(docId).delete();
-    await _decrementCount();
+    // NOTE: counters + facets are maintained by syncStudentMeta.
   }
 
   // ── Audit log readers ─────────────────────────────────────────────────────
@@ -250,7 +261,6 @@ class FirebaseStudentRepository implements StudentRepository {
       // Check if the search index already exists to avoid unnecessary writes
       if (!data.containsKey('_searchIndex')) {
         final student = StudentModel.fromFirestore(doc.id, data);
-        await _incrementCount();
 
         // 2. Generate the index using your existing logic
         final searchIndex = _buildSearchIndex(student);
@@ -299,6 +309,59 @@ class FirebaseStudentRepository implements StudentRepository {
     );
   }
 
+  // ── GROUP BROWSE — one tab's page ────────────────────────────────────────
+  // Equality on `group` plus orderBy `createdAt` needs the composite index
+  // (students: group ASC, createdAt DESC) declared in firestore.indexes.*.
+
+  @override
+  Future<({List<StudentModel> students, DocumentSnapshot? lastDoc})>
+  fetchGroupPage({
+    required StudentGroup group,
+    DocumentSnapshot? startAfter,
+  }) async {
+    Query query = _firestore
+        .collection(_collection)
+        .where('group', isEqualTo: group.name)
+        .orderBy('createdAt', descending: true)
+        .limit(StudentRepository.pageSize);
+
+    if (startAfter != null) {
+      query = query.startAfterDocument(startAfter);
+    }
+
+    final snap = await query.get();
+    final students = snap.docs
+        .map((d) => StudentModel.fromFirestore(
+            d.id, d.data() as Map<String, dynamic>))
+        .toList();
+
+    return (
+      students: students,
+      lastDoc: snap.docs.isNotEmpty ? snap.docs.last : null,
+    );
+  }
+
+  @override
+  Future<int> countGroup(StudentGroup group) async {
+    // Primary: function-maintained counter (one tiny read for all tabs).
+    try {
+      final snap = await _metaDoc.get();
+      final byGroup = snap.data()?['countByGroup'];
+      if (byGroup is Map && byGroup[group.name] is num) {
+        return (byGroup[group.name] as num).toInt();
+      }
+    } catch (_) {
+      // Fall through to the exact aggregate query below.
+    }
+    // Fallback before the backfill has ever run: exact server count.
+    final snap = await _firestore
+        .collection(_collection)
+        .where('group', isEqualTo: group.name)
+        .count()
+        .get();
+    return snap.count ?? 0;
+  }
+
   // ── SEARCH (filters active) — fetch all matches, return full list ─────────
   // We fetch all matching docs and let the controller paginate client-side.
   // With n-gram index this is a single indexed Firestore query.
@@ -316,14 +379,36 @@ class FirebaseStudentRepository implements StudentRepository {
     required String query,
     Set<String>? years,
     Set<String>? courses,
+  }) {
+    return _searchCore(query: query, years: years, courses: courses);
+  }
+
+  @override
+  Future<List<StudentModel>> searchInGroup({
+    required StudentGroup group,
+    required String query,
+    Set<String>? years,
+    Set<String>? courses,
+  }) {
+    return _searchCore(
+      group: group,
+      query: query,
+      years: years,
+      courses: courses,
+    );
+  }
+
+  /// Shared search core. All filters are equalities (n-gram index hit,
+  /// group, whereIn chips), so no composite index is required. With no
+  /// text/chips this matches the whole collection (or group).
+  Future<List<StudentModel>> _searchCore({
+    StudentGroup? group,
+    required String query,
+    Set<String>? years,
+    Set<String>? courses,
   }) async {
     final clean = query.toLowerCase().trim();
 
-    Query q = _firestore.collection(_collection);
-
-    if (clean.isNotEmpty) {
-      q = q.where('_searchIndex.$clean', isEqualTo: true);
-    }
     // Multi-select chips: values are OR-ed within a group and AND-ed across
     // groups (e.g. years {2025, 2024} -> either year; years {2025} + courses
     // {B.ED} -> admitted in 2025 studying B.ED). whereIn covers both.
@@ -331,20 +416,62 @@ class FirebaseStudentRepository implements StudentRepository {
         .map(int.tryParse)
         .whereType<int>()
         .toList();
-    if (yearValues.isNotEmpty) {
-      q = q.where('yearOfAdmission', whereIn: yearValues);
-    }
     final courseValues =
         (courses ?? const <String>{}).where((c) => c.isNotEmpty).toList();
-    if (courseValues.isNotEmpty) {
-      q = q.where('nameOfCourse', whereIn: courseValues);
+
+    // Firestore caps whereIn at 10 values. Fan out into one query per
+    // chunk-combination (almost always a single query) and merge by doc id,
+    // so selecting many chips never fails at runtime.
+    final queryList = <Query>[];
+    for (final y in _chunks(yearValues, 10)) {
+      for (final c in _chunks(courseValues, 10)) {
+        Query q = _firestore.collection(_collection);
+        if (group != null) {
+          q = q.where('group', isEqualTo: group.name);
+        }
+        if (clean.isNotEmpty) {
+          q = q.where('_searchIndex.$clean', isEqualTo: true);
+        }
+        if (y.isNotEmpty) {
+          q = q.where('yearOfAdmission', whereIn: y);
+        }
+        if (c.isNotEmpty) {
+          q = q.where('nameOfCourse', whereIn: c);
+        }
+        queryList.add(q);
+      }
     }
 
-    final snap = await q.get();
-    return snap.docs
-        .map((d) => StudentModel.fromFirestore(
-        d.id, d.data() as Map<String, dynamic>))
-        .toList();
+    if (queryList.length == 1) {
+      final snap = await queryList.first.get();
+      return snap.docs
+          .map((d) => StudentModel.fromFirestore(
+          d.id, d.data() as Map<String, dynamic>))
+          .toList();
+    }
+    final snaps = await Future.wait(queryList.map((q) => q.get()));
+    final seen = <String>{};
+    final merged = <StudentModel>[];
+    for (final snap in snaps) {
+      for (final d in snap.docs) {
+        if (seen.add(d.id)) {
+          merged.add(StudentModel.fromFirestore(
+              d.id, d.data() as Map<String, dynamic>));
+        }
+      }
+    }
+    return merged;
+  }
+
+  /// Splits [values] into chunks of [size]. An empty input yields a single
+  /// empty chunk, meaning "no constraint" for that filter group.
+  List<List<T>> _chunks<T>(List<T> values, int size) {
+    if (values.isEmpty) return [<T>[]];
+    final out = <List<T>>[];
+    for (var i = 0; i < values.length; i += size) {
+      out.add(values.sublist(i, (i + size).clamp(0, values.length)));
+    }
+    return out;
   }
 
   // ─── FILE UPLOAD ─────────────────────────────────────────────────────────
