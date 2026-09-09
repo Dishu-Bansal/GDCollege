@@ -1,13 +1,15 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:gd_college/constants.dart';
 import 'package:gd_college/widgets/drawer.dart';
+import '../../controllers/pagination_controller.dart';
 import '../../models/audit_log.dart';
+import '../models/student_facets.dart';
 import '../models/student_model.dart';
 import '../../repositories/student_repository.dart';
 import '../../providers.dart';
+import '../../widgets/pagination_bar.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'student_form_screen.dart';
 import 'student_detail_screen.dart';
@@ -30,20 +32,15 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
 
   StudentRepository get _service => ref.read(studentRepositoryProvider);
 
-  // ── Paged browse cache ─────────────────────────────────────────────
-  // Pages (20 docs each) accumulate in [_all] as the user taps "Load more";
-  // the three group tabs split this cache client-side. Search/filter never
-  // touches this cache — it queries the entire collection server-side, so
-  // results are never limited to the loaded pages.
-  List<StudentModel> _all = [];
-  DocumentSnapshot? _cursor;
-  int _pagesLoaded = 0;
-  bool _hasMore = true;
-  bool _loading = true;
-  bool _loadingMore = false;
-  String? _error;
+  // One pagination controller per course-group tab. Each tab queries exactly
+  // its own students server-side (browse pages, group search, DB totals).
+  late final List<PaginationController> _pageCtrls;
 
-  // Per-group filter/sort state.
+  // Whole-collection chip options per group (one small meta read).
+  StudentFacets _facets = StudentFacets.empty;
+
+  // Per-group filter state (search text + chips). Results live in the
+  // tab's PaginationController.
   final List<TextEditingController> _searchCtrls = List.generate(
     _groupCount,
     (_) => TextEditingController(),
@@ -56,41 +53,25 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     _groupCount,
     (_) => <String>{},
   );
-  final List<List<StudentModel>> _groupBase = List.generate(
-    _groupCount,
-    (_) => <StudentModel>[],
-  );
-  final List<List<String>> _yearOptions = List.generate(
-    _groupCount,
-    (_) => <String>[],
-  );
-  final List<List<String>> _courseOptions = List.generate(
-    _groupCount,
-    (_) => <String>[],
-  );
+  final List<Timer?> _debounce = List.generate(_groupCount, (_) => null);
 
   int _sortColumnIndex = 0; // 0 = Date Added
   bool _sortAscending = false;
-
-  // ── Server-side search state (per group) ───────────────────────────
-  // When a tab has an active search/chip filter, its content comes from
-  // `StudentRepository.search` over the whole collection — never from the
-  // paged [_all] cache.
-  final List<List<StudentModel>?> _searchResults = List.generate(
-    _groupCount,
-    (_) => null,
-  );
-  final List<bool> _searching = List.generate(_groupCount, (_) => false);
-  final List<String?> _searchError = List.generate(_groupCount, (_) => null);
-  final List<int> _searchSeq = List.generate(_groupCount, (_) => 0);
-  final List<Timer?> _debounce = List.generate(_groupCount, (_) => null);
 
   @override
   void initState() {
     super.initState();
     _tabs = TabController(length: _groupCount + 1, vsync: this);
     _tabs.addListener(_onTabChanged);
-    _loadFirstPage();
+    final service = ref.read(studentRepositoryProvider);
+    _pageCtrls = [
+      for (final group in StudentGroup.values)
+        PaginationController(service, group: group)..sorter = _compareStudents,
+    ];
+    for (final c in _pageCtrls) {
+      c.loadBrowsePage(1);
+    }
+    _loadFacets();
   }
 
   void _onTabChanged() {
@@ -111,144 +92,36 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     for (final c in _searchCtrls) {
       c.dispose();
     }
+    for (final c in _pageCtrls) {
+      c.dispose();
+    }
     super.dispose();
   }
 
-  // ── Paged loading ──────────────────────────────────────────────────
+  // ── Whole-collection chip options ──────────────────────────────────
 
-  Future<void> _loadFirstPage() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _loadFacets() async {
     try {
-      final page = await _service.fetchPage();
+      final facets = await _service.fetchStudentFacets();
       if (!mounted) return;
-      setState(() {
-        _all = page.students;
-        _cursor = page.lastDoc;
-        _pagesLoaded = 1;
-        _hasMore =
-            page.lastDoc != null &&
-            page.students.length >= StudentRepository.pageSize;
-        _loading = false;
-      });
-      _rebuildGroups();
-      _rerunActiveSearches();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
+      setState(() => _facets = facets);
+    } catch (_) {
+      // Chips stay empty; the list itself still works.
     }
   }
 
-  Future<void> _loadMore() async {
-    if (_loadingMore || !_hasMore || _cursor == null) return;
-    setState(() => _loadingMore = true);
-    try {
-      final page = await _service.fetchPage(startAfter: _cursor);
-      if (!mounted) return;
-      setState(() {
-        _all = [..._all, ...page.students];
-        _cursor = page.lastDoc ?? _cursor;
-        _pagesLoaded++;
-        if (page.lastDoc == null ||
-            page.students.length < StudentRepository.pageSize) {
-          _hasMore = false;
-        }
-        _loadingMore = false;
-      });
-      _rebuildGroups();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _loadingMore = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not load more: $e')),
-      );
-    }
+  /// Admission-year chips for tab [g]: every year present in the group's
+  /// entire collection, newest first.
+  List<String> _yearOptions(int g) {
+    final group = StudentGroup.values[g].name;
+    return [for (final y in _facets.yearsOf(group)) '$y'];
   }
 
-  /// Re-fetches the pages loaded so far (used after add/edit, where the
-  /// changed document may sit anywhere in the ordering). Cheaper than the
-  /// old full-collection fetch when few pages are loaded, and never more.
-  Future<void> _reloadKeepingDepth() async {
-    final depth = _pagesLoaded < 1 ? 1 : _pagesLoaded;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final acc = <StudentModel>[];
-      DocumentSnapshot? cursor;
-      var more = true;
-      var fetched = 0;
-      for (var i = 0; i < depth && more; i++) {
-        final page = await _service.fetchPage(startAfter: cursor);
-        acc.addAll(page.students);
-        cursor = page.lastDoc ?? cursor;
-        more =
-            page.lastDoc != null &&
-            page.students.length >= StudentRepository.pageSize;
-        fetched++;
-      }
-      if (!mounted) return;
-      setState(() {
-        _all = acc;
-        _cursor = cursor;
-        _pagesLoaded = fetched < 1 ? 1 : fetched;
-        _hasMore = more;
-        _loading = false;
-      });
-      _rebuildGroups();
-      _rerunActiveSearches();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
-    }
-  }
-
-  /// Splits the paged [_all] cache into the course-group tabs and refreshes
-  /// their chip options. Chip options grow as more pages load; search itself
-  /// always runs server-side over the whole collection regardless.
-  void _rebuildGroups() {
-    setState(() {
-      for (var g = 0; g < _groupCount; g++) {
-        final group = StudentGroup.values[g];
-        final members = _all
-            .where((s) => studentGroupOfCourse(s.nameOfCourse) == group)
-            .toList();
-        _groupBase[g] = members;
-        _yearOptions[g] = _uniqueYearsOf(members);
-        _courseOptions[g] = _uniqueCoursesOf(members);
-      }
-    });
-  }
-  /// Admission years that actually exist in [members], newest first.
-  List<String> _uniqueYearsOf(List<StudentModel> members) {
-    final years =
-        members
-            .map((s) => s.yearOfAdmission)
-            .whereType<int>()
-            .where((y) => y > 0)
-            .toSet()
-            .toList()
-          ..sort((a, b) => b.compareTo(a));
-    return [for (final y in years) '$y'];
-  }
-
-  /// Distinct courses in [members], ordered by the canonical course list
-  /// (unknown/legacy values sort after it alphabetically).
-  List<String> _uniqueCoursesOf(List<StudentModel> members) {
-    final courses = members
-        .map((s) => s.nameOfCourse.trim())
-        .where((c) => c.isNotEmpty)
-        .toSet()
-        .toList();
+  /// Course chips for tab [g]: every course present in the group's entire
+  /// collection, in canonical course-list order.
+  List<String> _courseOptions(int g) {
+    final group = StudentGroup.values[g].name;
+    final courses = _facets.coursesOf(group).toList();
     courses.sort((a, b) {
       final ia = listOfCourses.indexWhere(
         (x) => x.toLowerCase() == a.toLowerCase(),
@@ -263,14 +136,12 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     });
     return courses;
   }
-
   // ── Server-side search ───────────────────────────────────────────────
   //
   // When a tab has an active search text or chip filter, its content comes
-  // from `StudentRepository.search`, which queries the ENTIRE collection
-  // (n-gram index for text, whereIn for chips) — never just the loaded
-  // pages. Results are then scoped to the tab's course group and sorted
-  // with the current sort column.
+  // from `StudentRepository.searchInGroup`, which queries the tab's group
+  // across the ENTIRE collection (n-gram index for text, whereIn for
+  // chips) — never just the loaded pages.
 
   bool _hasActiveFilters(int g) =>
       _searchCtrls[g].text.isNotEmpty ||
@@ -301,46 +172,14 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     return _sortAscending ? cmp : -cmp;
   }
 
-  /// Runs the server search for group [g], scoping matches to the tab's
-  /// course group. Stale responses (from an older keystroke) are dropped.
-  Future<void> _runSearch(int g) async {
-    final seq = ++_searchSeq[g];
-    setState(() {
-      _searching[g] = true;
-      _searchError[g] = null;
-    });
-    try {
-      final found = await _service.search(
-        query: _searchCtrls[g].text.trim(),
-        years: _selectedYears[g],
-        courses: _selectedCourses[g],
-      );
-      if (!mounted || seq != _searchSeq[g]) return;
-      final group = StudentGroup.values[g];
-      final scoped =
-          found
-              .where((s) => studentGroupOfCourse(s.nameOfCourse) == group)
-              .toList()
-            ..sort(_compareStudents);
-      setState(() {
-        _searchResults[g] = scoped;
-        _searching[g] = false;
-      });
-    } catch (e) {
-      if (!mounted || seq != _searchSeq[g]) return;
-      setState(() {
-        _searching[g] = false;
-        _searchError[g] = e.toString();
-      });
-    }
-  }
-
-  /// Re-runs the search for every tab that currently has active filters
-  /// (used after reloads, where the underlying data may have changed).
-  void _rerunActiveSearches() {
-    for (var g = 0; g < _groupCount; g++) {
-      if (_hasActiveFilters(g)) _runSearch(g);
-    }
+  /// Runs the tab's group search over the whole collection. Selections are
+  /// read live from the tab's filter state.
+  Future<void> _runSearch(int g) {
+    return _pageCtrls[g].runSearch(
+      query: _searchCtrls[g].text.trim(),
+      years: _selectedYears[g],
+      courses: _selectedCourses[g],
+    );
   }
 
   // ── Filter / sort handlers ───────────────────────────────────────────────
@@ -349,12 +188,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     // Debounce: wait for a typing pause before hitting the server.
     _debounce[g]?.cancel();
     if (!_hasActiveFilters(g)) {
-      _searchSeq[g]++; // invalidate any in-flight search
-      setState(() {
-        _searchResults[g] = null;
-        _searching[g] = false;
-        _searchError[g] = null;
-      });
+      _pageCtrls[g].resetToBrowse();
       return;
     }
     _debounce[g] = Timer(
@@ -377,16 +211,11 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     _filterChipsChanged(g);
   }
 
-  /// Chips apply immediately (no debounce): run the server search, or fall
-  /// back to the paged browse cache when no filter remains.
+  /// Chips apply immediately (no debounce): group search, or back to the
+  /// tab's browse pages when no filter remains.
   void _filterChipsChanged(int g) {
     if (!_hasActiveFilters(g)) {
-      _searchSeq[g]++; // invalidate any in-flight search
-      setState(() {
-        _searchResults[g] = null;
-        _searching[g] = false;
-        _searchError[g] = null;
-      });
+      _pageCtrls[g].resetToBrowse();
       return;
     }
     _runSearch(g);
@@ -394,39 +223,37 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
 
   void _clearFilters(int g) {
     _debounce[g]?.cancel();
-    _searchSeq[g]++; // invalidate any in-flight search
     setState(() {
       _searchCtrls[g].clear();
       _selectedYears[g].clear();
       _selectedCourses[g].clear();
-      _searchResults[g] = null;
-      _searching[g] = false;
-      _searchError[g] = null;
     });
+    _pageCtrls[g].resetToBrowse();
   }
 
-  void _clearAllFilters() {
+  Future<void> _clearAllFilters() async {
     for (var g = 0; g < _groupCount; g++) {
       _debounce[g]?.cancel();
-      _searchSeq[g]++;
       _searchCtrls[g].clear();
       _selectedYears[g].clear();
       _selectedCourses[g].clear();
-      _searchResults[g] = null;
-      _searching[g] = false;
-      _searchError[g] = null;
     }
+    setState(() {});
+    // Back to page 1 of each tab's browse view, then fresh chip options.
+    await Future.wait([for (final c in _pageCtrls) c.resetToBrowse()]);
+    if (mounted) await _loadFacets();
   }
 
   void _onSort(int col, bool asc) {
     setState(() {
       _sortColumnIndex = col;
       _sortAscending = asc;
-      // Re-apply the new ordering to already-loaded server results.
-      for (var g = 0; g < _groupCount; g++) {
-        _searchResults[g]?.sort(_compareStudents);
-      }
     });
+    // Re-apply the new ordering to whatever each tab currently shows.
+    for (final c in _pageCtrls) {
+      c.sorter = _compareStudents;
+      c.resort();
+    }
   }
 
   // ── Actions ──────────────────────────────────────────────────────────────
@@ -477,14 +304,9 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
       try {
         await ref.read(studentRepositoryProvider).delete(student.docId!);
         if (!mounted) return;
-        // Surgical removal: no full refetch needed.
-        setState(() {
-          _all.removeWhere((s) => s.docId == student.docId);
-          for (var g = 0; g < _groupCount; g++) {
-            _searchResults[g]?.removeWhere((s) => s.docId == student.docId);
-          }
-        });
-        _rebuildGroups();
+        // A delete can empty a chip value or shift pages: re-read the
+        // current views (pages + DB totals) and the chip options.
+        await _refreshAfterMutation();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -519,7 +341,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
         builder: (_) => StudentFormScreen(existingStudent: student),
       ),
     );
-    if (mounted) await _reloadKeepingDepth();
+    if (mounted) await _refreshAfterMutation();
   }
 
   Future<void> _openAdd() async {
@@ -527,7 +349,15 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
       context,
       MaterialPageRoute(builder: (_) => const StudentFormScreen()),
     );
-    if (mounted) await _reloadKeepingDepth();
+    if (mounted) await _refreshAfterMutation();
+  }
+
+  /// Re-reads every tab's current view (pages + DB totals) and the
+  /// whole-collection chip options. Used after add/edit/delete, where group
+  /// membership, totals, or facet values may have changed.
+  Future<void> _refreshAfterMutation() async {
+    await Future.wait([for (final c in _pageCtrls) c.refresh()]);
+    if (mounted) await _loadFacets();
   }
 
   @override
@@ -547,10 +377,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
             IconButton(
               icon: const Icon(Icons.refresh),
               tooltip: 'Refresh',
-              onPressed: () {
-                _clearAllFilters();
-                _loadFirstPage();
-              },
+              onPressed: _clearAllFilters,
             ),
             IconButton(
               icon: const Icon(Icons.add_circle_outline),
@@ -571,65 +398,33 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
           ],
         ),
       ),
-      body: _loading && _all.isEmpty
-          ? const Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation(Color(0xFF1A3C6E)),
-              ),
-            )
-          : _error != null && _all.isEmpty
-          ? _LoadError(error: _error!, onRetry: _loadFirstPage)
-          : TabBarView(
-              controller: _tabs,
-              children: [
-                for (var g = 0; g < _groupCount; g++)
-                  _GroupStudentsTab(
-                    title: StudentGroup.values[g].label,
-                    base: _groupBase[g],
-                    error: _error,
-                    searchCtrl: _searchCtrls[g],
-                    yearOptions: _yearOptions[g],
-                    selectedYears: _selectedYears[g],
-                    courseOptions: _courseOptions[g],
-                    selectedCourses: _selectedCourses[g],
-                    hasActiveFilters: _hasActiveFilters(g),
-                    searchResults: _searchResults[g],
-                    searching: _searching[g],
-                    searchError: _searchError[g],
-                    hasMore: _hasMore,
-                    loadingMore: _loadingMore,
-                    onLoadMore: _loadMore,
-                    onSearchRetry: () => _runSearch(g),
-                    compare: _compareStudents,
-                    sortColumnIndex: _sortColumnIndex,
-                    sortAscending: _sortAscending,
-                    onSort: _onSort,
-                    onSearchChanged: (v) => _onSearchChanged(g, v),
-                    onYearToggled: (v) => _toggleYear(g, v),
-                    onCourseToggled: (v) => _toggleCourse(g, v),
-                    onClear: () => _clearFilters(g),
-                    onRetry: _loadFirstPage,
-                    onView: _openDetail,
-                    onEdit: _openEdit,
-                    onDelete: _confirmDelete,
-                  ),
-                _StudentGlobalLogTab(service: _service),
-              ],
+      body: TabBarView(
+        controller: _tabs,
+        children: [
+          for (var g = 0; g < _groupCount; g++)
+            _GroupStudentsTab(
+              title: StudentGroup.values[g].label,
+              controller: _pageCtrls[g],
+              searchCtrl: _searchCtrls[g],
+              yearOptions: _yearOptions(g),
+              selectedYears: _selectedYears[g],
+              courseOptions: _courseOptions(g),
+              selectedCourses: _selectedCourses[g],
+              hasActiveFilters: _hasActiveFilters(g),
+              sortColumnIndex: _sortColumnIndex,
+              sortAscending: _sortAscending,
+              onSort: _onSort,
+              onSearchChanged: (v) => _onSearchChanged(g, v),
+              onYearToggled: (v) => _toggleYear(g, v),
+              onCourseToggled: (v) => _toggleCourse(g, v),
+              onClear: () => _clearFilters(g),
+              onView: _openDetail,
+              onEdit: _openEdit,
+              onDelete: _confirmDelete,
             ),
-      floatingActionButton: showGroupActions
-          ? FloatingActionButton.extended(
-              onPressed: _openAdd,
-              backgroundColor: const Color(0xFF1A3C6E),
-              icon: const Icon(Icons.person_add, color: Colors.white),
-              label: const Text(
-                'Add Student',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            )
-          : null,
+          _StudentGlobalLogTab(service: _service),
+        ],
+      ),
     );
   }
 
@@ -645,61 +440,20 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
   }
 }
 
-// ── Load error ───────────────────────────────────────────────────────────────
-
-class _LoadError extends StatelessWidget {
-  final String error;
-  final VoidCallback onRetry;
-  const _LoadError({required this.error, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, size: 48, color: Colors.red),
-            const SizedBox(height: 12),
-            Text(
-              'Unable to load students.\n$error',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // ── One course-group tab (GD College / MLSN / Skill India) ─────────────────
+// The tab shows exactly its group's students: paged browse or whole-group
+// search, driven by its PaginationController. Totals and chip options come
+// from the database, never from loaded pages.
 
 class _GroupStudentsTab extends StatelessWidget {
   final String title;
-  final List<StudentModel> base;
-  final String? error;
+  final PaginationController controller;
   final TextEditingController searchCtrl;
   final List<String> yearOptions;
   final Set<String> selectedYears;
   final List<String> courseOptions;
   final Set<String> selectedCourses;
   final bool hasActiveFilters;
-  final List<StudentModel>? searchResults;
-  final bool searching;
-  final String? searchError;
-  final bool hasMore;
-  final bool loadingMore;
-  final VoidCallback onLoadMore;
-  final VoidCallback onSearchRetry;
-  final int Function(StudentModel, StudentModel) compare;
   final int sortColumnIndex;
   final bool sortAscending;
   final void Function(int, bool) onSort;
@@ -707,29 +461,19 @@ class _GroupStudentsTab extends StatelessWidget {
   final void Function(String) onYearToggled;
   final void Function(String) onCourseToggled;
   final VoidCallback onClear;
-  final VoidCallback onRetry;
   final void Function(StudentModel) onView;
   final void Function(StudentModel) onEdit;
   final void Function(StudentModel) onDelete;
 
   const _GroupStudentsTab({
     required this.title,
-    required this.base,
-    required this.error,
+    required this.controller,
     required this.searchCtrl,
     required this.yearOptions,
     required this.selectedYears,
     required this.courseOptions,
     required this.selectedCourses,
     required this.hasActiveFilters,
-    required this.searchResults,
-    required this.searching,
-    required this.searchError,
-    required this.hasMore,
-    required this.loadingMore,
-    required this.onLoadMore,
-    required this.onSearchRetry,
-    required this.compare,
     required this.sortColumnIndex,
     required this.sortAscending,
     required this.onSort,
@@ -737,7 +481,6 @@ class _GroupStudentsTab extends StatelessWidget {
     required this.onYearToggled,
     required this.onCourseToggled,
     required this.onClear,
-    required this.onRetry,
     required this.onView,
     required this.onEdit,
     required this.onDelete,
@@ -745,234 +488,82 @@ class _GroupStudentsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Content source: whole-collection server results when filters are
-    // active, otherwise the sorted paged browse cache.
-    final List<StudentModel> results;
-    if (hasActiveFilters) {
-      results = searchResults ?? const <StudentModel>[];
-    } else {
-      results = List<StudentModel>.of(base)..sort(compare);
-    }
-    final bool showSearching =
-        hasActiveFilters && searching && searchResults == null;
-    return Column(
-      children: [
-        _SearchChipsPanel(
-          searchCtrl: searchCtrl,
-          yearOptions: yearOptions,
-          selectedYears: selectedYears,
-          courseOptions: courseOptions,
-          selectedCourses: selectedCourses,
-          hasActiveFilters: hasActiveFilters,
-          onSearchChanged: onSearchChanged,
-          onYearToggled: onYearToggled,
-          onCourseToggled: onCourseToggled,
-          onClear: onClear,
-        ),
-        if (error != null)
-          Container(
-            color: Colors.red.shade50,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                const Icon(Icons.error_outline, color: Colors.red, size: 16),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    error!,
-                    style: const TextStyle(color: Colors.red, fontSize: 12),
-                  ),
-                ),
-                TextButton(onPressed: onRetry, child: const Text('Retry')),
-              ],
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final loadingInitial =
+            controller.isLoading && controller.students.isEmpty;
+        return Column(
+          children: [
+            _SearchChipsPanel(
+              searchCtrl: searchCtrl,
+              yearOptions: yearOptions,
+              selectedYears: selectedYears,
+              courseOptions: courseOptions,
+              selectedCourses: selectedCourses,
+              hasActiveFilters: hasActiveFilters,
+              onSearchChanged: onSearchChanged,
+              onYearToggled: onYearToggled,
+              onCourseToggled: onCourseToggled,
+              onClear: onClear,
             ),
-          ),
-        if (hasActiveFilters && searchError != null)
-          Container(
-            color: Colors.red.shade50,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                const Icon(Icons.error_outline, color: Colors.red, size: 16),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text(
-                    'Search failed. Showing last results.',
-                    style: TextStyle(color: Colors.red, fontSize: 12),
-                  ),
+            if (controller.error != null)
+              Container(
+                color: Colors.red.shade50,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.error_outline,
+                        color: Colors.red, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        controller.error!,
+                        style:
+                            const TextStyle(color: Colors.red, fontSize: 12),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: controller.refresh,
+                      child: const Text('Retry'),
+                    ),
+                  ],
                 ),
-                TextButton(
-                    onPressed: onSearchRetry, child: const Text('Retry')),
-              ],
-            ),
-          ),
-        _GroupStatsRow(
-          count: results.length,
-          baseCount: base.length,
-          hasActiveFilters: hasActiveFilters,
-          hasMore: hasMore && !hasActiveFilters,
-          searching: showSearching,
-        ),
-        Expanded(
-          child: showSearching
-              ? const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircularProgressIndicator(
+              ),
+            Expanded(
+              child: loadingInitial
+                  ? const Center(
+                      child: CircularProgressIndicator(
                         valueColor:
                             AlwaysStoppedAnimation(Color(0xFF1A3C6E)),
                       ),
-                      SizedBox(height: 12),
-                      Text(
-                        'Searching all records…',
-                        style: TextStyle(fontSize: 13, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                )
-              : results.isEmpty
-                  ? _EmptyState(
-                      hasFilters: hasActiveFilters,
-                      emptyTitle:
-                          base.isEmpty ? 'No $title students yet' : null,
                     )
-                  : _StudentTable(
-                      students: results,
-                      sortColumnIndex: sortColumnIndex,
-                      sortAscending: sortAscending,
-                      onSort: onSort,
-                      onView: onView,
-                      onEdit: onEdit,
-                      onDelete: onDelete,
-                    ),
-        ),
-        if (!hasActiveFilters && hasMore)
-          _LoadMoreBar(
-            loadingMore: loadingMore,
-            loadedCount: base.length,
-            onLoadMore: onLoadMore,
-          ),
-      ],
+                  : controller.students.isEmpty
+                      ? _EmptyState(
+                          hasFilters: hasActiveFilters,
+                          emptyTitle: !hasActiveFilters &&
+                                  controller.totalCount == 0
+                              ? 'No $title students yet'
+                              : null,
+                        )
+                      : _StudentTable(
+                          students: controller.students,
+                          sortColumnIndex: sortColumnIndex,
+                          sortAscending: sortAscending,
+                          onSort: onSort,
+                          onView: onView,
+                          onEdit: onEdit,
+                          onDelete: onDelete,
+                        ),
+            ),
+            PaginationBar(controller: controller),
+          ],
+        );
+      },
     );
   }
 }
-
-class _GroupStatsRow extends StatelessWidget {
-  final int count;
-  final int baseCount;
-  final bool hasActiveFilters;
-  final bool hasMore;
-  final bool searching;
-
-  const _GroupStatsRow({
-    required this.count,
-    required this.baseCount,
-    required this.hasActiveFilters,
-    this.hasMore = false,
-    this.searching = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = hasActiveFilters
-        ? Colors.amber.shade700
-        : const Color(0xFF1A3C6E);
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: accent.withValues(alpha: 0.3)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '$count',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: accent,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  hasActiveFilters ? 'results' : 'students',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: accent.withValues(alpha: 0.8),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Spacer(),
-          Text(
-            searching
-                ? 'Searching all records…'
-                : hasActiveFilters
-                    ? '$count matched (all records)'
-                    : hasMore
-                        ? '$baseCount loaded · more below'
-                        : '$baseCount total',
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Load-more footer for paged browsing ───────────────────────────────────
-
-class _LoadMoreBar extends StatelessWidget {
-  final bool loadingMore;
-  final int loadedCount;
-  final VoidCallback onLoadMore;
-
-  const _LoadMoreBar({
-    required this.loadingMore,
-    required this.loadedCount,
-    required this.onLoadMore,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              '$loadedCount loaded so far',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-            ),
-          ),
-          loadingMore
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2.5),
-                )
-              : OutlinedButton.icon(
-                  onPressed: onLoadMore,
-                  icon: const Icon(Icons.expand_more, size: 18),
-                  label: const Text('Load more'),
-                ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Global Log Tab ──
 
 // ── Global Log Tab ──────────────────────────────────────────────────────────
 

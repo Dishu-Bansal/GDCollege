@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../constants.dart';
+import '../student_management/models/student_facets.dart';
 import '../student_management/models/student_model.dart';
 import '../models/audit_log.dart';
 
@@ -27,6 +29,30 @@ abstract class StudentRepository {
     Set<String>? courses,
   });
 
+  // ── Group-scoped (one tab) ────────────────────────────────────────────
+  // Each student tab queries exactly its own course group server-side, so
+  // pages are always full and totals/chips reflect the database, not the
+  // loaded pages.
+
+  /// One page of [group]'s students, newest first.
+  Future<({List<StudentModel> students, DocumentSnapshot? lastDoc})>
+  fetchGroupPage({required StudentGroup group, DocumentSnapshot? startAfter});
+
+  /// Whole-collection search restricted to [group] (n-gram text index plus
+  /// chip filters, all equality filters so no composite index is needed).
+  Future<List<StudentModel>> searchInGroup({
+    required StudentGroup group,
+    required String query,
+    Set<String>? years,
+    Set<String>? courses,
+  });
+
+  /// Exact number of [group]'s students in the database (aggregate query).
+  Future<int> countGroup(StudentGroup group);
+
+  /// Whole-collection filter options per group (one small meta read).
+  Future<StudentFacets> fetchStudentFacets();
+
   Future<void> uploadFiles(
     StudentModel student,
     String studentId, {
@@ -45,4 +71,9 @@ abstract class StudentRepository {
 
   // ── Migration ──
   Future<int> migrateStudentAuditLogs();
+
+  /// Backfills the denormalized `group` field on student docs that predate
+  /// it and rebuilds the `_meta/studentFacets` document. Safe to re-run.
+  /// Returns the number of student docs updated.
+  Future<int> migrateStudentGroupsAndFacets();
 }

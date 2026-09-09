@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:gd_college/constants.dart';
 import 'package:gd_college/models/user_session.dart';
 
 class StudentModel {
@@ -52,6 +53,11 @@ class StudentModel {
 
   // Step 5: Course & Admission
   String nameOfCourse;
+
+  /// Denormalized course group ([StudentGroup.name]) derived from
+  /// [nameOfCourse] via [studentGroupOfCourse]. Stored so each tab can query
+  /// exactly its own students server-side (GD College / MLSN / Skill India).
+  String group;
   int? yearOfAdmission;
   String placementDetails;
   String feeDetails1stYear;
@@ -113,6 +119,7 @@ class StudentModel {
     this.panCard = '',
     this.familyId = '',
     this.nameOfCourse = '',
+    this.group = '',
     this.yearOfAdmission,
     this.placementDetails = '',
     this.feeDetails1stYear = '',
@@ -190,6 +197,7 @@ class StudentModel {
       'postGraduation': postGraduationUrl,
       'diploma': diplomaUrl,
       'nameOfCourse': nameOfCourse,
+      'group': studentGroupOfCourse(nameOfCourse).name,
       'yearOfAdmission': yearOfAdmission,
       'placementDetails': placementDetails,
       'feeDetails1stYear': feeDetails1stYear,
@@ -221,7 +229,7 @@ class StudentModel {
       aadharNumber: aadharNumber, aadharUrl: aadharUrl, panCard: panCard, panUrl: panUrl, familyId: familyId,
       tenthUrl: tenthUrl, twelfthUrl: twelfthUrl, graduationUrl: graduationUrl,
       postGraduationUrl: postGraduationUrl, diplomaUrl: diplomaUrl,
-      nameOfCourse: nameOfCourse, yearOfAdmission: yearOfAdmission,
+      nameOfCourse: nameOfCourse, group: group, yearOfAdmission: yearOfAdmission,
       placementDetails: placementDetails,
       feeDetails1stYear: feeDetails1stYear,
       feeDetails2ndYear: feeDetails2ndYear,
@@ -241,6 +249,16 @@ class StudentModel {
     );
   }
 
+
+  /// Stored group, falling back to the canonical grouping when the document
+  /// predates the denormalized `group` field (pre-migration data).
+  static String _groupOf(Map<String, dynamic> data) {
+    final stored = data['group'];
+    if (stored is String && stored.isNotEmpty) return stored;
+    return studentGroupOfCourse(
+      (data['nameOfCourse'] ?? '').toString(),
+    ).name;
+  }
 
   /// Normalises stored `otherFees` documents into the model's map shape,
   /// tolerating legacy shapes (numbers, missing keys).
@@ -284,6 +302,7 @@ class StudentModel {
       postGraduationUrl: data['postGraduation'] ?? '',
       diplomaUrl: data['diploma'] ?? '',
       nameOfCourse: data['nameOfCourse'] ?? '',
+      group: _groupOf(data),
       yearOfAdmission: data['yearOfAdmission'],
       placementDetails: data['placementDetails'] ?? '',
       feeDetails1stYear: data['feeDetails1stYear'] ?? '',
