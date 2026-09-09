@@ -33,8 +33,17 @@ final analyticsRepositoryProvider = Provider<AnalyticsRepository>((ref) {
   return FirebaseAnalyticsRepository();
 });
 
+/// The IST calendar day the Daily Activity card shows.
+///
+/// `null` means the default: yesterday (previous IST calendar day).
+/// Only the year/month/day components are used.
+final selectedAnalyticsDateProvider = StateProvider<DateTime?>((ref) => null);
+
 final homeAnalyticsProvider = FutureProvider<HomeAnalytics>((ref) {
-  return ref.read(analyticsRepositoryProvider).fetchPreviousDayAnalytics();
+  final selected = ref.watch(selectedAnalyticsDateProvider);
+  final repo = ref.read(analyticsRepositoryProvider);
+  if (selected == null) return repo.fetchPreviousDayAnalytics();
+  return repo.fetchDayAnalytics(selected);
 });
 
 /// Global getter that automatically routes to the correct database
