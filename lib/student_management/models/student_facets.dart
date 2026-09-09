@@ -1,10 +1,13 @@
 /// Whole-collection filter options for the student tabs, read from the
-/// `_meta/studentFacets` document (one read) instead of deriving them from
-/// whatever page happens to be loaded.
+/// consolidated `_meta/students` document (one small read for totals +
+/// chips) instead of deriving them from whatever page happens to be loaded.
 ///
-/// Structure in Firestore:
+/// Document shape in Firestore (written only by the syncStudentMeta Cloud
+/// Function):
 /// ```json
-/// { "groups": {
+/// { "count": 412,
+///   "countByGroup": {"gdCollege": 120, "mlsn": 52, "skillIndia": 240},
+///   "facets": {
 ///     "gdCollege":  { "years": [2025, 2024], "courses": ["B.ED"] },
 ///     "mlsn":       { "years": [...],       "courses": [...] },
 ///     "skillIndia": { "years": [...],       "courses": [...] } } }
@@ -29,7 +32,9 @@ class StudentFacets {
 
   factory StudentFacets.fromFirestore(Map<String, dynamic>? data) {
     if (data == null) return empty;
-    final groups = data['groups'];
+    // Current shape nests under `facets`; the pre-consolidation `groups`
+    // shape is accepted too for backward compatibility.
+    final groups = data['facets'] ?? data['groups'];
     if (groups is! Map) return empty;
     final years = <String, List<int>>{};
     final courses = <String, List<String>>{};

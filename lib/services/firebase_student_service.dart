@@ -55,16 +55,9 @@ class FirebaseStudentRepository implements StudentRepository {
   }
 
   // ── Count helpers ─────────────────────────────────────────────────────────
-
-  Future<void> _incrementCount() async {
-    await _firestore.collection('_meta').doc('students').set(
-        {'count': FieldValue.increment(1)}, SetOptions(merge: true));
-  }
-
-  Future<void> _decrementCount() async {
-    await _firestore.collection('_meta').doc('students').set(
-        {'count': FieldValue.increment(-1)}, SetOptions(merge: true));
-  }
+  // NOTE: `_meta/students` counters are maintained by the syncStudentMeta
+  // Cloud Function (atomic increments). The app never writes them — that
+  // would double-count.
 
   @override
   Stream<int> watchTotalCount() {
@@ -75,18 +68,17 @@ class FirebaseStudentRepository implements StudentRepository {
         .map((s) => (s.data()?['count'] ?? 0) as int);
   }
 
-  // ── Facet (chip option) reads ────────────────────────────────────────────
-  // `_meta/studentFacets` holds the whole-collection admission years and
-  // courses per group. It is WRITTEN by the syncStudentMeta Cloud Function
-  // (triggers on every student write); the app only reads it here, so chip
-  // rows never depend on which pages are loaded.
+  // ── Consolidated student meta (function-owned) ──────────────────────────
+  // `_meta/students` holds {count, countByGroup, facets, updatedAt} and is
+  // written ONLY by the syncStudentMeta Cloud Function. The app reads
+  // totals + chip options from this single small document.
 
-  DocumentReference<Map<String, dynamic>> get _facetsDoc =>
-      _firestore.collection('_meta').doc('studentFacets');
+  DocumentReference<Map<String, dynamic>> get _metaDoc =>
+      _firestore.collection('_meta').doc('students');
 
   @override
   Future<StudentFacets> fetchStudentFacets() async {
-    final snap = await _facetsDoc.get();
+    final snap = await _metaDoc.get();
     return StudentFacets.fromFirestore(snap.data());
   }
 
@@ -100,7 +92,6 @@ class FirebaseStudentRepository implements StudentRepository {
     final data = student.toFirestore();
     data['_searchIndex'] = _buildSearchIndex(student);
     final docRef = await _firestore.collection(_collection).add(data);
-    await _incrementCount();
     final createDetail = 'Created: ${student.name}, ${student.nameOfCourse}, ${student.yearOfAdmission ?? '—'}';
     await _writeLog(docRef.id, student.name, 'create', createDetail);
     return docRef.id;
@@ -188,9 +179,7 @@ class FirebaseStudentRepository implements StudentRepository {
     final deleteDetail = 'Deleted: $name, $course, ${year ?? '—'}';
     await _writeLog(docId, name, 'delete', deleteDetail);
     await _firestore.collection(_collection).doc(docId).delete();
-    await _decrementCount();
-    // NOTE: `_meta` facets for the removed values are pruned by the
-    // syncStudentMeta Cloud Function.
+    // NOTE: counters + facets are maintained by syncStudentMeta.
   }
 
   // ── Audit log readers ─────────────────────────────────────────────────────
@@ -272,7 +261,6 @@ class FirebaseStudentRepository implements StudentRepository {
       // Check if the search index already exists to avoid unnecessary writes
       if (!data.containsKey('_searchIndex')) {
         final student = StudentModel.fromFirestore(doc.id, data);
-        await _incrementCount();
 
         // 2. Generate the index using your existing logic
         final searchIndex = _buildSearchIndex(student);
@@ -355,6 +343,17 @@ class FirebaseStudentRepository implements StudentRepository {
 
   @override
   Future<int> countGroup(StudentGroup group) async {
+    // Primary: function-maintained counter (one tiny read for all tabs).
+    try {
+      final snap = await _metaDoc.get();
+      final byGroup = snap.data()?['countByGroup'];
+      if (byGroup is Map && byGroup[group.name] is num) {
+        return (byGroup[group.name] as num).toInt();
+      }
+    } catch (_) {
+      // Fall through to the exact aggregate query below.
+    }
+    // Fallback before the backfill has ever run: exact server count.
     final snap = await _firestore
         .collection(_collection)
         .where('group', isEqualTo: group.name)
