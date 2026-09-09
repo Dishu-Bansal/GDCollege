@@ -75,66 +75,14 @@ class FirebaseStudentRepository implements StudentRepository {
         .map((s) => (s.data()?['count'] ?? 0) as int);
   }
 
-  // ── Facet (chip option) upkeep ───────────────────────────────────────────
+  // ── Facet (chip option) reads ────────────────────────────────────────────
   // `_meta/studentFacets` holds the whole-collection admission years and
-  // courses per group so chip rows never depend on which pages are loaded.
-  // Additions union in; removals are pruned only when no other document in
-  // the group still uses the value (single limit-1 check each), keeping the
-  // options exact without full-collection scans.
+  // courses per group. It is WRITTEN by the syncStudentMeta Cloud Function
+  // (triggers on every student write); the app only reads it here, so chip
+  // rows never depend on which pages are loaded.
 
   DocumentReference<Map<String, dynamic>> get _facetsDoc =>
       _firestore.collection('_meta').doc('studentFacets');
-
-  Future<void> _facetsAdd(
-    StudentGroup group,
-    int? year,
-    String course,
-  ) async {
-    final updates = <String, Object>{};
-    final c = course.trim();
-    if (c.isNotEmpty) {
-      updates['groups.${group.name}.courses'] = FieldValue.arrayUnion([c]);
-    }
-    if (year != null && year > 0) {
-      updates['groups.${group.name}.years'] = FieldValue.arrayUnion([year]);
-    }
-    if (updates.isEmpty) return;
-    await _facetsDoc.set(updates, SetOptions(merge: true));
-  }
-
-  Future<void> _facetsPrune(
-    StudentGroup group,
-    int? year,
-    String course,
-  ) async {
-    final removals = <String, Object>{};
-    if (year != null && year > 0) {
-      final stillUsed = await _firestore
-          .collection(_collection)
-          .where('group', isEqualTo: group.name)
-          .where('yearOfAdmission', isEqualTo: year)
-          .limit(1)
-          .get();
-      if (stillUsed.docs.isEmpty) {
-        removals['groups.${group.name}.years'] = FieldValue.arrayRemove([year]);
-      }
-    }
-    final c = course.trim();
-    if (c.isNotEmpty) {
-      final stillUsed = await _firestore
-          .collection(_collection)
-          .where('group', isEqualTo: group.name)
-          .where('nameOfCourse', isEqualTo: c)
-          .limit(1)
-          .get();
-      if (stillUsed.docs.isEmpty) {
-        removals['groups.${group.name}.courses'] =
-            FieldValue.arrayRemove([c]);
-      }
-    }
-    if (removals.isEmpty) return;
-    await _facetsDoc.set(removals, SetOptions(merge: true));
-  }
 
   @override
   Future<StudentFacets> fetchStudentFacets() async {
@@ -153,11 +101,6 @@ class FirebaseStudentRepository implements StudentRepository {
     data['_searchIndex'] = _buildSearchIndex(student);
     final docRef = await _firestore.collection(_collection).add(data);
     await _incrementCount();
-    await _facetsAdd(
-      studentGroupOfCourse(student.nameOfCourse),
-      student.yearOfAdmission,
-      student.nameOfCourse,
-    );
     final createDetail = 'Created: ${student.name}, ${student.nameOfCourse}, ${student.yearOfAdmission ?? '—'}';
     await _writeLog(docRef.id, student.name, 'create', createDetail);
     return docRef.id;
@@ -181,26 +124,8 @@ class FirebaseStudentRepository implements StudentRepository {
     data['_searchIndex'] = _buildSearchIndex(student);
     await _firestore.collection(_collection).doc(docId).update(data);
 
-    // Keep whole-collection chip options exact: advertise the new values,
-    // and drop old ones no other document still uses.
-    final newGroup = studentGroupOfCourse(student.nameOfCourse);
-    await _facetsAdd(newGroup, student.yearOfAdmission, student.nameOfCourse);
-    if (writeLog) {
-      final oldYear = (oldData!['yearOfAdmission'] as num?)?.toInt();
-      final oldCourse = (oldData['nameOfCourse'] as String?) ?? '';
-      final storedGroup = oldData['group'];
-      final oldGroup = storedGroup is String && storedGroup.isNotEmpty
-          ? StudentGroup.values.firstWhere(
-              (g) => g.name == storedGroup,
-              orElse: () => studentGroupOfCourse(oldCourse),
-            )
-          : studentGroupOfCourse(oldCourse);
-      if (oldYear != student.yearOfAdmission ||
-          oldCourse != student.nameOfCourse ||
-          oldGroup != newGroup) {
-        await _facetsPrune(oldGroup, oldYear, oldCourse);
-      }
-    }
+    // NOTE: `group` is (re)stamped by toFirestore(), while `_meta`
+    // facets are maintained by the syncStudentMeta Cloud Function.
 
     if (writeLog) {
       final detail = _buildUpdateDetail(oldData!, data);
@@ -260,22 +185,12 @@ class FirebaseStudentRepository implements StudentRepository {
     final name = data['name'] ?? '';
     final course = data['nameOfCourse'] ?? '';
     final year = data['yearOfAdmission'];
-    final storedGroup = data['group'];
-    final group = storedGroup is String && storedGroup.isNotEmpty
-        ? StudentGroup.values.firstWhere(
-            (g) => g.name == storedGroup,
-            orElse: () => studentGroupOfCourse(course.toString()),
-          )
-        : studentGroupOfCourse(course.toString());
     final deleteDetail = 'Deleted: $name, $course, ${year ?? '—'}';
     await _writeLog(docId, name, 'delete', deleteDetail);
     await _firestore.collection(_collection).doc(docId).delete();
     await _decrementCount();
-    await _facetsPrune(
-      group,
-      (year as num?)?.toInt(),
-      course.toString(),
-    );
+    // NOTE: `_meta` facets for the removed values are pruned by the
+    // syncStudentMeta Cloud Function.
   }
 
   // ── Audit log readers ─────────────────────────────────────────────────────
@@ -446,64 +361,6 @@ class FirebaseStudentRepository implements StudentRepository {
         .count()
         .get();
     return snap.count ?? 0;
-  }
-
-  @override
-  Future<int> migrateStudentGroupsAndFacets() async {
-    int updated = 0;
-    final yearsByGroup = <String, Set<int>>{};
-    final coursesByGroup = <String, Set<String>>{};
-
-    DocumentSnapshot? cursor;
-    while (true) {
-      Query q = _firestore
-          .collection(_collection)
-          .orderBy(FieldPath.documentId)
-          .limit(500);
-      if (cursor != null) q = q.startAfterDocument(cursor);
-      final snap = await q.get();
-      if (snap.docs.isEmpty) break;
-
-      WriteBatch batch = _firestore.batch();
-      var pending = 0;
-      for (final d in snap.docs) {
-        final data = d.data() as Map<String, dynamic>;
-        final course = (data['nameOfCourse'] ?? '').toString();
-        final groupName = studentGroupOfCourse(course).name;
-        final year = (data['yearOfAdmission'] as num?)?.toInt();
-
-        if (year != null && year > 0) {
-          yearsByGroup
-              .putIfAbsent(groupName, () => <int>{})
-              .add(year);
-        }
-        if (course.trim().isNotEmpty) {
-          coursesByGroup
-              .putIfAbsent(groupName, () => <String>{})
-              .add(course.trim());
-        }
-        if (data['group'] != groupName) {
-          batch.update(d.reference, {'group': groupName});
-          pending++;
-          updated++;
-        }
-      }
-      if (pending > 0) await batch.commit();
-
-      cursor = snap.docs.last;
-      if (snap.docs.length < 500) break;
-    }
-
-    final groups = <String, dynamic>{};
-    for (final g in StudentGroup.values) {
-      final years = (yearsByGroup[g.name] ?? <int>{}).toList()
-        ..sort((a, b) => b.compareTo(a));
-      final courses = (coursesByGroup[g.name] ?? <String>{}).toList()
-        ..sort();
-      groups[g.name] = {'years': years, 'courses': courses};
-    }
-    await _facetsDoc.set({'groups': groups});
-    return updated;
   }
 
   // ── SEARCH (filters active) — fetch all matches, return full list ─────────

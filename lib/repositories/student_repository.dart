@@ -71,9 +71,4 @@ abstract class StudentRepository {
 
   // ── Migration ──
   Future<int> migrateStudentAuditLogs();
-
-  /// Backfills the denormalized `group` field on student docs that predate
-  /// it and rebuilds the `_meta/studentFacets` document. Safe to re-run.
-  /// Returns the number of student docs updated.
-  Future<int> migrateStudentGroupsAndFacets();
 }

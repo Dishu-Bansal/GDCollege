@@ -14,7 +14,6 @@ class _HelperState extends ConsumerState<Helper> {
   String _stockMsg = 'Migrate Stock Logs (add location fields)';
   String _studentMsg = 'Migrate Student Audit Logs';
   String _staffMsg = 'Migrate Staff Audit Logs';
-  String _groupMsg = 'Migrate Student Groups & Facets';
   bool _running = false;
 
   @override
@@ -41,12 +40,6 @@ class _HelperState extends ConsumerState<Helper> {
               ref.read(staffRepositoryProvider).migrateStaffAuditLogs(),
               'Staff',
               (s) => _staffMsg = s,
-            )),
-            const SizedBox(height: 16),
-            _buildButton(_groupMsg, () => _runMigration(
-              ref.read(studentRepositoryProvider).migrateStudentGroupsAndFacets(),
-              'Student groups',
-              (s) => _groupMsg = s,
             )),
             const SizedBox(height: 12),
             Text(
