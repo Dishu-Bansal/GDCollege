@@ -216,23 +216,18 @@ exports.syncStudentMetaTestDb = onDocumentWritten(
   },
 );
 
-// ── One-time backfill (callable, then deletable) ────────────────────────────
-// Run once per database from the console (Functions → backfillStudentGroups
-// → Testing) with `{}` for production or `{"database": "test-db"}` for the
-// test database. Stamps `group` on every student doc and (re)builds the
-// consolidated `_meta/students` document (totals + facets). Safe to re-run.
+// ── One-time backfills (callables, then deletable) ──────────────────────────
+// Two fixed-target versions so invocation needs no request data (run with
+// `{}`): `backfillStudentGroups` for production, `backfillStudentGroupsTestDb`
+// for the test database — console Testing tab or:
+//   gcloud functions call backfillStudentGroups --project=g-d-college \
+//     --region=us-central1 --data '{}'
+// Each stamps `group` on every student doc of its database and (re)builds
+// the consolidated `_meta/students` document. Safe to re-run.
 
-exports.backfillStudentGroups = onCall(
-  {timeoutSeconds: 540, memory: "512MiB"},
-  async (request) => {
-    const database =
-      request.data && request.data.database === "test-db"
-        ? "test-db"
-        : "(default)";
-    const db = database === "test-db" ? getFirestore("test-db") : getFirestore();
-
-    const yearsByGroup = {};
-    const coursesByGroup = {};
+async function backfillDatabase(db, database) {
+  const yearsByGroup = {};
+  const coursesByGroup = {};
     const remember = (group, year, course) => {
       if (year != null) {
         (yearsByGroup[group] = yearsByGroup[group] || new Set()).add(year);
@@ -289,7 +284,16 @@ exports.backfillStudentGroups = onCall(
       facets,
       updatedAt: FieldValue.serverTimestamp(),
     });
-    logger.info(`backfillStudentGroups(${database}): scanned=${scanned} updated=${updated} count=${count}`);
+    logger.info(`backfill(${database}): scanned=${scanned} updated=${updated} count=${count}`);
     return {database, scanned, updated, count, countByGroup};
-  },
+}
+
+exports.backfillStudentGroups = onCall(
+  {timeoutSeconds: 540, memory: "512MiB"},
+  async () => backfillDatabase(getFirestore(), "(default)"),
+);
+
+exports.backfillStudentGroupsTestDb = onCall(
+  {timeoutSeconds: 540, memory: "512MiB"},
+  async () => backfillDatabase(getFirestore("test-db"), "test-db"),
 );
