@@ -78,12 +78,15 @@ async function addValues(ref, group, year, course) {
   // NOTE: set(..., {merge: true}) does NOT expand dotted key strings into
   // nested maps (only update() does) — so build real nested objects here,
   // otherwise Firestore stores literal "facets.mlsn.courses" field names.
+  // NOTE 2: the Node SDK's arrayUnion/arrayRemove take VARIADIC elements
+  // (unlike Dart's List-taking versions) — passing [course] nests an array
+  // and throws "Nested arrays are not supported".
   const groupUpdate = {};
   if (course.length > 0) {
-    groupUpdate.courses = FieldValue.arrayUnion([course]);
+    groupUpdate.courses = FieldValue.arrayUnion(course);
   }
   if (year != null) {
-    groupUpdate.years = FieldValue.arrayUnion([year]);
+    groupUpdate.years = FieldValue.arrayUnion(year);
   }
   if (Object.keys(groupUpdate).length === 0) return;
   await ref.set(
@@ -133,7 +136,7 @@ async function pruneValue(db, ref, group, year, course) {
       .limit(1)
       .get();
     if (stillUsed.empty) {
-      groupRemovals.years = FieldValue.arrayRemove([year]);
+      groupRemovals.years = FieldValue.arrayRemove(year);
     }
   }
   if (course.length > 0) {
@@ -144,7 +147,7 @@ async function pruneValue(db, ref, group, year, course) {
       .limit(1)
       .get();
     if (stillUsed.empty) {
-      groupRemovals.courses = FieldValue.arrayRemove([course]);
+      groupRemovals.courses = FieldValue.arrayRemove(course);
     }
   }
   if (Object.keys(groupRemovals).length === 0) return;
