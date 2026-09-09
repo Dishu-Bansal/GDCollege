@@ -319,11 +319,6 @@ class FirebaseStudentRepository implements StudentRepository {
   }) async {
     final clean = query.toLowerCase().trim();
 
-    Query q = _firestore.collection(_collection);
-
-    if (clean.isNotEmpty) {
-      q = q.where('_searchIndex.$clean', isEqualTo: true);
-    }
     // Multi-select chips: values are OR-ed within a group and AND-ed across
     // groups (e.g. years {2025, 2024} -> either year; years {2025} + courses
     // {B.ED} -> admitted in 2025 studying B.ED). whereIn covers both.
@@ -331,20 +326,59 @@ class FirebaseStudentRepository implements StudentRepository {
         .map(int.tryParse)
         .whereType<int>()
         .toList();
-    if (yearValues.isNotEmpty) {
-      q = q.where('yearOfAdmission', whereIn: yearValues);
-    }
     final courseValues =
         (courses ?? const <String>{}).where((c) => c.isNotEmpty).toList();
-    if (courseValues.isNotEmpty) {
-      q = q.where('nameOfCourse', whereIn: courseValues);
+
+    // Firestore caps whereIn at 10 values. Fan out into one query per
+    // chunk-combination (almost always a single query) and merge by doc id,
+    // so selecting many chips never fails at runtime.
+    final queryList = <Query>[];
+    for (final y in _chunks(yearValues, 10)) {
+      for (final c in _chunks(courseValues, 10)) {
+        Query q = _firestore.collection(_collection);
+        if (clean.isNotEmpty) {
+          q = q.where('_searchIndex.$clean', isEqualTo: true);
+        }
+        if (y.isNotEmpty) {
+          q = q.where('yearOfAdmission', whereIn: y);
+        }
+        if (c.isNotEmpty) {
+          q = q.where('nameOfCourse', whereIn: c);
+        }
+        queryList.add(q);
+      }
     }
 
-    final snap = await q.get();
-    return snap.docs
-        .map((d) => StudentModel.fromFirestore(
-        d.id, d.data() as Map<String, dynamic>))
-        .toList();
+    if (queryList.length == 1) {
+      final snap = await queryList.first.get();
+      return snap.docs
+          .map((d) => StudentModel.fromFirestore(
+          d.id, d.data() as Map<String, dynamic>))
+          .toList();
+    }
+    final snaps = await Future.wait(queryList.map((q) => q.get()));
+    final seen = <String>{};
+    final merged = <StudentModel>[];
+    for (final snap in snaps) {
+      for (final d in snap.docs) {
+        if (seen.add(d.id)) {
+          merged.add(StudentModel.fromFirestore(
+              d.id, d.data() as Map<String, dynamic>));
+        }
+      }
+    }
+    return merged;
+  }
+
+  /// Splits [values] into chunks of [size]. An empty input yields a single
+  /// empty chunk, meaning "no constraint" for that filter group.
+  List<List<T>> _chunks<T>(List<T> values, int size) {
+    if (values.isEmpty) return [<T>[]];
+    final out = <List<T>>[];
+    for (var i = 0; i < values.length; i += size) {
+      out.add(values.sublist(i, (i + size).clamp(0, values.length)));
+    }
+    return out;
   }
 
   // ─── FILE UPLOAD ─────────────────────────────────────────────────────────
