@@ -75,16 +75,21 @@ function metaDoc(db) {
 // ── Facet + counter upkeep ────────────────────────────────────────────────
 
 async function addValues(ref, group, year, course) {
-  const updates = {};
+  // NOTE: set(..., {merge: true}) does NOT expand dotted key strings into
+  // nested maps (only update() does) — so build real nested objects here,
+  // otherwise Firestore stores literal "facets.mlsn.courses" field names.
+  const groupUpdate = {};
   if (course.length > 0) {
-    updates[`facets.${group}.courses`] = FieldValue.arrayUnion([course]);
+    groupUpdate.courses = FieldValue.arrayUnion([course]);
   }
   if (year != null) {
-    updates[`facets.${group}.years`] = FieldValue.arrayUnion([year]);
+    groupUpdate.years = FieldValue.arrayUnion([year]);
   }
-  if (Object.keys(updates).length === 0) return;
-  updates.updatedAt = FieldValue.serverTimestamp();
-  await ref.set(updates, {merge: true});
+  if (Object.keys(groupUpdate).length === 0) return;
+  await ref.set(
+    {facets: {[group]: groupUpdate}, updatedAt: FieldValue.serverTimestamp()},
+    {merge: true},
+  );
 }
 
 /**
@@ -93,11 +98,16 @@ async function addValues(ref, group, year, course) {
  * on update keep the total unchanged).
  */
 async function bumpCounts(ref, groupDeltas, totalDelta) {
-  const updates = {};
+  // Same dotted-key caveat as above: build real nested objects.
+  const groupUpdates = {};
   for (const [group, delta] of Object.entries(groupDeltas)) {
     if (delta !== 0) {
-      updates[`countByGroup.${group}`] = FieldValue.increment(delta);
+      groupUpdates[group] = FieldValue.increment(delta);
     }
+  }
+  const updates = {};
+  if (Object.keys(groupUpdates).length > 0) {
+    updates.countByGroup = groupUpdates;
   }
   if (totalDelta !== 0) {
     updates.count = FieldValue.increment(totalDelta);
@@ -113,7 +123,8 @@ async function bumpCounts(ref, groupDeltas, totalDelta) {
  * checks), keeping chip options exact without full-collection scans.
  */
 async function pruneValue(db, ref, group, year, course) {
-  const removals = {};
+  // Same dotted-key caveat: build real nested objects.
+  const groupRemovals = {};
   if (year != null) {
     const stillUsed = await db
       .collection("students")
@@ -122,7 +133,7 @@ async function pruneValue(db, ref, group, year, course) {
       .limit(1)
       .get();
     if (stillUsed.empty) {
-      removals[`facets.${group}.years`] = FieldValue.arrayRemove([year]);
+      groupRemovals.years = FieldValue.arrayRemove([year]);
     }
   }
   if (course.length > 0) {
@@ -133,12 +144,17 @@ async function pruneValue(db, ref, group, year, course) {
       .limit(1)
       .get();
     if (stillUsed.empty) {
-      removals[`facets.${group}.courses`] = FieldValue.arrayRemove([course]);
+      groupRemovals.courses = FieldValue.arrayRemove([course]);
     }
   }
-  if (Object.keys(removals).length === 0) return;
-  removals.updatedAt = FieldValue.serverTimestamp();
-  await ref.set(removals, {merge: true});
+  if (Object.keys(groupRemovals).length === 0) return;
+  await ref.set(
+    {
+      facets: {[group]: groupRemovals},
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    {merge: true},
+  );
 }
 
 // ── Shared write handler ────────────────────────────────────────────────────
@@ -278,6 +294,8 @@ async function backfillDatabase(db, database) {
       facets[name] = {years, courses};
     }
     const count = countByGroup.gdCollege + countByGroup.mlsn + countByGroup.skillIndia;
+    // Overwrite (no merge): the backfill computes the complete document, and
+    // this also wipes any malformed dotted-literal fields from earlier writes.
     await metaDoc(db).set({
       count,
       countByGroup,
