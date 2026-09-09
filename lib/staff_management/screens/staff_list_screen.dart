@@ -288,6 +288,8 @@ class _StaffTabState extends ConsumerState<_StaffTab> {
   List<StaffModel> _applyFilters(List<StaffModel> all) {
     final idCtrl = widget.searchIdCtrl;
     final nameCtrl = widget.searchNameCtrl;
+    final course = widget.selectedCourse;
+    final year = widget.selectedYear;
     return all.where((s) {
       final idMatch = idCtrl.text.isEmpty ||
           s.staffId
@@ -297,7 +299,15 @@ class _StaffTabState extends ConsumerState<_StaffTab> {
           s.name
               .toLowerCase()
               .contains(nameCtrl.text.toLowerCase());
-      return idMatch && nameMatch;
+      final courseMatch = course == null ||
+          course.isEmpty ||
+          course == 'All' ||
+          (s.course ?? '') == course;
+      final yearMatch = year == null ||
+          year.isEmpty ||
+          year == 'All' ||
+          s.dateOfJoining?.year.toString() == year;
+      return idMatch && nameMatch && courseMatch && yearMatch;
     }).toList();
   }
 
@@ -308,7 +318,13 @@ class _StaffTabState extends ConsumerState<_StaffTab> {
       int cmp;
       switch (widget.sortColumnIndex) {
         case 0:
-          cmp = int.tryParse(a.staffId)!.compareTo(int.tryParse(b.staffId)!);
+          final ai = int.tryParse(a.staffId);
+          final bi = int.tryParse(b.staffId);
+          if (ai != null && bi != null) {
+            cmp = ai.compareTo(bi);
+          } else {
+            cmp = a.staffId.toLowerCase().compareTo(b.staffId.toLowerCase());
+          }
           break;
         case 1:
           cmp = a.name.compareTo(b.name);
@@ -376,7 +392,7 @@ class _StaffTabState extends ConsumerState<_StaffTab> {
                       courses: listOfCourses,
                       selectedYear: widget.selectedYear,
                       allYears: all
-                          .map((s) => s.salary?.toString() ?? '')
+                          .map((s) => s.dateOfJoining?.year.toString() ?? '')
                           .where((y) => y.isNotEmpty)
                           .toSet()
                           .toList()
@@ -731,7 +747,7 @@ class _FilterPanel extends StatelessWidget {
               Expanded(
                 child: _FilterDropdown(
                   value: selectedYear,
-                  hint: 'Admission Year',
+                  hint: 'Joining Year',
                   icon: Icons.calendar_today_outlined,
                   items: ['All', ...allYears],
                   onChanged: (v) => onYearChanged(v == 'All' ? null : v),

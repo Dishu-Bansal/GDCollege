@@ -19,6 +19,13 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
     return (start: start, end: end);
   }
 
+  /// Boundaries of an arbitrary IST calendar day (time ignored).
+  ({DateTime start, DateTime end}) _istDayRange(DateTime istDay) {
+    final start = DateTime(istDay.year, istDay.month, istDay.day);
+    final end = DateTime(istDay.year, istDay.month, istDay.day + 1);
+    return (start: start, end: end);
+  }
+
   /// Email of the user who performed the activity, or '' when unknown.
   String _actorOf(QueryDocumentSnapshot<Map<String, dynamic>> doc) =>
       (doc.data()['changedBy'] as String?) ?? '';
@@ -41,8 +48,18 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
   @override
   Future<HomeAnalytics> fetchPreviousDayAnalytics() async {
     final day = _previousIstDay();
-    final startIso = day.start.toIso8601String();
-    final endIso = day.end.toIso8601String();
+    return _fetchForRange(day.start, day.end);
+  }
+
+  @override
+  Future<HomeAnalytics> fetchDayAnalytics(DateTime istDay) async {
+    final day = _istDayRange(istDay);
+    return _fetchForRange(day.start, day.end);
+  }
+
+  Future<HomeAnalytics> _fetchForRange(DateTime start, DateTime end) async {
+    final startIso = start.toIso8601String();
+    final endIso = end.toIso8601String();
 
     final inspectionsFuture = _countCompletedInspections(startIso, endIso);
     // The range filters order by the same field, descending, so the queries
@@ -153,7 +170,7 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
     _foldUnattributed(assignmentsBy, assignments.length);
 
     return HomeAnalytics(
-      day: day.start,
+      day: start,
       studentsCreated: _sum(studentsCreatedBy),
       studentsUpdated: _sum(studentsUpdatedBy),
       studentsDeleted: _sum(studentsDeletedBy),

@@ -124,6 +124,7 @@ class _AnalyticsCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final selectedDay = ref.watch(selectedAnalyticsDateProvider);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -170,6 +171,11 @@ class _AnalyticsCard extends ConsumerWidget {
                 ),
               ),
               IconButton(
+                tooltip: 'Choose date',
+                icon: const Icon(Icons.calendar_month, size: 20),
+                onPressed: () => _pickDay(context, ref),
+              ),
+              IconButton(
                 tooltip: 'Refresh',
                 icon: const Icon(Icons.refresh, size: 20),
                 onPressed: () => ref.invalidate(homeAnalyticsProvider),
@@ -213,16 +219,38 @@ class _AnalyticsCard extends ConsumerWidget {
             data: (data) => Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Yesterday · ${_fmtDay(data.day)} (IST)',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _dayCaption(data.day),
+                        style: TextStyle(
+                            fontSize: 12, color: Colors.grey.shade500),
+                      ),
+                    ),
+                    if (selectedDay != null)
+                      GestureDetector(
+                        onTap: () => ref
+                            .read(selectedAnalyticsDateProvider.notifier)
+                            .state = null,
+                        child: Text(
+                          'Back to yesterday',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: const Color(0xFF1A3C6E),
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 if (!data.hasAnyActivity)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Text(
-                      'No activity recorded for yesterday.',
+                      'No activity recorded ${_dayPreposition(data.day)}.',
                       style: TextStyle(
                         fontSize: 13,
                         color: Colors.grey.shade500,
@@ -313,6 +341,62 @@ class _AnalyticsCard extends ConsumerWidget {
   }
 
   String _fmtDay(DateTime d) => '${d.day}/${d.month}/${d.year}';
+
+  static const _istOffset = Duration(hours: 5, minutes: 30);
+
+  /// Today in IST, truncated to the calendar day.
+  DateTime _todayIst() {
+    final nowIst = DateTime.now().toUtc().add(_istOffset);
+    return DateTime(nowIst.year, nowIst.month, nowIst.day);
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  /// Header caption for the analytics day, e.g. "Yesterday · 8/9/2026 (IST)"
+  /// or "7/9/2026 (IST)". Keeps the old "Yesterday" wording as the default.
+  String _dayCaption(DateTime day) {
+    final today = _todayIst();
+    final yesterday =
+        DateTime(today.year, today.month, today.day - 1);
+    if (_isSameDay(day, yesterday)) {
+      return 'Yesterday · ${_fmtDay(day)} (IST)';
+    }
+    if (_isSameDay(day, today)) {
+      return 'Today · ${_fmtDay(day)} (IST)';
+    }
+    return '${_fmtDay(day)} (IST)';
+  }
+
+  /// "for yesterday" / "for today" / "on 7/9/2026" for the empty state.
+  String _dayPreposition(DateTime day) {
+    final today = _todayIst();
+    final yesterday =
+        DateTime(today.year, today.month, today.day - 1);
+    if (_isSameDay(day, yesterday)) return 'for yesterday';
+    if (_isSameDay(day, today)) return 'for today';
+    return 'on ${_fmtDay(day)}';
+  }
+
+  /// Opens a date picker (past days up to today, IST) and stores the
+  /// chosen day so [homeAnalyticsProvider] reloads for it.
+  Future<void> _pickDay(BuildContext context, WidgetRef ref) async {
+    final today = _todayIst();
+    final current = ref.read(selectedAnalyticsDateProvider) ??
+        DateTime(today.year, today.month, today.day - 1);
+    final initial = current.isAfter(today) ? today : current;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(today.year, today.month, today.day - 180),
+      lastDate: today,
+      helpText: 'Show activity for',
+    );
+    if (picked != null) {
+      ref.read(selectedAnalyticsDateProvider.notifier).state =
+          DateTime(picked.year, picked.month, picked.day);
+    }
+  }
 }
 
 class _AnalyticsGroup extends StatelessWidget {
