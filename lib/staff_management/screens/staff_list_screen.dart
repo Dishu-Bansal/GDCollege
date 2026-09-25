@@ -177,7 +177,6 @@ class _StaffListScreenState extends ConsumerState<StaffListScreen>
         ],
         bottom: TabBar(
           controller: _tabs,
-          isScrollable: true,
           indicatorColor: Colors.amber,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white60,
