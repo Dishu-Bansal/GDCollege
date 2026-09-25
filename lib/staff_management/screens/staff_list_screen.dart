@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:gd_college/constants.dart';
 import 'package:gd_college/widgets/drawer.dart';
+import '../../access/widgets/access_gate.dart';
 import '../models/staff_model.dart';
 import '../../models/audit_log.dart';
 import '../../providers.dart';
@@ -151,6 +152,15 @@ class _StaffListScreenState extends ConsumerState<StaffListScreen>
 
   @override
   Widget build(BuildContext context) {
+    return AccessGate(
+      module: 'Staff Management',
+      canAccess: (s) => s.canAccessStaff,
+      drawer: getSideDrawer(context),
+      child: _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
       appBar: AppBar(

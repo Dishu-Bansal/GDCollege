@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:gd_college/widgets/drawer.dart';
+import '../../access/widgets/access_gate.dart';
 import '../models/stock_models.dart';
 import '../../repositories/stock_repository.dart';
 import '../../providers.dart';
@@ -37,6 +38,15 @@ class _BuildingsScreenState extends ConsumerState<BuildingsScreen>
 
   @override
   Widget build(BuildContext context) {
+    return AccessGate(
+      module: 'Stock Management',
+      canAccess: (s) => s.canAccessStock,
+      drawer: getSideDrawer(context),
+      child: _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
       drawer: getSideDrawer(context),
