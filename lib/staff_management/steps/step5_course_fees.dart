@@ -21,16 +21,26 @@ class Step5CourseAndFees extends StatefulWidget {
 }
 
 class _Step5CourseAndFeesState extends State<Step5CourseAndFees> {
-  late final TextEditingController _staffIdCtrl;
   late final TextEditingController _salaryCtrl;
   late final TextEditingController _designationCtrl;
   late final TextEditingController _dateOfJoiningCtrl;
   late final TextEditingController _dateOfRelievingCtrl;
 
+  /// Category explicitly picked by the user. When untouched, it follows the
+  /// selected course (ANM/GNM → MLSN, B.ED/… → GD College, else Skill India)
+  /// so teaching staff land in the right tab without extra taps.
+  bool _categoryTouched = false;
+  String? _categoryLabel;
+
+  String get _effectiveCategoryLabel => _categoryLabel ??
+      staffGroupOfStored(widget.staff.group,
+              byCourse: widget.staff.course ?? '')
+          .label;
+
   @override
   void initState() {
     super.initState();
-    _staffIdCtrl = TextEditingController(text: widget.staff.staffId);
+    _categoryTouched = (widget.staff.group ?? '').isNotEmpty;
     _salaryCtrl = TextEditingController(text: widget.staff.salary.toString());
     _dateOfJoiningCtrl = TextEditingController(
       text: widget.staff.dateOfJoining != null
@@ -47,7 +57,6 @@ class _Step5CourseAndFeesState extends State<Step5CourseAndFees> {
 
   @override
   void dispose() {
-    _staffIdCtrl.dispose();
     _salaryCtrl.dispose();
     _dateOfJoiningCtrl.dispose();
     _dateOfRelievingCtrl.dispose();
@@ -111,12 +120,21 @@ class _Step5CourseAndFeesState extends State<Step5CourseAndFees> {
           const SectionHeader(
               title: 'Other Details', icon: Icons.menu_book),
 
-          TextFormField(
-            decoration: InputDecoration(label: Text('Staff ID')),
-            controller: _staffIdCtrl,
+          FormDropdown(
+            label: 'Category',
+            value: _effectiveCategoryLabel,
+            isRequired: true,
+            items: StaffGroup.values.map((g) => g.label).toList(),
             validator: (v) =>
-                v == null || v.isEmpty ? 'staff ID is required' : null,
-            onChanged: (v) => widget.staff.staffId = v,
+                v == null || v.isEmpty ? 'Category is required' : null,
+            onChanged: (v) => setState(() {
+              _categoryTouched = true;
+              _categoryLabel = v;
+              widget.staff.group = StaffGroup.values
+                  .firstWhere((g) => g.label == v,
+                      orElse: () => StaffGroup.skillIndia)
+                  .name;
+            }),
           ),
           SizedBox(height: 10,),
           TextFormField(

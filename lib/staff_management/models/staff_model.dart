@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:gd_college/constants.dart';
 import 'package:gd_college/models/user_session.dart';
 
 import '../../widgets/increments.dart';
@@ -68,6 +69,9 @@ class StaffModel {
   DateTime? dateOfJoining;
   DateTime? dateOfRelieving;
   String staffId;
+  /// Explicit category chosen at creation (gdCollege/mlsn/skillIndia/helper).
+  /// Null on legacy documents — [resolvedGroup] then derives it from course.
+  String? group;
 
   // File paths (local) or Firebase URLs
   String? photoName;
@@ -197,6 +201,7 @@ class StaffModel {
     this.otherFileUrls = const [],
     this.designation = '',
     this.course,
+    this.group,
     this.documentVersion = 1,
     this.isLocked = false,
     this.createdAt,
@@ -235,6 +240,7 @@ class StaffModel {
       'designation': designation,
       'course': course,
       'staffId': staffId,
+      'group': resolvedGroup.name,
       'photoUrl': photoUrl,
       'scCertificateUrl': scCertificateUrl,
       'bcCertificateUrl': bcCertificateUrl,
@@ -260,6 +266,11 @@ class StaffModel {
     };
   }
 
+  /// The tab this staff belongs to: the stored category when present,
+  /// otherwise derived from the course (legacy documents).
+  StaffGroup get resolvedGroup =>
+      staffGroupOfStored(group, byCourse: course ?? '');
+
   StaffModel clone() {
     return StaffModel(
       docId: docId,
@@ -276,6 +287,7 @@ class StaffModel {
       photoUrl: photoUrl,
       designation: designation,
       course: course,
+      group: group,
       scCertificateUrl: scCertificateUrl,
       bcCertificateUrl: bcCertificateUrl,
       appointmentLetterUrl: appointmentLetterUrl,
@@ -313,6 +325,7 @@ class StaffModel {
       panUrl: data['panurl'] ?? '',
       designation: data['designation'] ?? '',
       course: data['course'] ?? '',
+      group: data['group'] as String?,
       familyId: data['familyId'] ?? '',
       tenthUrl: data['tenth'] ?? '',
       twelfthUrl: data['twelfth'] ?? '',
