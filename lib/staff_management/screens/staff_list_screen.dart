@@ -18,8 +18,10 @@ class _StaffListScreenState extends ConsumerState<StaffListScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
 
-  // Filters
-  final TextEditingController _searchIdCtrl = TextEditingController();
+  // One group tab per staff category, plus the audit log.
+  static const List<StaffGroup> _groups = StaffGroup.values;
+
+  // Filters (shared across group tabs)
   final TextEditingController _searchNameCtrl = TextEditingController();
   String? _selectedCourse;
   String? _selectedYear;
@@ -27,19 +29,18 @@ class _StaffListScreenState extends ConsumerState<StaffListScreen>
   bool _filtersVisible = false;
 
   // Sorting
-  int _sortColumnIndex = 0;
+  int _sortColumnIndex = 1;
   bool _sortAscending = true;
 
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 2, vsync: this);
+    _tabs = TabController(length: _groups.length + 1, vsync: this);
     _tabs.addListener(() => setState(() {}));
   }
 
   @override
   void dispose() {
-    _searchIdCtrl.dispose();
     _searchNameCtrl.dispose();
     _tabs.dispose();
     super.dispose();
@@ -47,7 +48,6 @@ class _StaffListScreenState extends ConsumerState<StaffListScreen>
 
   void _clearFilters() {
     setState(() {
-      _searchIdCtrl.clear();
       _searchNameCtrl.clear();
       _selectedCourse = null;
       _selectedYear = null;
@@ -55,7 +55,6 @@ class _StaffListScreenState extends ConsumerState<StaffListScreen>
   }
 
   bool get _hasActiveFilters =>
-      _searchIdCtrl.text.isNotEmpty ||
       _searchNameCtrl.text.isNotEmpty ||
       (_selectedCourse != null && _selectedCourse != 'All') ||
       (_selectedYear != null && _selectedYear!.isNotEmpty);
@@ -181,9 +180,20 @@ class _StaffListScreenState extends ConsumerState<StaffListScreen>
           indicatorColor: Colors.amber,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white60,
-          tabs: const [
-            Tab(icon: Icon(Icons.people_outlined, size: 18), text: 'Staff'),
-            Tab(icon: Icon(Icons.history, size: 18), text: 'Global Log'),
+          tabs: [
+            const Tab(
+                icon: Icon(Icons.school_outlined, size: 18),
+                text: 'GD College'),
+            const Tab(
+                icon: Icon(Icons.medical_services_outlined, size: 18),
+                text: 'MLSN'),
+            const Tab(
+                icon: Icon(Icons.work_outline, size: 18),
+                text: 'Skill India'),
+            const Tab(
+                icon: Icon(Icons.handyman_outlined, size: 18),
+                text: 'Helper'),
+            const Tab(icon: Icon(Icons.history, size: 18), text: 'Global Log'),
           ],
         ),
       ),
@@ -191,33 +201,33 @@ class _StaffListScreenState extends ConsumerState<StaffListScreen>
       body: TabBarView(
         controller: _tabs,
         children: [
-          // Tab 0 – Staff list
-          _StaffTab(
-            searchIdCtrl: _searchIdCtrl,
-            searchNameCtrl: _searchNameCtrl,
-            selectedCourse: _selectedCourse,
-            selectedYear: _selectedYear,
-            filtersVisible: _filtersVisible,
-            sortColumnIndex: _sortColumnIndex,
-            sortAscending: _sortAscending,
-            hasActiveFilters: _hasActiveFilters,
-            onChanged: () => setState(() {}),
-            onCourseChanged: (v) => setState(() => _selectedCourse = v),
-            onYearChanged: (v) => setState(() => _selectedYear = v),
-            onClear: _clearFilters,
-            onSort: (col, asc) => setState(() {
-              _sortColumnIndex = col;
-              _sortAscending = asc;
-            }),
-            onView: _openDetail,
-            onEdit: _openEdit,
-            onDelete: _confirmDelete,
-          ),
-          // Tab 1 – Global audit log
+          for (final group in _groups)
+            _StaffTab(
+              group: group,
+              searchNameCtrl: _searchNameCtrl,
+              selectedCourse: _selectedCourse,
+              selectedYear: _selectedYear,
+              filtersVisible: _filtersVisible,
+              sortColumnIndex: _sortColumnIndex,
+              sortAscending: _sortAscending,
+              hasActiveFilters: _hasActiveFilters,
+              onChanged: () => setState(() {}),
+              onCourseChanged: (v) => setState(() => _selectedCourse = v),
+              onYearChanged: (v) => setState(() => _selectedYear = v),
+              onClear: _clearFilters,
+              onSort: (col, asc) => setState(() {
+                _sortColumnIndex = col;
+                _sortAscending = asc;
+              }),
+              onView: _openDetail,
+              onEdit: _openEdit,
+              onDelete: _confirmDelete,
+            ),
+          // Last tab – Global audit log
           const _StaffGlobalLogTab(),
         ],
       ),
-      floatingActionButton: _tabs.index == 0
+      floatingActionButton: _tabs.index < _groups.length
           ? FloatingActionButton.extended(
               onPressed: _openAdd,
               backgroundColor: const Color(0xFF1A3C6E),
@@ -234,7 +244,7 @@ class _StaffListScreenState extends ConsumerState<StaffListScreen>
 // ── Staff Tab ─────────────────────────────────────────────────────────────────
 
 class _StaffTab extends ConsumerStatefulWidget {
-  final TextEditingController searchIdCtrl;
+  final StaffGroup group;
   final TextEditingController searchNameCtrl;
   final String? selectedCourse;
   final String? selectedYear;
@@ -252,7 +262,7 @@ class _StaffTab extends ConsumerStatefulWidget {
   final void Function(StaffModel) onDelete;
 
   const _StaffTab({
-    required this.searchIdCtrl,
+    required this.group,
     required this.searchNameCtrl,
     required this.selectedCourse,
     required this.selectedYear,
@@ -286,15 +296,11 @@ class _StaffTabState extends ConsumerState<_StaffTab> {
   }
 
   List<StaffModel> _applyFilters(List<StaffModel> all) {
-    final idCtrl = widget.searchIdCtrl;
     final nameCtrl = widget.searchNameCtrl;
     final course = widget.selectedCourse;
     final year = widget.selectedYear;
     return all.where((s) {
-      final idMatch = idCtrl.text.isEmpty ||
-          s.staffId
-              .toLowerCase()
-              .contains(idCtrl.text.toLowerCase());
+      if (s.resolvedGroup != widget.group) return false;
       final nameMatch = nameCtrl.text.isEmpty ||
           s.name
               .toLowerCase()
@@ -307,7 +313,7 @@ class _StaffTabState extends ConsumerState<_StaffTab> {
           year.isEmpty ||
           year == 'All' ||
           s.dateOfJoining?.year.toString() == year;
-      return idMatch && nameMatch && courseMatch && yearMatch;
+      return nameMatch && courseMatch && yearMatch;
     }).toList();
   }
 
@@ -316,16 +322,8 @@ class _StaffTabState extends ConsumerState<_StaffTab> {
   List<StaffModel> _applySort(List<StaffModel> list) {
     list.sort((a, b) {
       int cmp;
+      // Column 0 is the serial number (display order) — not sortable.
       switch (widget.sortColumnIndex) {
-        case 0:
-          final ai = int.tryParse(a.staffId);
-          final bi = int.tryParse(b.staffId);
-          if (ai != null && bi != null) {
-            cmp = ai.compareTo(bi);
-          } else {
-            cmp = a.staffId.toLowerCase().compareTo(b.staffId.toLowerCase());
-          }
-          break;
         case 1:
           cmp = a.name.compareTo(b.name);
           break;
@@ -377,6 +375,8 @@ class _StaffTabState extends ConsumerState<_StaffTab> {
         }
 
         final all = snapshot.data ?? [];
+        final groupStaff =
+            all.where((s) => s.resolvedGroup == widget.group).toList();
         final filtered = _applySort(_applyFilters(all));
 
         return Column(
@@ -386,12 +386,11 @@ class _StaffTabState extends ConsumerState<_StaffTab> {
               curve: Curves.easeInOut,
               child: widget.filtersVisible
                   ? _FilterPanel(
-                      idCtrl: widget.searchIdCtrl,
                       nameCtrl: widget.searchNameCtrl,
                       selectedCourse: widget.selectedCourse,
                       courses: listOfCourses,
                       selectedYear: widget.selectedYear,
-                      allYears: all
+                      allYears: groupStaff
                           .map((s) => s.dateOfJoining?.year.toString() ?? '')
                           .where((y) => y.isNotEmpty)
                           .toSet()
@@ -405,10 +404,15 @@ class _StaffTabState extends ConsumerState<_StaffTab> {
                     )
                   : const SizedBox.shrink(),
             ),
-            _StatsBar(total: all.length, showing: filtered.length),
+            _StatsBar(total: groupStaff.length, showing: filtered.length),
             Expanded(
               child: filtered.isEmpty
-                  ? _EmptyState(hasFilters: widget.hasActiveFilters)
+                  ? _EmptyState(
+                      hasFilters: widget.hasActiveFilters,
+                      emptyTitle: widget.hasActiveFilters
+                          ? null
+                          : 'No ${widget.group.label} staff yet',
+                    )
                   : _StaffTable(
                       staffs: filtered,
                       sortColumnIndex: widget.sortColumnIndex,
@@ -650,7 +654,6 @@ class _StaffGlobalLogTab extends ConsumerWidget {
 // ── Filter Panel ──────────────────────────────────────────────────────────────
 
 class _FilterPanel extends StatelessWidget {
-  final TextEditingController idCtrl;
   final TextEditingController nameCtrl;
   final String? selectedCourse;
   final List<String> courses;
@@ -663,7 +666,6 @@ class _FilterPanel extends StatelessWidget {
   final VoidCallback onClear;
 
   const _FilterPanel({
-    required this.idCtrl,
     required this.nameCtrl,
     required this.selectedCourse,
     required this.courses,
@@ -710,26 +712,11 @@ class _FilterPanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _FilterField(
-                  controller: idCtrl,
-                  label: 'Staff ID',
-                  icon: Icons.badge_outlined,
-                  onChanged: (_) => onChanged(),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _FilterField(
-                  controller: nameCtrl,
-                  label: 'Name',
-                  icon: Icons.person_outline,
-                  onChanged: (_) => onChanged(),
-                ),
-              ),
-            ],
+          _FilterField(
+            controller: nameCtrl,
+            label: 'Name',
+            icon: Icons.person_outline,
+            onChanged: (_) => onChanged(),
           ),
           const SizedBox(height: 10),
           Row(
@@ -1037,9 +1024,8 @@ class _DataTable extends StatelessWidget {
         horizontalMargin: 16,
         dividerThickness: 0.5,
         columns: [
-          DataColumn(
-            label: const Text('Staff ID'),
-            onSort: (i, asc) => onSort(0, asc),
+          const DataColumn(
+            label: Text('S.No.'),
           ),
           DataColumn(
             label: const Text('Name'),
@@ -1079,21 +1065,14 @@ class _DataTable extends StatelessWidget {
               return i.isOdd ? Colors.grey.shade50 : Colors.white;
             }),
             cells: [
+              // Auto-incremented serial number in display order.
               DataCell(
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A3C6E).withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    s.staffId.isEmpty ? '—' : s.staffId,
-                    style: const TextStyle(
-                      color: Color(0xFF1A3C6E),
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
+                Text(
+                  '${i + 1}',
+                  style: const TextStyle(
+                    color: Color(0xFF1A3C6E),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
                   ),
                 ),
               ),
@@ -1191,9 +1170,8 @@ class _MobileCardList extends StatelessWidget {
                 spacing: 6,
                 runSpacing: 4,
                 children: [
-                  if (s.staffId.isNotEmpty)
-                    _SmallTag(
-                        label: s.staffId, color: const Color(0xFF1A3C6E)),
+                  _SmallTag(
+                      label: '#${i + 1}', color: const Color(0xFF1A3C6E)),
                   _SmallTag(
                     label: s.dateOfRelieving != null ? 'Previous' : 'Current',
                     color: s.dateOfRelieving != null
@@ -1247,6 +1225,10 @@ class _CourseBadge extends StatelessWidget {
         return Colors.purple.shade700;
       case 'D.P.ED':
         return Colors.orange.shade700;
+      case 'ANM':
+        return Colors.teal.shade700;
+      case 'GNM':
+        return Colors.cyan.shade800;
       case 'SKILL':
         return Colors.teal.shade700;
       default:
@@ -1428,7 +1410,8 @@ class _SmallTag extends StatelessWidget {
 
 class _EmptyState extends StatelessWidget {
   final bool hasFilters;
-  const _EmptyState({required this.hasFilters});
+  final String? emptyTitle;
+  const _EmptyState({required this.hasFilters, this.emptyTitle});
 
   @override
   Widget build(BuildContext context) {
@@ -1443,7 +1426,7 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            hasFilters ? 'No staffs match your filters' : 'No staffs yet',
+            hasFilters ? 'No staffs match your filters' : (emptyTitle ?? 'No staffs yet'),
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,

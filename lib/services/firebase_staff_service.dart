@@ -73,6 +73,7 @@ class FirebaseStaffRepository implements StaffRepository {
     'state': 'State', 'pin': 'PIN', 'mobileNo1': 'Mobile 1', 'mobileNo2': 'Mobile 2',
     'aadharNumber': 'Aadhar', 'panCard': 'PAN', 'familyId': 'Family ID',
     'designation': 'Designation', 'course': 'Course', 'salary': 'Salary',
+    'group': 'Category',
     'dateOfJoining': 'Joining Date', 'dateOfRelieving': 'Relieving Date',
     'tenthUrl': '10th Cert', 'twelfthUrl': '12th Cert',
     'graduationUrl': 'Graduation', 'postGraduationUrl': 'Post Grad', 'diplomaUrl': 'Diploma',

@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+import 'package:gd_college/constants.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_network/image_network.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -176,7 +177,7 @@ class _DetailsTab extends StatelessWidget {
           title: 'Course & Fees',
           icon: Icons.menu_book_outlined,
           fields: [
-            _Field('staff ID', staff.staffId),
+            _Field('Category', staff.resolvedGroup.label),
             _Field('Salary', staff.salary),
             _Field('Designation', staff.designation),
             _Field('Course', staff.course),

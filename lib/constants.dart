@@ -4,6 +4,52 @@ const List<String> listOfCourses = [
   'All', 'B.ED', 'D.ED', 'M.ED', 'D.P.ED', 'ANM', 'GNM', 'DDUGKY 2021', 'SKILLING', 'Other'
 ];
 
+/// The institute groups the staff records are divided into. Teaching staff
+/// fall into GD College / MLSN by their course (same course sets as
+/// students); Helper and Skill India are explicit categories chosen during
+/// staff creation.
+enum StaffGroup { gdCollege, mlsn, skillIndia, helper }
+
+extension StaffGroupLabel on StaffGroup {
+  String get label {
+    switch (this) {
+      case StaffGroup.gdCollege:
+        return 'GD College';
+      case StaffGroup.mlsn:
+        return 'MLSN';
+      case StaffGroup.skillIndia:
+        return 'Skill India';
+      case StaffGroup.helper:
+        return 'Helper';
+    }
+  }
+}
+
+/// Returns the [StaffGroup] a staff course belongs to. Any course that is
+/// neither a GD College nor an MLSN course falls to Skill India.
+StaffGroup staffGroupOfCourse(String course) {
+  final group = studentGroupOfCourse(course);
+  switch (group) {
+    case StudentGroup.gdCollege:
+      return StaffGroup.gdCollege;
+    case StudentGroup.mlsn:
+      return StaffGroup.mlsn;
+    case StudentGroup.skillIndia:
+      return StaffGroup.skillIndia;
+  }
+}
+
+/// Resolves a stored staff group name, falling back to [byCourse] when the
+/// stored value is missing or unknown (legacy documents).
+StaffGroup staffGroupOfStored(String? stored, {String byCourse = ''}) {
+  if (stored != null && stored.isNotEmpty) {
+    for (final g in StaffGroup.values) {
+      if (g.name == stored) return g;
+    }
+  }
+  return staffGroupOfCourse(byCourse);
+}
+
 /// The institute groups the student records are divided into.
 enum StudentGroup { gdCollege, mlsn, skillIndia }
 
