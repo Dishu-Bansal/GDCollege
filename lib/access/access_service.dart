@@ -21,6 +21,14 @@ class AccessService {
   static bool isAdminEmail(String? email) =>
       adminEmails.contains((email ?? '').trim().toLowerCase());
 
+  /// App-wide shared access stream. Every drawer, gate and card must use
+  /// this (never a fresh `watchAccess()`) so all screens resolve the same
+  /// session at the same time — and so the app holds one `users/{uid}`
+  /// listener instead of one per widget.
+  static Stream<AppSession?>? _sharedAccess;
+  static Stream<AppSession?> watchAccessShared() => _sharedAccess ??=
+      AccessService().watchAccess().asBroadcastStream();
+
   final FirebaseFirestore _db = db;
   static const _collection = 'users';
 

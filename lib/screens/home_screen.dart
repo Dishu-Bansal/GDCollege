@@ -564,7 +564,7 @@ class _ModuleCards extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<AppSession?>(
-      stream: AccessService().watchAccess(),
+      stream: AccessService.watchAccessShared(),
       builder: (context, snap) {
         final session = snap.data;
         bool show(bool Function(AppSession) flag) =>

@@ -25,7 +25,7 @@ class AccessGate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<AppSession?>(
-      stream: AccessService().watchAccess(),
+      stream: AccessService.watchAccessShared(),
       builder: (context, snap) {
         final session = snap.data;
         if (session != null && !canAccess(session)) {

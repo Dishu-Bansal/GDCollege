@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:gd_college/access/access_service.dart';
 import 'package:gd_college/access/app_session.dart';
@@ -20,9 +21,14 @@ import 'Helper.dart';
 getSideDrawer(BuildContext context) {
   return Drawer(
     child: StreamBuilder<AppSession?>(
-      stream: AccessService().watchAccess(),
+      stream: AccessService.watchAccessShared(),
       builder: (context, snap) {
         final session = snap.data;
+        // Synchronous admin check: the entry renders on the first frame on
+        // every screen instead of waiting for the stream to resolve.
+        final isAdmin = session?.isAdmin == true ||
+            AccessService.isAdminEmail(
+                FirebaseAuth.instance.currentUser?.email);
         final showStudents = session == null || session.canAccessStudents;
         final showStaff = session == null || session.canAccessStaff;
         final showStock = session == null || session.canAccessStock;
@@ -102,7 +108,7 @@ getSideDrawer(BuildContext context) {
                 Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserSessionsScreen()));
               },
             ),
-            if (session?.isAdmin == true)
+            if (isAdmin)
               ListTile(
                 leading: const Icon(Icons.admin_panel_settings_outlined),
                 title: const Text('Access Management'),
