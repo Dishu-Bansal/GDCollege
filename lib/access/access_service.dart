@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -20,6 +22,39 @@ class AccessService {
 
   static bool isAdminEmail(String? email) =>
       adminEmails.contains((email ?? '').trim().toLowerCase());
+
+  /// App-wide shared access state. Every drawer, gate and card must use
+  /// [watchAccessShared] (never a fresh `watchAccess()`) so all screens
+  /// resolve the same session — and so the app holds one `users/{uid}`
+  /// listener instead of one per widget.
+  ///
+  /// A plain broadcast stream is NOT enough here: it does not replay, so a
+  /// screen subscribing after the single emission (e.g. opening Access
+  /// Management later) would wait forever. Each caller therefore gets its
+  /// own stream that first replays the latest value, then follows live.
+  static final StreamController<AppSession?> _sharedController =
+      StreamController<AppSession?>.broadcast();
+  static AppSession? _latestAccess;
+  static bool _hasLatestAccess = false;
+  static bool _sharedStarted = false;
+
+  static Stream<AppSession?> watchAccessShared() async* {
+    if (!_sharedStarted) {
+      _sharedStarted = true;
+      AccessService().watchAccess().listen(
+        (s) {
+          _latestAccess = s;
+          _hasLatestAccess = true;
+          if (!_sharedController.isClosed) _sharedController.add(s);
+        },
+        onError: (Object e) {
+          if (!_sharedController.isClosed) _sharedController.addError(e);
+        },
+      );
+    }
+    if (_hasLatestAccess) yield _latestAccess;
+    yield* _sharedController.stream;
+  }
 
   final FirebaseFirestore _db = db;
   static const _collection = 'users';

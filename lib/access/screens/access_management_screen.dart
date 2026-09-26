@@ -18,7 +18,8 @@ class AccessManagementScreen extends StatefulWidget {
 
 class _AccessManagementScreenState extends State<AccessManagementScreen> {
   final _service = AccessService();
-  late final Stream<AppSession?> _sessionStream = _service.watchAccess();
+  late final Stream<AppSession?> _sessionStream =
+      AccessService.watchAccessShared();
   late final Stream<List<AppUser>> _usersStream = _service.watchUsers();
 
   String? _selectedUid;
