@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/user_session.dart';
 import '../../providers.dart';
 import '../../widgets/drawer.dart';
+import '../../access/widgets/access_gate.dart';
 import '../models/bill_models.dart';
 import 'bill_form_screen.dart';
 
@@ -94,6 +95,15 @@ class _BillManagementScreenState extends ConsumerState<BillManagementScreen>
 
   @override
   Widget build(BuildContext context) {
+    return AccessGate(
+      module: 'Bill Management',
+      canAccess: (s) => s.canAccessBills,
+      drawer: getSideDrawer(context),
+      child: _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
       drawer: getSideDrawer(context),

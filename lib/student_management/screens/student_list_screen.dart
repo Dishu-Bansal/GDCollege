@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:gd_college/constants.dart';
 import 'package:gd_college/widgets/drawer.dart';
+import '../../access/widgets/access_gate.dart';
 import '../../controllers/pagination_controller.dart';
 import '../../models/audit_log.dart';
 import '../models/student_facets.dart';
@@ -362,6 +363,15 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
 
   @override
   Widget build(BuildContext context) {
+    return AccessGate(
+      module: 'Student Management',
+      canAccess: (s) => s.canAccessStudents,
+      drawer: getSideDrawer(context),
+      child: _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     final bool showGroupActions = _tabIndex < _groupCount;
 
     return Scaffold(

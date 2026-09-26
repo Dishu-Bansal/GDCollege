@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../access/access_service.dart';
+import '../access/app_session.dart';
 import '../bill_management/screens/bill_management_screen.dart';
 import '../models/home_analytics.dart';
 import '../providers.dart';
@@ -49,62 +51,8 @@ class HomeScreen extends ConsumerWidget {
                 // Daily analytics (previous calendar day, IST)
                 _AnalyticsCard(analytics: analytics),
                 const SizedBox(height: 24),
-                // Navigation cards
-                _NavCard(
-                  icon: Icons.people_alt,
-                  label: 'Student Management',
-                  color: const Color(0xFF1565C0),
-                  onTap: () => Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const StudentListScreen(),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _NavCard(
-                  icon: Icons.badge,
-                  label: 'Staff Management',
-                  color: const Color(0xFF2E7D32),
-                  onTap: () => Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (_) => const StaffListScreen()),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _NavCard(
-                  icon: Icons.inventory_2,
-                  label: 'Stock Management',
-                  color: const Color(0xFF6A1B9A),
-                  onTap: () => Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (_) => const BuildingsScreen()),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _NavCard(
-                  icon: Icons.receipt_long,
-                  label: 'Bill Management',
-                  color: const Color(0xFF00838F),
-                  onTap: () => Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const BillManagementScreen(),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _NavCard(
-                  icon: Icons.how_to_reg,
-                  label: 'Visitor Management',
-                  color: const Color(0xFFAD1457),
-                  onTap: () => Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const VisitorManagementScreen(),
-                    ),
-                  ),
-                ),
+                // Navigation cards (gated by live access flags)
+                const _ModuleCards(),
                 const SizedBox(height: 40),
               ],
             ),
@@ -604,6 +552,102 @@ class _StatChip extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Module navigation cards (access-gated) ─────────────────────────────────
+
+class _ModuleCards extends StatelessWidget {
+  const _ModuleCards();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<AppSession?>(
+      stream: AccessService().watchAccess(),
+      builder: (context, snap) {
+        final session = snap.data;
+        bool show(bool Function(AppSession) flag) =>
+            session == null || flag(session);
+        final cards = <Widget>[];
+        void add(Widget card) {
+          if (cards.isNotEmpty) cards.add(const SizedBox(height: 16));
+          cards.add(card);
+        }
+
+        if (show((s) => s.canAccessStudents)) {
+          add(_NavCard(
+            icon: Icons.people_alt,
+            label: 'Student Management',
+            color: const Color(0xFF1565C0),
+            onTap: () => Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const StudentListScreen(),
+              ),
+            ),
+          ));
+        }
+        if (show((s) => s.canAccessStaff)) {
+          add(_NavCard(
+            icon: Icons.badge,
+            label: 'Staff Management',
+            color: const Color(0xFF2E7D32),
+            onTap: () => Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const StaffListScreen()),
+            ),
+          ));
+        }
+        if (show((s) => s.canAccessStock)) {
+          add(_NavCard(
+            icon: Icons.inventory_2,
+            label: 'Stock Management',
+            color: const Color(0xFF6A1B9A),
+            onTap: () => Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const BuildingsScreen()),
+            ),
+          ));
+        }
+        if (show((s) => s.canAccessBills)) {
+          add(_NavCard(
+            icon: Icons.receipt_long,
+            label: 'Bill Management',
+            color: const Color(0xFF00838F),
+            onTap: () => Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const BillManagementScreen(),
+              ),
+            ),
+          ));
+        }
+        if (show((s) => s.canAccessVisitors)) {
+          add(_NavCard(
+            icon: Icons.how_to_reg,
+            label: 'Visitor Management',
+            color: const Color(0xFFAD1457),
+            onTap: () => Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const VisitorManagementScreen(),
+              ),
+            ),
+          ));
+        }
+        if (cards.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Text(
+              'You currently have no module access.\nPlease contact the admin.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+            ),
+          );
+        }
+        return Column(children: cards);
+      },
     );
   }
 }

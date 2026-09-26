@@ -3,6 +3,7 @@ import 'package:gd_college/screens/home_screen.dart';
 import 'package:path/path.dart';
 
 import '../models/user_session.dart';
+import '../services/session_service.dart';
 
 void main() => runApp(const MyApp());
 
@@ -23,7 +24,9 @@ class MyApp extends StatelessWidget {
 }
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  /// Optional banner (e.g. after an inactivity auto logout).
+  final String? notice;
+  const LoginPage({super.key, this.notice});
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -56,6 +59,37 @@ class _LoginPageState extends State<LoginPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (widget.notice != null) ...[
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border:
+                                Border.all(color: Colors.amber.shade300),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.timer_off_outlined,
+                                  size: 18,
+                                  color: Colors.amber.shade800),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  widget.notice!,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.amber.shade900,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                       // --- Company Logo ---
                       Image.asset('web/assets/logo.png'),
                       const SizedBox(height: 16),
@@ -116,7 +150,8 @@ class _LoginPageState extends State<LoginPage> {
                               );
 
                               if (error == null) {
-                                // Success! Move to Home
+                                // Success! Open a tracked session, move to Home
+                                await SessionService.instance.startSession();
                                 Navigator.pushReplacement(context, MaterialPageRoute(
                                   builder: (_) =>
                                       const HomeScreen(),

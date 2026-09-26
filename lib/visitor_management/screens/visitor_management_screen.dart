@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../constants.dart';
 import '../../providers.dart';
 import '../../widgets/drawer.dart';
+import '../../access/widgets/access_gate.dart';
 import '../../widgets/stock_widgets.dart';
 import '../models/visitor_models.dart';
 import '../repositories/visitor_repository.dart';
@@ -47,6 +48,15 @@ class _VisitorManagementScreenState
 
   @override
   Widget build(BuildContext context) {
+    return AccessGate(
+      module: 'Visitor Management',
+      canAccess: (s) => s.canAccessVisitors,
+      drawer: getSideDrawer(context),
+      child: _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     final service = ref.read(visitorRepositoryProvider);
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
