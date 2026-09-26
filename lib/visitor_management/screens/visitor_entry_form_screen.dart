@@ -150,7 +150,9 @@ class _VisitorEntryFormScreenState
       return;
     }
     final fromPlace = _fromCtrl.text.trim();
-    if (fromPlace.isEmpty) {
+    // Staff already have address details in the staff list — Where From is
+    // optional for them, required for external visitors.
+    if (!_isStaff && fromPlace.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Enter where the visitor is from')),
       );
@@ -255,12 +257,14 @@ class _VisitorEntryFormScreenState
               ),
               const SizedBox(height: 12),
 
-              // Where they are from
+              // Where they are from (optional for staff)
               TextField(
                 controller: _fromCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Where are they from? *',
-                  prefixIcon: Icon(Icons.place_outlined),
+                decoration: InputDecoration(
+                  labelText: _isStaff
+                      ? 'Where are they from? (optional)'
+                      : 'Where are they from? *',
+                  prefixIcon: const Icon(Icons.place_outlined),
                 ),
               ),
               const SizedBox(height: 20),
