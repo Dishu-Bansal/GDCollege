@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 // Alias to avoid conflict with package name
 import 'package:file_picker/file_picker.dart' as file_picker;
+import 'package:url_launcher/url_launcher.dart';
 
 class FilePicker extends StatelessWidget {
   final String label;
@@ -16,6 +17,10 @@ class FilePicker extends StatelessWidget {
   final bool imageOnly;
   final bool isRequired;
 
+  /// Already-uploaded file URL (edit mode). Shown as a "view current file"
+  /// link below the picker so the user can compare before re-uploading.
+  final String? existingUrl;
+
   const FilePicker({
     super.key,
     required this.label,
@@ -25,6 +30,7 @@ class FilePicker extends StatelessWidget {
     required this.onFileRemoved,
     this.imageOnly = false,
     this.isRequired = false,
+    this.existingUrl,
   });
 
   Future<void> _pickFile(BuildContext context) async {
@@ -200,6 +206,24 @@ class FilePicker extends StatelessWidget {
               ),
             ),
           ),
+          // Link to the currently uploaded file (if any), so the user can
+          // compare before deciding to upload a replacement.
+          if (existingUrl != null && existingUrl!.isNotEmpty)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4),
+                ),
+                icon: const Icon(Icons.visibility_outlined, size: 14),
+                label: const Text('View current file',
+                    style: TextStyle(fontSize: 12)),
+                onPressed: () =>
+                    launchUrl(Uri.parse(existingUrl!)),
+              ),
+            ),
         ],
       ),
     );

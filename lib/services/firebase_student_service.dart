@@ -630,6 +630,31 @@ class FirebaseStudentRepository implements StudentRepository {
       );
     }
 
+    if (student.familyIdDocData != null) {
+      student.familyIdDocUrl = await uploadFile(
+        localPath: student.familyIdDocData!,
+        storagePath: '$base/family_id${_ext(student.familyIdDocName!)}',
+        onProgress: (p) => onProgress?.call('Family ID', p),
+      );
+    }
+
+    if (student.haryanaResidenceData != null) {
+      student.haryanaResidenceUrl = await uploadFile(
+        localPath: student.haryanaResidenceData!,
+        storagePath:
+            '$base/haryana_residence${_ext(student.haryanaResidenceName!)}',
+        onProgress: (p) => onProgress?.call('Haryana Residence', p),
+      );
+    }
+
+    if (student.abcIdData != null) {
+      student.abcIdUrl = await uploadFile(
+        localPath: student.abcIdData!,
+        storagePath: '$base/abc_id${_ext(student.abcIdName!)}',
+        onProgress: (p) => onProgress?.call('ABC ID', p),
+      );
+    }
+
     final urls = <String>[];
     for (int i = 0; i < student.otherFileData.length; i++) {
       final path = student.otherFileData[i];
