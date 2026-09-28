@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../models/stock_models.dart';
 import '../../repositories/stock_repository.dart';
 import '../../providers.dart';
@@ -6,13 +6,37 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../widgets/stock_widgets.dart';
 import 'rooms_screen.dart';
 
-class FloorsScreen extends ConsumerWidget {
+import '../widgets/location_items_tab.dart';
+
+class FloorsScreen extends ConsumerStatefulWidget {
   final BuildingModel building;
   const FloorsScreen({super.key, required this.building});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<FloorsScreen> createState() => _FloorsScreenState();
+}
+
+class _FloorsScreenState extends ConsumerState<FloorsScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabs;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabs = TabController(length: 2, vsync: this);
+    _tabs.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final service = ref.watch(stockRepositoryProvider);
+    final building = widget.building;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
@@ -21,52 +45,55 @@ class FloorsScreen extends ConsumerWidget {
             children: [
               Text(building.name,
                   style: const TextStyle(fontWeight: FontWeight.w700)),
-              const Text('Floors',
+              const Text('Floors & Items',
                   style:
                   TextStyle(fontSize: 12, color: Colors.white70)),
             ]),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            tooltip: 'Add Floor',
-            onPressed: () => _addFloor(context, service),
+          if (_tabs.index == 0)
+            IconButton(
+              icon: const Icon(Icons.add),
+              tooltip: 'Add Floor',
+              onPressed: () => _addFloor(context, service),
+            ),
+        ],
+        bottom: TabBar(
+          controller: _tabs,
+          indicatorColor: Colors.amber,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white60,
+          tabs: [
+            Tab(icon: Icon(Icons.layers_outlined, size: 18), text: 'Floors'),
+            Tab(
+                icon: Icon(Icons.inventory_2_outlined, size: 18),
+                text: 'Items'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabs,
+        children: [
+          _FloorsList(
+            building: building,
+            service: service,
+            onAdd: () => _addFloor(context, service),
+          ),
+          LocationItemsTab(
+            buildingId: building.id!,
+            scopeLabel: building.name,
           ),
         ],
       ),
-      body: StreamBuilder<List<FloorModel>>(
-        stream: service.watchFloors(building.id!),
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final floors = snap.data ?? [];
-          if (floors.isEmpty) {
-            return StockEmptyState(
-              message:
-              'No floors in ${building.name}.\nAdd the first floor.',
-              actionLabel: 'Add Floor',
-              onAction: () => _addFloor(context, service),
-            );
-          }
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: floors.length,
-            itemBuilder: (_, i) => _FloorCard(
-              floor: floors[i],
-              building: building,
-              service: service,
-            ),
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _addFloor(context, service),
-        backgroundColor: const Color(0xFF1A3C6E),
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('Add Floor',
-            style: TextStyle(
-                color: Colors.white, fontWeight: FontWeight.w600)),
-      ),
+      floatingActionButton: _tabs.index == 0
+          ? FloatingActionButton.extended(
+              onPressed: () => _addFloor(context, service),
+              backgroundColor: const Color(0xFF1A3C6E),
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text('Add Floor',
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w600)),
+            )
+          : null,
     );
   }
 
@@ -75,7 +102,46 @@ class FloorsScreen extends ConsumerWidget {
     final name = await showNameDialog(context,
         title: 'Add Floor',
         hint: 'e.g. Ground Floor, 1st Floor');
-    if (name != null) await service.addFloor(building.id!, name);
+    if (name != null) await service.addFloor(widget.building.id!, name);
+  }
+}
+
+class _FloorsList extends StatelessWidget {
+  final BuildingModel building;
+  final StockRepository service;
+  final VoidCallback onAdd;
+
+  const _FloorsList(
+      {required this.building, required this.service, required this.onAdd});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<FloorModel>>(
+      stream: service.watchFloors(building.id!),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final floors = snap.data ?? [];
+        if (floors.isEmpty) {
+          return StockEmptyState(
+            message:
+            'No floors in ${building.name}.\nAdd the first floor.',
+            actionLabel: 'Add Floor',
+            onAction: onAdd,
+          );
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: floors.length,
+          itemBuilder: (_, i) => _FloorCard(
+            floor: floors[i],
+            building: building,
+            service: service,
+          ),
+        );
+      },
+    );
   }
 }
 

@@ -513,6 +513,46 @@ class FirebaseStockRepository implements StockRepository {
     return result;
   }
 
+  // ── Consolidated (building/floor) reads ────────────────────────────────
+
+  /// Live, unfiltered collection-group stream (no custom index required).
+  /// Parent ids come from each doc's path:
+  /// buildings/{b}/floors/{f}/rooms/{r}/items/{itemId}.
+  @override
+  Stream<List<ScopedStockItem>> watchAllRoomItems() =>
+      _db.collectionGroup('items').snapshots().map((s) => s.docs.map((d) {
+            final ref = d.reference;
+            return ScopedStockItem(
+              buildingId:
+                  ref.parent.parent!.parent.parent!.parent.parent!.id,
+              floorId: ref.parent.parent!.parent.parent!.id,
+              roomId: ref.parent.parent!.id,
+              item: StockItem.fromFirestore(d.id, d.data()),
+            );
+          }).toList());
+
+  /// Floor + room names for one building (handful of reads). One-shot:
+  /// renames reflect on reopen.
+  @override
+  Future<
+      ({
+        Map<String, String> floorNames,
+        Map<String, String> roomNames
+      })> fetchLocationNames(String buildingId) async {
+    final floorNames = <String, String>{};
+    final roomNames = <String, String>{};
+    final floorsSnap = await _floors(buildingId).get();
+    for (final f in floorsSnap.docs) {
+      floorNames[f.id] = (f.data()['name'] as String?) ?? f.id;
+      final roomsSnap = await _rooms(buildingId, f.id).get();
+      for (final r in roomsSnap.docs) {
+        roomNames['${f.id}/${r.id}'] =
+            (r.data()['name'] as String?) ?? r.id;
+      }
+    }
+    return (floorNames: floorNames, roomNames: roomNames);
+  }
+
   /// Reads the most recent [limit] price-history entries for a catalog item.
   @override
   Future<List<ItemPriceLog>> fetchItemPriceHistory(

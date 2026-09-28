@@ -5,9 +5,10 @@ import '../../repositories/stock_repository.dart';
 import '../../providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../widgets/stock_widgets.dart';
+import '../widgets/location_items_tab.dart';
 import 'room_detail_screen.dart';
 
-class RoomsScreen extends ConsumerWidget {
+class RoomsScreen extends ConsumerStatefulWidget {
   final BuildingModel building;
   final FloorModel floor;
 
@@ -15,8 +16,31 @@ class RoomsScreen extends ConsumerWidget {
       {super.key, required this.building, required this.floor});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<RoomsScreen> createState() => _RoomsScreenState();
+}
+
+class _RoomsScreenState extends ConsumerState<RoomsScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabs;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabs = TabController(length: 2, vsync: this);
+    _tabs.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final service = ref.watch(stockRepositoryProvider);
+    final building = widget.building;
+    final floor = widget.floor;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
@@ -25,55 +49,59 @@ class RoomsScreen extends ConsumerWidget {
             children: [
               Text(floor.name,
                   style: const TextStyle(fontWeight: FontWeight.w700)),
-              Text('${building.name}  ›  Rooms',
+              Text('${building.name}  ›  Rooms & Items',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                       fontSize: 12, color: Colors.white70)),
             ]),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            tooltip: 'Add Room',
-            onPressed: () => _addRoom(context, service),
+          if (_tabs.index == 0)
+            IconButton(
+              icon: const Icon(Icons.add),
+              tooltip: 'Add Room',
+              onPressed: () => _addRoom(context, service),
+            ),
+        ],
+        bottom: TabBar(
+          controller: _tabs,
+          indicatorColor: Colors.amber,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white60,
+          tabs: const [
+            Tab(icon: Icon(Icons.meeting_room_outlined, size: 18), text: 'Rooms'),
+            Tab(
+                icon: Icon(Icons.inventory_2_outlined, size: 18),
+                text: 'Items'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabs,
+        children: [
+          _RoomsList(
+            building: building,
+            floor: floor,
+            service: service,
+            onAdd: () => _addRoom(context, service),
+          ),
+          LocationItemsTab(
+            buildingId: building.id!,
+            floorId: floor.id!,
+            scopeLabel: floor.name,
           ),
         ],
       ),
-      body: StreamBuilder<List<RoomModel>>(
-        stream: service.watchRooms(building.id!, floor.id!),
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final rooms = snap.data ?? [];
-          if (rooms.isEmpty) {
-            return StockEmptyState(
-              message:
-              'No rooms on ${floor.name}.\nAdd a room to start tracking stock.',
-              actionLabel: 'Add Room',
-              onAction: () => _addRoom(context, service),
-            );
-          }
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: rooms.length,
-            itemBuilder: (_, i) => _RoomCard(
-              room: rooms[i],
-              building: building,
-              floor: floor,
-              service: service,
-            ),
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _addRoom(context, service),
-        backgroundColor: const Color(0xFF1A3C6E),
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('Add Room',
-            style: TextStyle(
-                color: Colors.white, fontWeight: FontWeight.w600)),
-      ),
+      floatingActionButton: _tabs.index == 0
+          ? FloatingActionButton.extended(
+              onPressed: () => _addRoom(context, service),
+              backgroundColor: const Color(0xFF1A3C6E),
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text('Add Room',
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w600)),
+            )
+          : null,
     );
   }
 
@@ -83,8 +111,53 @@ class RoomsScreen extends ConsumerWidget {
         title: 'Add Room',
         hint: 'e.g. Room 101, Lab A, Store Room');
     if (name != null) {
-      await service.addRoom(building.id!, floor.id!, name);
+      await service.addRoom(
+          widget.building.id!, widget.floor.id!, name);
     }
+  }
+}
+
+class _RoomsList extends StatelessWidget {
+  final BuildingModel building;
+  final FloorModel floor;
+  final StockRepository service;
+  final VoidCallback onAdd;
+
+  const _RoomsList(
+      {required this.building,
+      required this.floor,
+      required this.service,
+      required this.onAdd});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<RoomModel>>(
+      stream: service.watchRooms(building.id!, floor.id!),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final rooms = snap.data ?? [];
+        if (rooms.isEmpty) {
+          return StockEmptyState(
+            message:
+            'No rooms on ${floor.name}.\nAdd a room to start tracking stock.',
+            actionLabel: 'Add Room',
+            onAction: onAdd,
+          );
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: rooms.length,
+          itemBuilder: (_, i) => _RoomCard(
+            room: rooms[i],
+            building: building,
+            floor: floor,
+            service: service,
+          ),
+        );
+      },
+    );
   }
 }
 
