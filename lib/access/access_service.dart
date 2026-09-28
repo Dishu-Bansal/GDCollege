@@ -32,13 +32,18 @@ class AccessService {
   /// screen subscribing after the single emission (e.g. opening Access
   /// Management later) would wait forever. Each caller therefore gets its
   /// own stream that first replays the latest value, then follows live.
+  ///
+  /// The per-caller stream is broadcast-insulated: even if the framework
+  /// ever attaches twice to the same instance (drawer open/close cycles,
+  /// route transitions), it degrades to live-only for the second
+  /// attachment instead of throwing "Stream has already been listened to".
   static final StreamController<AppSession?> _sharedController =
       StreamController<AppSession?>.broadcast();
   static AppSession? _latestAccess;
   static bool _hasLatestAccess = false;
   static bool _sharedStarted = false;
 
-  static Stream<AppSession?> watchAccessShared() async* {
+  static Stream<AppSession?> watchAccessShared() {
     if (!_sharedStarted) {
       _sharedStarted = true;
       AccessService().watchAccess().listen(
@@ -52,6 +57,14 @@ class AccessService {
         },
       );
     }
+    return _replayThenLive().asBroadcastStream(
+      // Tear down the per-caller generator when its last listener leaves
+      // so rebuilt screens don't accumulate dead subscriptions.
+      onCancel: (sub) => sub.cancel(),
+    );
+  }
+
+  static Stream<AppSession?> _replayThenLive() async* {
     if (_hasLatestAccess) yield _latestAccess;
     yield* _sharedController.stream;
   }
