@@ -498,8 +498,7 @@ class FirebaseStudentRepository implements StudentRepository {
         .where('missingDocsCount', isGreaterThan: 0)
         .get();
     return snap.docs
-        .map((d) => StudentModel.fromFirestore(
-            d.id, d.data() as Map<String, dynamic>))
+        .map((d) => StudentModel.fromFirestore(d.id, d.data()))
         .toList();
   }
 
@@ -512,7 +511,7 @@ class FirebaseStudentRepository implements StudentRepository {
     var batch = _firestore.batch();
     var pending = 0;
     for (final d in snap.docs) {
-      final data = d.data() as Map<String, dynamic>;
+      final data = d.data();
       final s = StudentModel.fromFirestore(d.id, data);
       final missing = missingStudentDocuments(s);
       batch.update(d.reference, {

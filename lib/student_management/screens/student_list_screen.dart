@@ -7,7 +7,6 @@ import '../../access/widgets/access_gate.dart';
 import '../../controllers/pagination_controller.dart';
 import '../../models/audit_log.dart';
 import '../models/student_facets.dart';
-import '../models/student_docs_check.dart';
 import '../models/student_model.dart';
 import '../../repositories/student_repository.dart';
 import '../../providers.dart';
@@ -657,8 +656,7 @@ class _MissingDocsList extends StatelessWidget {
   Widget build(BuildContext context) {
     // Server-flagged incomplete docs (single-field range query — cheap even
     // at 2000+ records), then group/text/chip narrowing in memory over that
-    // small result set. The live recompute below guards against flags
-    // stamped under older rules.
+    // small result set. Flags are trusted as stamped (refreshed on save).
     return FutureBuilder<List<StudentModel>>(
       future: service.fetchIncompleteStudents(),
       builder: (context, snap) {
@@ -690,7 +688,7 @@ class _MissingDocsList extends StatelessWidget {
           if (courses.isNotEmpty && !courses.contains(s.nameOfCourse)) {
             return false;
           }
-          return missingStudentDocuments(s).isNotEmpty;
+          return true;
         }).toList()
           ..sort(sorter);
         if (incomplete.isEmpty) {
@@ -1560,10 +1558,9 @@ class _MobileList extends StatelessWidget {
                   label: s.yearOfAdmission.toString(),
                   color: Colors.amber.shade800,
                 ),
-              if (missingStudentDocuments(s).isNotEmpty)
+              if (s.missingDocsCount > 0)
                 Tooltip(
-                  message:
-                      'Missing: ${missingStudentDocuments(s).join(', ')}',
+                  message: 'Missing: ${s.missingDocs.join(', ')}',
                   child: _SmallTag(
                       label: 'Docs missing', color: Colors.red),
                 ),
@@ -1595,17 +1592,16 @@ class _MobileList extends StatelessWidget {
 String _fmtDate(DateTime d) => '${d.day}/${d.month}/${d.year}';
 
 /// Red warning on a student row when required documents are missing.
-/// Tooltip names the gaps; creation/editing stays unblocked.
+/// Driven by the stored denormalized flags (refreshed on every save).
 class _DocsAlert extends StatelessWidget {
   final StudentModel student;
   const _DocsAlert({required this.student});
 
   @override
   Widget build(BuildContext context) {
-    final missing = missingStudentDocuments(student);
-    if (missing.isEmpty) return const SizedBox.shrink();
+    if (student.missingDocsCount <= 0) return const SizedBox.shrink();
     return Tooltip(
-      message: 'Missing documents: ${missing.join(', ')}',
+      message: 'Missing documents: ${student.missingDocs.join(', ')}',
       child: const Icon(Icons.warning_amber_rounded,
           size: 16, color: Colors.red),
     );

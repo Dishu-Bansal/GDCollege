@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers.dart';
-import '../student_management/models/student_docs_check.dart';
 import '../student_management/models/student_model.dart';
 import 'drawer.dart';
 
@@ -105,9 +104,8 @@ class _HelperState extends ConsumerState<Helper> {
     setState(() => _running = false);
   }
 
-  /// Read-only completeness audit over every student: no schema migration is
-  /// needed (checks are computed; old records just report gaps), so this
-  /// lists who still needs uploads and what exactly is missing.
+  /// Read-only completeness audit over every student, driven by the stored
+  /// denormalized flags (run the backfill first for pre-flag records).
   Future<void> _runDocsAudit() async {
     if (_running) return;
     setState(() {
@@ -119,8 +117,9 @@ class _HelperState extends ConsumerState<Helper> {
           await ref.read(studentRepositoryProvider).fetchAllStudents();
       final incomplete = <MapEntry<StudentModel, List<String>>>[];
       for (final s in all) {
-        final missing = missingStudentDocuments(s);
-        if (missing.isNotEmpty) incomplete.add(MapEntry(s, missing));
+        if (s.missingDocsCount > 0) {
+          incomplete.add(MapEntry(s, s.missingDocs));
+        }
       }
       incomplete.sort((a, b) => a.key.name.compareTo(b.key.name));
       if (!mounted) return;
