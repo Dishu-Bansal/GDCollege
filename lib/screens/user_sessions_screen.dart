@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../access/widgets/access_gate.dart';
 import '../services/session_service.dart';
 import '../widgets/drawer.dart';
 
@@ -82,6 +83,15 @@ class _UserSessionsScreenState extends ConsumerState<UserSessionsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return AccessGate(
+      module: 'User Sessions',
+      canAccess: (s) => s.isAdmin,
+      drawer: getSideDrawer(context),
+      child: _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     final service = ref.watch(sessionServiceProvider);
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),

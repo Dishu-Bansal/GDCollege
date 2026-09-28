@@ -101,13 +101,14 @@ getSideDrawer(BuildContext context) {
                   Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const VisitorManagementScreen()));
                 },
               ),
-            ListTile(
-              leading: const Icon(Icons.access_time),
-              title: const Text('User Sessions'),
-              onTap: () {
-                Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserSessionsScreen()));
-              },
-            ),
+            if (isAdmin)
+              ListTile(
+                leading: const Icon(Icons.access_time),
+                title: const Text('User Sessions'),
+                onTap: () {
+                  Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserSessionsScreen()));
+                },
+              ),
             if (isAdmin)
               ListTile(
                 leading: const Icon(Icons.admin_panel_settings_outlined),
