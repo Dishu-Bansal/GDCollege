@@ -1,7 +1,9 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../access/access_service.dart';
 import '../access/app_session.dart';
+import '../access/screens/access_management_screen.dart';
 import '../bill_management/screens/bill_management_screen.dart';
 import '../models/home_analytics.dart';
 import '../providers.dart';
@@ -9,6 +11,7 @@ import '../student_management/screens/student_list_screen.dart';
 import '../staff_management/screens/staff_list_screen.dart';
 import '../stock_management/screens/buildings_screen.dart';
 import '../visitor_management/screens/visitor_management_screen.dart';
+import 'user_sessions_screen.dart';
 import '../widgets/drawer.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -53,6 +56,8 @@ class HomeScreen extends ConsumerWidget {
                 const SizedBox(height: 24),
                 // Navigation cards (gated by live access flags)
                 const _ModuleCards(),
+                // Admin cards (visible to dishubansal@lklms.com only)
+                const _AdminCards(),
                 const SizedBox(height: 40),
               ],
             ),
@@ -552,6 +557,54 @@ class _StatChip extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Admin cards (admin only) ─────────────────────────────────────────────────
+
+class _AdminCards extends StatelessWidget {
+  const _AdminCards();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<AppSession?>(
+      stream: AccessService.watchAccessShared(),
+      builder: (context, snap) {
+        final session = snap.data;
+        final isAdmin = session?.isAdmin == true ||
+            AccessService.isAdminEmail(
+                FirebaseAuth.instance.currentUser?.email);
+        if (!isAdmin) return const SizedBox.shrink();
+        return Column(
+          children: [
+            const SizedBox(height: 16),
+            _NavCard(
+              icon: Icons.access_time,
+              label: 'User Sessions',
+              color: const Color(0xFF4E342E),
+              onTap: () => Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const UserSessionsScreen(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _NavCard(
+              icon: Icons.admin_panel_settings_outlined,
+              label: 'Access Management',
+              color: const Color(0xFF37474F),
+              onTap: () => Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const AccessManagementScreen(),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
