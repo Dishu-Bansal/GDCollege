@@ -1,6 +1,3 @@
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
-
 import 'package:excel/excel.dart';
 import 'package:flutter/material.dart';
 import 'package:gd_college/constants.dart';
@@ -331,7 +328,9 @@ class _StudentDownloadDialogState extends State<_StudentDownloadDialog> {
             if (_columns.contains(f.label)) f,
       ];
 
+      // Rename the default empty Sheet1 instead of adding a second sheet.
       final excel = Excel.createExcel();
+      excel.rename('Sheet1', 'Students');
       final sheet = excel['Students'];
       for (var c = 0; c < fields.length; c++) {
         sheet
@@ -348,20 +347,14 @@ class _StudentDownloadDialogState extends State<_StudentDownloadDialog> {
         }
       }
 
-      final bytes = excel.save();
-      if (bytes == null) throw StateError('Excel encoding failed');
       final stamp =
           DateTime.now().toIso8601String().split('T').first;
       final filename =
           'students_${widget.group.name}_$stamp.xlsx';
-      final blob = html.Blob([
-        bytes
-      ], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      final url = html.Url.createObjectUrlFromBlob(blob);
-      html.AnchorElement(href: url)
-        ..setAttribute('download', filename)
-        ..click();
-      html.Url.revokeObjectUrl(url);
+      // save() triggers the single browser download on web and returns
+      // the bytes (null only if encoding failed).
+      final bytes = excel.save(fileName: filename);
+      if (bytes == null) throw StateError('Excel encoding failed');
 
       if (!mounted) return;
       Navigator.pop(context);
