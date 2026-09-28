@@ -99,6 +99,7 @@ class _Step3IdsAndCertificatesState extends State<Step3IdsAndCertificates> {
             label: 'Aadhar Card',
             filePath: widget.student.aadharData,
             filename: widget.student.aadharName,
+            existingUrl: widget.student.aadharUrl,
             onFilePicked: (data, name) =>
                 setState(() {widget.student.aadharData = data; widget.student.aadharName = name;}),
             onFileRemoved: () =>
@@ -108,6 +109,7 @@ class _Step3IdsAndCertificatesState extends State<Step3IdsAndCertificates> {
             label: 'PAN Card',
             filePath: widget.student.panData,
             filename: widget.student.panName,
+            existingUrl: widget.student.panUrl,
             onFilePicked: (data, name) =>
                 setState(() {widget.student.panData = data; widget.student.panName = name;}),
             onFileRemoved: () =>
@@ -115,9 +117,41 @@ class _Step3IdsAndCertificatesState extends State<Step3IdsAndCertificates> {
           ),
 
           FilePicker(
+            label: 'Family ID',
+            filePath: widget.student.familyIdDocData,
+            filename: widget.student.familyIdDocName,
+            existingUrl: widget.student.familyIdDocUrl,
+            onFilePicked: (data, name) =>
+                setState(() {widget.student.familyIdDocData = data; widget.student.familyIdDocName = name;}),
+            onFileRemoved: () =>
+                setState(() {widget.student.familyIdDocData = null; widget.student.familyIdDocName = null;}),
+          ),
+          FilePicker(
+            label: 'Haryana Residence Certificate',
+            filePath: widget.student.haryanaResidenceData,
+            filename: widget.student.haryanaResidenceName,
+            existingUrl: widget.student.haryanaResidenceUrl,
+            onFilePicked: (data, name) =>
+                setState(() {widget.student.haryanaResidenceData = data; widget.student.haryanaResidenceName = name;}),
+            onFileRemoved: () =>
+                setState(() {widget.student.haryanaResidenceData = null; widget.student.haryanaResidenceName = null;}),
+          ),
+          FilePicker(
+            label: 'ABC ID',
+            filePath: widget.student.abcIdData,
+            filename: widget.student.abcIdName,
+            existingUrl: widget.student.abcIdUrl,
+            onFilePicked: (data, name) =>
+                setState(() {widget.student.abcIdData = data; widget.student.abcIdName = name;}),
+            onFileRemoved: () =>
+                setState(() {widget.student.abcIdData = null; widget.student.abcIdName = null;}),
+          ),
+
+          FilePicker(
             label: 'SC Certificate',
             filePath: widget.student.scCertificateData,
             filename: widget.student.scCertificateName,
+            existingUrl: widget.student.scCertificateUrl,
             onFilePicked: (data, name) =>
                 setState(() {widget.student.scCertificateData = data; widget.student.scCertificateName = name;}),
             onFileRemoved: () =>
@@ -128,6 +162,7 @@ class _Step3IdsAndCertificatesState extends State<Step3IdsAndCertificates> {
             label: 'BC Certificate',
             filePath: widget.student.bcCertificateData,
             filename: widget.student.bcCertificateName,
+            existingUrl: widget.student.bcCertificateUrl,
             onFilePicked: (data, name) =>
                 setState(() { widget.student.bcCertificateData = data; widget.student.bcCertificateName = name;}),
             onFileRemoved: () =>
@@ -138,6 +173,7 @@ class _Step3IdsAndCertificatesState extends State<Step3IdsAndCertificates> {
             label: 'Sports Certificate',
             filePath: widget.student.sportsCertificateData,
             filename: widget.student.sportsCertificateName,
+            existingUrl: widget.student.sportsCertificateUrl,
             onFilePicked: (data, name) =>
                 setState(() {widget.student.sportsCertificateData = data; widget.student.sportsCertificateName = name;}),
             onFileRemoved: () =>

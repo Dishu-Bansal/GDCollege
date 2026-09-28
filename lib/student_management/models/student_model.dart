@@ -88,6 +88,16 @@ class StudentModel {
   String? sportsCertificateName;
   Uint8List? sportsCertificateData;
   String? sportsCertificateUrl;
+  // Optional uploads; absent on students created before this feature (null).
+  String? familyIdDocName;
+  Uint8List? familyIdDocData;
+  String? familyIdDocUrl;
+  String? haryanaResidenceName;
+  Uint8List? haryanaResidenceData;
+  String? haryanaResidenceUrl;
+  String? abcIdName;
+  Uint8List? abcIdData;
+  String? abcIdUrl;
   List<String> otherFileNames;
   List<Uint8List> otherFileData;
   List<String> otherFileUrls;
@@ -160,6 +170,15 @@ class StudentModel {
     this.sportsCertificateName,
     this.sportsCertificateData,
     this.sportsCertificateUrl,
+    this.familyIdDocName,
+    this.familyIdDocData,
+    this.familyIdDocUrl,
+    this.haryanaResidenceName,
+    this.haryanaResidenceData,
+    this.haryanaResidenceUrl,
+    this.abcIdName,
+    this.abcIdData,
+    this.abcIdUrl,
     this.otherFileNames = const [],
     this.otherFileData = const [],
     this.otherFileUrls = const [],
@@ -209,6 +228,9 @@ class StudentModel {
       'scCertificateUrl': scCertificateUrl,
       'bcCertificateUrl': bcCertificateUrl,
       'sportsCertificateUrl': sportsCertificateUrl,
+      'familyIdDocUrl': familyIdDocUrl,
+      'haryanaResidenceUrl': haryanaResidenceUrl,
+      'abcIdUrl': abcIdUrl,
       'otherFileUrls': otherFileUrls,
       'documentVersion': documentVersion,
       'isLocked': isLocked,
@@ -242,6 +264,9 @@ class StudentModel {
       scCertificateUrl: scCertificateUrl,
       bcCertificateUrl: bcCertificateUrl,
       sportsCertificateUrl: sportsCertificateUrl,
+      familyIdDocUrl: familyIdDocUrl,
+      haryanaResidenceUrl: haryanaResidenceUrl,
+      abcIdUrl: abcIdUrl,
       otherFileUrls: List.from(otherFileUrls),
       documentVersion: documentVersion, isLocked: isLocked,
       createdAt: createdAt, updatedAt: updatedAt,
@@ -314,6 +339,10 @@ class StudentModel {
       scCertificateUrl: data['scCertificateUrl'],
       bcCertificateUrl: data['bcCertificateUrl'],
       sportsCertificateUrl: data['sportsCertificateUrl'],
+      // Pre-feature documents lack these keys → null → upload prompt.
+      familyIdDocUrl: data['familyIdDocUrl'],
+      haryanaResidenceUrl: data['haryanaResidenceUrl'],
+      abcIdUrl: data['abcIdUrl'],
       otherFileUrls: List<String>.from(data['otherFileUrls'] ?? []),
       otherFileNames: const [],
       documentVersion: data['documentVersion'] ?? 1,
