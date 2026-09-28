@@ -9,6 +9,10 @@ class VisitorModel {
   DateTime? firstVisitAt;
   DateTime? lastVisitAt;
 
+  /// Last check-out time (null while the visitor is inside or has never
+  /// checked out through a tracked visit).
+  DateTime? lastCheckOutAt;
+
   /// Last known car license plate (used for autocomplete suggestions).
   String vehicleNumber;
 
@@ -21,6 +25,7 @@ class VisitorModel {
     this.visitCount = 0,
     this.firstVisitAt,
     this.lastVisitAt,
+    this.lastCheckOutAt,
     this.vehicleNumber = '',
     this.fromPlace = '',
   });
@@ -36,6 +41,9 @@ class VisitorModel {
         lastVisitAt: d['lastVisitAt'] != null
             ? DateTime.tryParse(d['lastVisitAt'])
             : null,
+        lastCheckOutAt: d['lastCheckOutAt'] != null
+            ? DateTime.tryParse(d['lastCheckOutAt'])
+            : null,
         vehicleNumber: d['vehicleNumber'] ?? '',
         fromPlace: d['fromPlace'] ?? '',
       );
@@ -48,6 +56,7 @@ class VisitorModel {
     'visitCount': visitCount,
     'firstVisitAt': firstVisitAt?.toIso8601String(),
     'lastVisitAt': lastVisitAt?.toIso8601String(),
+    'lastCheckOutAt': lastCheckOutAt?.toIso8601String(),
     'vehicleNumber': vehicleNumber,
     'fromPlace': fromPlace,
   };
