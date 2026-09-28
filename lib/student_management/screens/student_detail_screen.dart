@@ -146,6 +146,9 @@ class _DetailsTab extends StatelessWidget {
           fileUrls: {
             'Aadhar Card': student.aadharUrl,
             'PAN Card': student.panUrl,
+            'Family ID': student.familyIdDocUrl,
+            'Haryana Residence': student.haryanaResidenceUrl,
+            'ABC ID': student.abcIdUrl,
             'SC Certificate': student.scCertificateUrl,
             'BC Certificate': student.bcCertificateUrl,
             'Sports Certificate': student.sportsCertificateUrl,

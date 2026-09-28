@@ -69,6 +69,14 @@ abstract class StudentRepository {
   Stream<List<AuditLog>> watchStudentLogs(String studentId);
   Stream<List<AuditLog>> watchAllStudentLogs();
 
+  /// Every student flagged with missing required documents
+  /// (denormalized `missingDocsCount > 0`; single-field range query).
+  Future<List<StudentModel>> fetchIncompleteStudents();
+
   // ── Migration ──
   Future<int> migrateStudentAuditLogs();
+
+  /// Stamps missingDocs/missingDocsCount on every student doc (Helper
+  /// backfill for pre-flag records). Safe to re-run.
+  Future<int> backfillDocsFlags();
 }

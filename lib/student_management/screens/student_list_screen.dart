@@ -54,6 +54,17 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     _groupCount,
     (_) => <String>{},
   );
+  // Per-group "Missing documents" filter. Backed by the denormalized
+  // missingDocsCount flag (server query), narrowed further in memory.
+  final List<bool> _missingDocsOnly = List.generate(
+    _groupCount,
+    (_) => false,
+  );
+  // Cached campus-wide incomplete fetch per tab (one read burst per toggle,
+  // reused across filter/page changes) + the tab's current page.
+  final List<Future<List<StudentModel>>?> _incompleteFutures =
+      List.generate(_groupCount, (_) => null);
+  final List<int> _missingPage = List.generate(_groupCount, (_) => 0);
   final List<Timer?> _debounce = List.generate(_groupCount, (_) => null);
 
   int _sortColumnIndex = 0; // 0 = Date Added
@@ -147,7 +158,8 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
   bool _hasActiveFilters(int g) =>
       _searchCtrls[g].text.isNotEmpty ||
       _selectedYears[g].isNotEmpty ||
-      _selectedCourses[g].isNotEmpty;
+      _selectedCourses[g].isNotEmpty ||
+      _missingDocsOnly[g];
 
   int _compareStudents(StudentModel a, StudentModel b) {
     int cmp;
@@ -188,6 +200,11 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
   void _onSearchChanged(int g, String _) {
     // Debounce: wait for a typing pause before hitting the server.
     _debounce[g]?.cancel();
+    if (_missingDocsOnly[g]) {
+      // Missing-docs mode filters the cached fetch: back to page 1.
+      setState(() => _missingPage[g] = 0);
+      return;
+    }
     if (!_hasActiveFilters(g)) {
       _pageCtrls[g].resetToBrowse();
       return;
@@ -201,6 +218,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
   void _toggleYear(int g, String year) {
     setState(() {
       if (!_selectedYears[g].remove(year)) _selectedYears[g].add(year);
+      _missingPage[g] = 0;
     });
     _filterChipsChanged(g);
   }
@@ -208,18 +226,48 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
   void _toggleCourse(int g, String course) {
     setState(() {
       if (!_selectedCourses[g].remove(course)) _selectedCourses[g].add(course);
+      _missingPage[g] = 0;
     });
     _filterChipsChanged(g);
   }
 
   /// Chips apply immediately (no debounce): group search, or back to the
-  /// tab's browse pages when no filter remains.
+  /// tab's browse pages when no filter remains. In missing-docs mode the
+  /// server controller is idle — only the page resets.
   void _filterChipsChanged(int g) {
+    if (_missingDocsOnly[g]) return;
     if (!_hasActiveFilters(g)) {
       _pageCtrls[g].resetToBrowse();
       return;
     }
     _runSearch(g);
+  }
+
+  void _toggleMissingDocs(int g) {
+    setState(() {
+      _missingDocsOnly[g] = !_missingDocsOnly[g];
+      _missingPage[g] = 0;
+      if (_missingDocsOnly[g]) {
+        // One read burst; reused across filter/page changes while active.
+        _incompleteFutures[g] ??= _service.fetchIncompleteStudents();
+      } else {
+        _incompleteFutures[g] = null;
+      }
+    });
+    // Leaving missing-docs mode returns to browse/search.
+    if (!_missingDocsOnly[g]) _filterChipsChanged(g);
+  }
+
+  /// Re-runs the tab's incomplete fetch (e.g. after editing uploads).
+  void _refreshMissingDocs(int g) {
+    setState(() {
+      _missingPage[g] = 0;
+      _incompleteFutures[g] = _service.fetchIncompleteStudents();
+    });
+  }
+
+  void _setMissingPage(int g, int page) {
+    setState(() => _missingPage[g] = page);
   }
 
   void _clearFilters(int g) {
@@ -228,6 +276,9 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
       _searchCtrls[g].clear();
       _selectedYears[g].clear();
       _selectedCourses[g].clear();
+      _missingDocsOnly[g] = false;
+      _missingPage[g] = 0;
+      _incompleteFutures[g] = null;
     });
     _pageCtrls[g].resetToBrowse();
   }
@@ -238,6 +289,9 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
       _searchCtrls[g].clear();
       _selectedYears[g].clear();
       _selectedCourses[g].clear();
+      _missingDocsOnly[g] = false;
+      _missingPage[g] = 0;
+      _incompleteFutures[g] = null;
     }
     setState(() {});
     // Back to page 1 of each tab's browse view, then fresh chip options.
@@ -414,6 +468,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
           for (var g = 0; g < _groupCount; g++)
             _GroupStudentsTab(
               title: StudentGroup.values[g].label,
+              group: StudentGroup.values[g],
               controller: _pageCtrls[g],
               searchCtrl: _searchCtrls[g],
               yearOptions: _yearOptions(g),
@@ -421,16 +476,23 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
               courseOptions: _courseOptions(g),
               selectedCourses: _selectedCourses[g],
               hasActiveFilters: _hasActiveFilters(g),
+              missingDocsOnly: _missingDocsOnly[g],
               sortColumnIndex: _sortColumnIndex,
               sortAscending: _sortAscending,
               onSort: _onSort,
               onSearchChanged: (v) => _onSearchChanged(g, v),
               onYearToggled: (v) => _toggleYear(g, v),
               onCourseToggled: (v) => _toggleCourse(g, v),
+              onMissingDocsToggled: () => _toggleMissingDocs(g),
               onClear: () => _clearFilters(g),
               onView: _openDetail,
               onEdit: _openEdit,
               onDelete: _confirmDelete,
+              sorter: _compareStudents,
+              incompleteFuture: _incompleteFutures[g],
+              missingPage: _missingPage[g],
+              onMissingPageChanged: (p) => _setMissingPage(g, p),
+              onMissingRefresh: () => _refreshMissingDocs(g),
             ),
           _StudentGlobalLogTab(service: _service),
         ],
@@ -457,6 +519,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
 
 class _GroupStudentsTab extends StatelessWidget {
   final String title;
+  final StudentGroup group;
   final PaginationController controller;
   final TextEditingController searchCtrl;
   final List<String> yearOptions;
@@ -464,19 +527,27 @@ class _GroupStudentsTab extends StatelessWidget {
   final List<String> courseOptions;
   final Set<String> selectedCourses;
   final bool hasActiveFilters;
+  final bool missingDocsOnly;
   final int sortColumnIndex;
   final bool sortAscending;
   final void Function(int, bool) onSort;
   final ValueChanged<String> onSearchChanged;
   final void Function(String) onYearToggled;
   final void Function(String) onCourseToggled;
+  final VoidCallback onMissingDocsToggled;
   final VoidCallback onClear;
   final void Function(StudentModel) onView;
   final void Function(StudentModel) onEdit;
   final void Function(StudentModel) onDelete;
+  final int Function(StudentModel, StudentModel) sorter;
+  final Future<List<StudentModel>>? incompleteFuture;
+  final int missingPage;
+  final void Function(int page) onMissingPageChanged;
+  final VoidCallback onMissingRefresh;
 
   const _GroupStudentsTab({
     required this.title,
+    required this.group,
     required this.controller,
     required this.searchCtrl,
     required this.yearOptions,
@@ -484,16 +555,23 @@ class _GroupStudentsTab extends StatelessWidget {
     required this.courseOptions,
     required this.selectedCourses,
     required this.hasActiveFilters,
+    required this.missingDocsOnly,
     required this.sortColumnIndex,
     required this.sortAscending,
     required this.onSort,
     required this.onSearchChanged,
     required this.onYearToggled,
     required this.onCourseToggled,
+    required this.onMissingDocsToggled,
     required this.onClear,
     required this.onView,
     required this.onEdit,
     required this.onDelete,
+    required this.sorter,
+    required this.incompleteFuture,
+    required this.missingPage,
+    required this.onMissingPageChanged,
+    required this.onMissingRefresh,
   });
 
   @override
@@ -512,9 +590,11 @@ class _GroupStudentsTab extends StatelessWidget {
               courseOptions: courseOptions,
               selectedCourses: selectedCourses,
               hasActiveFilters: hasActiveFilters,
+              missingDocsOnly: missingDocsOnly,
               onSearchChanged: onSearchChanged,
               onYearToggled: onYearToggled,
               onCourseToggled: onCourseToggled,
+              onMissingDocsToggled: onMissingDocsToggled,
               onClear: onClear,
             ),
             if (controller.error != null)
@@ -542,35 +622,263 @@ class _GroupStudentsTab extends StatelessWidget {
                 ),
               ),
             Expanded(
-              child: loadingInitial
-                  ? const Center(
-                      child: CircularProgressIndicator(
-                        valueColor:
-                            AlwaysStoppedAnimation(Color(0xFF1A3C6E)),
-                      ),
+              child: missingDocsOnly
+                  ? _MissingDocsList(
+                      group: group,
+                      future: incompleteFuture,
+                      query: searchCtrl.text.trim(),
+                      years: selectedYears,
+                      courses: selectedCourses,
+                      sorter: sorter,
+                      page: missingPage,
+                      onView: onView,
+                      onEdit: onEdit,
+                      onDelete: onDelete,
+                      onPageChanged: onMissingPageChanged,
+                      onRefresh: onMissingRefresh,
                     )
-                  : controller.students.isEmpty
-                      ? _EmptyState(
-                          hasFilters: hasActiveFilters,
-                          emptyTitle: !hasActiveFilters &&
-                                  controller.totalCount == 0
-                              ? 'No $title students yet'
-                              : null,
+                  : loadingInitial
+                      ? const Center(
+                          child: CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation(
+                                Color(0xFF1A3C6E)),
+                          ),
                         )
-                      : _StudentTable(
-                          students: controller.students,
-                          sortColumnIndex: sortColumnIndex,
-                          sortAscending: sortAscending,
-                          onSort: onSort,
-                          onView: onView,
-                          onEdit: onEdit,
-                          onDelete: onDelete,
-                        ),
+                      : controller.students.isEmpty
+                          ? _EmptyState(
+                              hasFilters: hasActiveFilters,
+                              emptyTitle: !hasActiveFilters &&
+                                      controller.totalCount == 0
+                                  ? 'No $title students yet'
+                                  : null,
+                            )
+                          : _StudentTable(
+                              students: controller.students,
+                              sortColumnIndex: sortColumnIndex,
+                              sortAscending: sortAscending,
+                              onSort: onSort,
+                              onView: onView,
+                              onEdit: onEdit,
+                              onDelete: onDelete,
+                            ),
             ),
-            PaginationBar(controller: controller),
+            if (!missingDocsOnly)
+              PaginationBar(controller: controller),
           ],
         );
       },
+    );
+  }
+}
+
+// ── Missing-documents mode ──────────────────────────────────────────────────
+// One cached server-flagged fetch, narrowed in memory by group/text/chips,
+// shown 50 per page (1300+ incomplete records would stall a single list).
+
+class _MissingDocsList extends StatelessWidget {
+  static const int pageSize = 50;
+
+  final StudentGroup group;
+  final Future<List<StudentModel>>? future;
+  final String query;
+  final Set<String> years;
+  final Set<String> courses;
+  final int Function(StudentModel, StudentModel) sorter;
+  final int page;
+  final void Function(StudentModel) onView;
+  final void Function(StudentModel) onEdit;
+  final void Function(StudentModel) onDelete;
+  final void Function(int page) onPageChanged;
+  final VoidCallback onRefresh;
+
+  const _MissingDocsList({
+    required this.group,
+    required this.future,
+    required this.query,
+    required this.years,
+    required this.courses,
+    required this.sorter,
+    required this.page,
+    required this.onView,
+    required this.onEdit,
+    required this.onDelete,
+    required this.onPageChanged,
+    required this.onRefresh,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<StudentModel>>(
+      future: future,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation(Color(0xFF1A3C6E)),
+            ),
+          );
+        }
+        if (snap.hasError) {
+          return Center(
+            child: Text('Error: ${snap.error}',
+                style: const TextStyle(color: Colors.red)),
+          );
+        }
+        final q = query.toLowerCase();
+        final incomplete = (snap.data ?? []).where((s) {
+          if (s.group != group.name) return false;
+          if (q.isNotEmpty &&
+              !s.name.toLowerCase().contains(q) &&
+              !s.studentId.toLowerCase().contains(q)) {
+            return false;
+          }
+          if (years.isNotEmpty &&
+              !years.contains(s.yearOfAdmission?.toString())) {
+            return false;
+          }
+          if (courses.isNotEmpty && !courses.contains(s.nameOfCourse)) {
+            return false;
+          }
+          return true;
+        }).toList()
+          ..sort(sorter);
+        final pageCount =
+            (incomplete.length / pageSize).ceil().clamp(1, 1 << 30);
+        final safePage = page.clamp(0, pageCount - 1);
+        final pageItems = incomplete
+            .skip(safePage * pageSize)
+            .take(pageSize)
+            .toList();
+        if (incomplete.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.verified_outlined,
+                    size: 56, color: Colors.green.shade300),
+                const SizedBox(height: 12),
+                Text(
+                  'All documents complete',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        return Column(
+          children: [
+            Container(
+              width: double.infinity,
+              color: Colors.red.shade50,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${incomplete.length} student${incomplete.length == 1 ? '' : 's'} missing documents',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.red.shade700,
+                      ),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: onRefresh,
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(Icons.refresh,
+                          size: 16, color: Colors.red.shade700),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: _StudentTable(
+                students: pageItems,
+                sortColumnIndex: -1,
+                sortAscending: true,
+                onSort: (_, __) {},
+                onView: onView,
+                onEdit: onEdit,
+                onDelete: onDelete,
+              ),
+            ),
+            _MissingDocsPager(
+              page: safePage,
+              pageCount: pageCount,
+              total: incomplete.length,
+              onPageChanged: onPageChanged,
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Prev/next pager for missing-docs mode (50 per page).
+class _MissingDocsPager extends StatelessWidget {
+  final int page;
+  final int pageCount;
+  final int total;
+  final void Function(int page) onPageChanged;
+
+  const _MissingDocsPager({
+    required this.page,
+    required this.pageCount,
+    required this.total,
+    required this.onPageChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (pageCount <= 1) {
+      return Container(
+        width: double.infinity,
+        color: Colors.grey.shade100,
+        padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Text(
+          'Showing all $total',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ),
+      );
+    }
+    return Container(
+      color: Colors.grey.shade100,
+      padding:
+          const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.chevron_left),
+            tooltip: 'Previous page',
+            onPressed:
+                page > 0 ? () => onPageChanged(page - 1) : null,
+          ),
+          Text(
+            'Page ${page + 1} of $pageCount · $total students',
+            style: const TextStyle(
+                fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right),
+            tooltip: 'Next page',
+            onPressed: page < pageCount - 1
+                ? () => onPageChanged(page + 1)
+                : null,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -759,9 +1067,11 @@ class _SearchChipsPanel extends StatelessWidget {
   final List<String> courseOptions;
   final Set<String> selectedCourses;
   final bool hasActiveFilters;
+  final bool missingDocsOnly;
   final ValueChanged<String> onSearchChanged;
   final void Function(String) onYearToggled;
   final void Function(String) onCourseToggled;
+  final VoidCallback onMissingDocsToggled;
   final VoidCallback onClear;
   const _SearchChipsPanel({
     required this.searchCtrl,
@@ -770,9 +1080,11 @@ class _SearchChipsPanel extends StatelessWidget {
     required this.courseOptions,
     required this.selectedCourses,
     required this.hasActiveFilters,
+    required this.missingDocsOnly,
     required this.onSearchChanged,
     required this.onYearToggled,
     required this.onCourseToggled,
+    required this.onMissingDocsToggled,
     required this.onClear,
   });
 
@@ -870,6 +1182,33 @@ class _SearchChipsPanel extends StatelessWidget {
               onToggled: onCourseToggled,
             ),
           ],
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilterChip(
+              label: const Text('Missing documents',
+                  style: TextStyle(fontSize: 12)),
+              avatar: Icon(
+                Icons.warning_amber_rounded,
+                size: 16,
+                color: missingDocsOnly
+                    ? Colors.white
+                    : Colors.red.shade700,
+              ),
+              selected: missingDocsOnly,
+              onSelected: (_) => onMissingDocsToggled(),
+              tooltip:
+                  'Show only students missing required documents',
+              selectedColor: Colors.red.shade600,
+              labelStyle: TextStyle(
+                color: missingDocsOnly
+                    ? Colors.white
+                    : Colors.red.shade700,
+                fontWeight: FontWeight.w600,
+              ),
+              side: BorderSide(color: Colors.red.shade300),
+            ),
+          ),
         ],
       ),
     );
@@ -1227,8 +1566,10 @@ class _TableRow extends StatelessWidget {
                   ),
                   const SizedBox(width: 7),
                   student.photoUrl == null
-                      ? Text("!", style: TextStyle(color: Colors.red))
+                      ? const Text("!",
+                          style: TextStyle(color: Colors.red))
                       : const SizedBox.shrink(),
+                  _DocsAlert(student: student),
                 ],
               ),
             ),
@@ -1355,6 +1696,12 @@ class _MobileList extends StatelessWidget {
                   label: s.yearOfAdmission.toString(),
                   color: Colors.amber.shade800,
                 ),
+              if (s.missingDocsCount > 0)
+                Tooltip(
+                  message: 'Missing: ${s.missingDocs.join(', ')}',
+                  child: _SmallTag(
+                      label: 'Docs missing', color: Colors.red),
+                ),
             ],
           ),
           trailing: PopupMenuButton<String>(
@@ -1381,6 +1728,23 @@ class _MobileList extends StatelessWidget {
 // ── Small helpers ───────────────────────────────────────────────────────────
 
 String _fmtDate(DateTime d) => '${d.day}/${d.month}/${d.year}';
+
+/// Red warning on a student row when required documents are missing.
+/// Driven by the stored denormalized flags (refreshed on every save).
+class _DocsAlert extends StatelessWidget {
+  final StudentModel student;
+  const _DocsAlert({required this.student});
+
+  @override
+  Widget build(BuildContext context) {
+    if (student.missingDocsCount <= 0) return const SizedBox.shrink();
+    return Tooltip(
+      message: 'Missing documents: ${student.missingDocs.join(', ')}',
+      child: const Icon(Icons.warning_amber_rounded,
+          size: 16, color: Colors.red),
+    );
+  }
+}
 
 class _CourseBadge extends StatelessWidget {
   final String course;

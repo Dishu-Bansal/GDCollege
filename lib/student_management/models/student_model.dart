@@ -88,9 +88,25 @@ class StudentModel {
   String? sportsCertificateName;
   Uint8List? sportsCertificateData;
   String? sportsCertificateUrl;
+  // Optional uploads; absent on students created before this feature (null).
+  String? familyIdDocName;
+  Uint8List? familyIdDocData;
+  String? familyIdDocUrl;
+  String? haryanaResidenceName;
+  Uint8List? haryanaResidenceData;
+  String? haryanaResidenceUrl;
+  String? abcIdName;
+  Uint8List? abcIdData;
+  String? abcIdUrl;
   List<String> otherFileNames;
   List<Uint8List> otherFileData;
   List<String> otherFileUrls;
+
+  /// Denormalized completeness flags (see missingStudentDocuments()).
+  /// Recomputed on every create/update; the Missing-documents filter queries
+  /// `missingDocsCount > 0` server-side instead of scanning the collection.
+  List<String> missingDocs;
+  int missingDocsCount;
 
   // Metadata
   int documentVersion;
@@ -160,9 +176,20 @@ class StudentModel {
     this.sportsCertificateName,
     this.sportsCertificateData,
     this.sportsCertificateUrl,
+    this.familyIdDocName,
+    this.familyIdDocData,
+    this.familyIdDocUrl,
+    this.haryanaResidenceName,
+    this.haryanaResidenceData,
+    this.haryanaResidenceUrl,
+    this.abcIdName,
+    this.abcIdData,
+    this.abcIdUrl,
     this.otherFileNames = const [],
     this.otherFileData = const [],
     this.otherFileUrls = const [],
+    this.missingDocs = const [],
+    this.missingDocsCount = 0,
     this.documentVersion = 1,
     this.isLocked = false,
     this.createdAt,
@@ -209,7 +236,12 @@ class StudentModel {
       'scCertificateUrl': scCertificateUrl,
       'bcCertificateUrl': bcCertificateUrl,
       'sportsCertificateUrl': sportsCertificateUrl,
+      'familyIdDocUrl': familyIdDocUrl,
+      'haryanaResidenceUrl': haryanaResidenceUrl,
+      'abcIdUrl': abcIdUrl,
       'otherFileUrls': otherFileUrls,
+      'missingDocs': missingDocs,
+      'missingDocsCount': missingDocsCount,
       'documentVersion': documentVersion,
       'isLocked': isLocked,
       'createdAt': createdAt?.toIso8601String(),
@@ -242,7 +274,12 @@ class StudentModel {
       scCertificateUrl: scCertificateUrl,
       bcCertificateUrl: bcCertificateUrl,
       sportsCertificateUrl: sportsCertificateUrl,
+      familyIdDocUrl: familyIdDocUrl,
+      haryanaResidenceUrl: haryanaResidenceUrl,
+      abcIdUrl: abcIdUrl,
       otherFileUrls: List.from(otherFileUrls),
+      missingDocs: List.from(missingDocs),
+      missingDocsCount: missingDocsCount,
       documentVersion: documentVersion, isLocked: isLocked,
       createdAt: createdAt, updatedAt: updatedAt,
       createdBy: createdBy, lastUpdatedBy: lastUpdatedBy,
@@ -314,8 +351,16 @@ class StudentModel {
       scCertificateUrl: data['scCertificateUrl'],
       bcCertificateUrl: data['bcCertificateUrl'],
       sportsCertificateUrl: data['sportsCertificateUrl'],
+      // Pre-feature documents lack these keys → null → upload prompt.
+      familyIdDocUrl: data['familyIdDocUrl'],
+      haryanaResidenceUrl: data['haryanaResidenceUrl'],
+      abcIdUrl: data['abcIdUrl'],
       otherFileUrls: List<String>.from(data['otherFileUrls'] ?? []),
       otherFileNames: const [],
+      // Pre-backfill documents lack these keys → treated as complete until
+      // the Helper backfill (or next save) stamps them.
+      missingDocs: List<String>.from(data['missingDocs'] ?? []),
+      missingDocsCount: (data['missingDocsCount'] as num?)?.toInt() ?? 0,
       documentVersion: data['documentVersion'] ?? 1,
       isLocked: data['isLocked'] ?? false,
       createdAt: data['createdAt'] != null

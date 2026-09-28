@@ -43,6 +43,7 @@ class _Step4EducationState extends State<Step4Education> {
             label: '10th/High School/Matriculation',
             filePath: widget.student.tenthData,
             filename: widget.student.tenthName,
+            existingUrl: widget.student.tenthUrl,
             onFilePicked: (data, name) =>
                 setState(() {widget.student.tenthData = data; widget.student.tenthName = name;}),
             onFileRemoved: () =>
@@ -53,6 +54,7 @@ class _Step4EducationState extends State<Step4Education> {
             label: '12th / Intermediate / Higher Secondary',
             filePath: widget.student.twelfthData,
             filename: widget.student.twelfthName,
+            existingUrl: widget.student.twelfthUrl,
             onFilePicked: (data, name) =>
                 setState(() {widget.student.twelfthData = data; widget.student.twelfthName = name;}),
             onFileRemoved: () =>
@@ -63,6 +65,7 @@ class _Step4EducationState extends State<Step4Education> {
             label: 'Graduation/Bachelor\'s Degree',
             filePath: widget.student.graduationData,
             filename: widget.student.graduationName,
+            existingUrl: widget.student.graduationUrl,
             onFilePicked: (data, name) =>
                 setState(() {widget.student.graduationData = data; widget.student.graduationName = name;}),
             onFileRemoved: () =>
@@ -73,6 +76,7 @@ class _Step4EducationState extends State<Step4Education> {
             label: 'Post Graduation/Master\'s Degree',
             filePath: widget.student.postGraduationData,
             filename: widget.student.postGraduationName,
+            existingUrl: widget.student.postGraduationUrl,
             onFilePicked: (data, name) =>
                 setState(() {widget.student.postGraduationData = data; widget.student.postGraduationName = name;}),
             onFileRemoved: () =>
@@ -83,6 +87,7 @@ class _Step4EducationState extends State<Step4Education> {
             label: 'Diploma/Vocational',
             filePath: widget.student.diplomaData,
             filename: widget.student.diplomaName,
+            existingUrl: widget.student.diplomaUrl,
             onFilePicked: (data, name) =>
                 setState(() {widget.student.diplomaData = data; widget.student.diplomaName = name;}),
             onFileRemoved: () =>
