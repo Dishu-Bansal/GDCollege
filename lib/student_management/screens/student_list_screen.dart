@@ -14,6 +14,7 @@ import '../../widgets/pagination_bar.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'student_form_screen.dart';
 import 'student_detail_screen.dart';
+import 'student_download_dialog.dart';
 
 class StudentListScreen extends ConsumerStatefulWidget {
   const StudentListScreen({super.key});
@@ -299,15 +300,27 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     if (mounted) await _loadFacets();
   }
 
+  /// Header sort: column → Firestore field. Browse tabs re-query the whole
+  /// group server-side (sort spans all students); filtered tabs re-sort
+  /// their full fetched result set.
+  static const _sortFields = [
+    'createdAt', // 0 = Date Added
+    'studentId', // 1 = Student ID
+    'name', // 2 = Name
+    'yearOfAdmission', // 3 = Adm. Year
+    'nameOfCourse', // 4 = Course
+  ];
+
   void _onSort(int col, bool asc) {
     setState(() {
       _sortColumnIndex = col;
       _sortAscending = asc;
     });
-    // Re-apply the new ordering to whatever each tab currently shows.
+    // Search-mode tabs keep their client ordering in sync; browse tabs
+    // reload page 1 in the new server order.
     for (final c in _pageCtrls) {
       c.sorter = _compareStudents;
-      c.resort();
+      c.setSort(_sortFields[col], !asc);
     }
   }
 
@@ -407,6 +420,20 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     if (mounted) await _refreshAfterMutation();
   }
 
+  /// Download popup for the current tab's group, pre-seeded with the tab's
+  /// year/course chip selections.
+  void _openDownload(int g) {
+    showStudentDownloadDialog(
+      context: context,
+      group: StudentGroup.values[g],
+      service: _service,
+      yearOptions: _yearOptions(g),
+      initialYears: _selectedYears[g],
+      courseOptions: _courseOptions(g),
+      initialCourses: _selectedCourses[g],
+    );
+  }
+
   /// Re-reads every tab's current view (pages + DB totals) and the
   /// whole-collection chip options. Used after add/edit/delete, where group
   /// membership, totals, or facet values may have changed.
@@ -442,6 +469,11 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
               icon: const Icon(Icons.refresh),
               tooltip: 'Refresh',
               onPressed: _clearAllFilters,
+            ),
+            IconButton(
+              icon: const Icon(Icons.download_outlined),
+              tooltip: 'Download Excel',
+              onPressed: () => _openDownload(_tabIndex),
             ),
             IconButton(
               icon: const Icon(Icons.add_circle_outline),
