@@ -17,6 +17,7 @@ class _HelperState extends ConsumerState<Helper> {
   String _studentMsg = 'Migrate Student Audit Logs';
   String _staffMsg = 'Migrate Staff Audit Logs';
   String _docsMsg = 'Audit Student Documents';
+  String _backfillMsg = 'Backfill Document Flags';
   bool _running = false;
 
   @override
@@ -52,12 +53,19 @@ class _HelperState extends ConsumerState<Helper> {
               )),
               const SizedBox(height: 16),
               _buildButton(_docsMsg, _runDocsAudit),
+              const SizedBox(height: 16),
+              _buildButton(_backfillMsg, () => _runMigration(
+                ref.read(studentRepositoryProvider).backfillDocsFlags(),
+                'Docs flags',
+                (s) => _backfillMsg = s,
+                unit: 'record(s)',
+              )),
               const SizedBox(height: 12),
               Text(
                 'One-time migrations. Each can be run safely multiple times —\n'
-                'existing logs are skipped. The documents audit is read-only:\n'
-                'it lists pre-feature records missing required files so they\n'
-                'can be completed from the student edit screen.',
+                'existing logs are skipped. The documents audit is read-only;\n'
+                'the backfill stamps the filter flags on pre-flag records\n'
+                '(every later edit recomputes them automatically).',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
@@ -81,12 +89,16 @@ class _HelperState extends ConsumerState<Helper> {
   }
 
   Future<void> _runMigration(
-    Future<int> future, String kind, void Function(String) setMsg) async {
+    Future<int> future,
+    String kind,
+    void Function(String) setMsg, {
+    String unit = 'log(s)',
+  }) async {
     setState(() => _running = true);
     setMsg('Migrating $kind...');
     try {
       final count = await future;
-      setMsg('$kind: Done! Migrated $count log(s).');
+      setMsg('$kind: Done! Updated $count $unit.');
     } catch (e) {
       setMsg('$kind: Error — $e');
     }

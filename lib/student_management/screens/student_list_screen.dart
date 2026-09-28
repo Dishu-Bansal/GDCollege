@@ -55,9 +55,8 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     _groupCount,
     (_) => <String>{},
   );
-  // Per-group "Missing documents" filter. Computed client-side (Firestore
-  // cannot query across these OR/missing-field rules), so the tab fetches
-  // the whole group and filters in memory while active.
+  // Per-group "Missing documents" filter. Backed by the denormalized
+  // missingDocsCount flag (server query), narrowed further in memory.
   final List<bool> _missingDocsOnly = List.generate(
     _groupCount,
     (_) => false,
@@ -656,13 +655,12 @@ class _MissingDocsList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Server-flagged incomplete docs (single-field range query — cheap even
+    // at 2000+ records), then group/text/chip narrowing in memory over that
+    // small result set. The live recompute below guards against flags
+    // stamped under older rules.
     return FutureBuilder<List<StudentModel>>(
-      future: service.searchInGroup(
-        group: group,
-        query: query,
-        years: years,
-        courses: courses,
-      ),
+      future: service.fetchIncompleteStudents(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(
@@ -677,9 +675,23 @@ class _MissingDocsList extends StatelessWidget {
                 style: const TextStyle(color: Colors.red)),
           );
         }
-        final incomplete = (snap.data ?? [])
-            .where((s) => missingStudentDocuments(s).isNotEmpty)
-            .toList()
+        final q = query.toLowerCase();
+        final incomplete = (snap.data ?? []).where((s) {
+          if (s.group != group.name) return false;
+          if (q.isNotEmpty &&
+              !s.name.toLowerCase().contains(q) &&
+              !s.studentId.toLowerCase().contains(q)) {
+            return false;
+          }
+          if (years.isNotEmpty &&
+              !years.contains(s.yearOfAdmission?.toString())) {
+            return false;
+          }
+          if (courses.isNotEmpty && !courses.contains(s.nameOfCourse)) {
+            return false;
+          }
+          return missingStudentDocuments(s).isNotEmpty;
+        }).toList()
           ..sort(sorter);
         if (incomplete.isEmpty) {
           return Center(

@@ -102,6 +102,12 @@ class StudentModel {
   List<Uint8List> otherFileData;
   List<String> otherFileUrls;
 
+  /// Denormalized completeness flags (see missingStudentDocuments()).
+  /// Recomputed on every create/update; the Missing-documents filter queries
+  /// `missingDocsCount > 0` server-side instead of scanning the collection.
+  List<String> missingDocs;
+  int missingDocsCount;
+
   // Metadata
   int documentVersion;
   bool isLocked;
@@ -182,6 +188,8 @@ class StudentModel {
     this.otherFileNames = const [],
     this.otherFileData = const [],
     this.otherFileUrls = const [],
+    this.missingDocs = const [],
+    this.missingDocsCount = 0,
     this.documentVersion = 1,
     this.isLocked = false,
     this.createdAt,
@@ -232,6 +240,8 @@ class StudentModel {
       'haryanaResidenceUrl': haryanaResidenceUrl,
       'abcIdUrl': abcIdUrl,
       'otherFileUrls': otherFileUrls,
+      'missingDocs': missingDocs,
+      'missingDocsCount': missingDocsCount,
       'documentVersion': documentVersion,
       'isLocked': isLocked,
       'createdAt': createdAt?.toIso8601String(),
@@ -268,6 +278,8 @@ class StudentModel {
       haryanaResidenceUrl: haryanaResidenceUrl,
       abcIdUrl: abcIdUrl,
       otherFileUrls: List.from(otherFileUrls),
+      missingDocs: List.from(missingDocs),
+      missingDocsCount: missingDocsCount,
       documentVersion: documentVersion, isLocked: isLocked,
       createdAt: createdAt, updatedAt: updatedAt,
       createdBy: createdBy, lastUpdatedBy: lastUpdatedBy,
@@ -345,6 +357,10 @@ class StudentModel {
       abcIdUrl: data['abcIdUrl'],
       otherFileUrls: List<String>.from(data['otherFileUrls'] ?? []),
       otherFileNames: const [],
+      // Pre-backfill documents lack these keys → treated as complete until
+      // the Helper backfill (or next save) stamps them.
+      missingDocs: List<String>.from(data['missingDocs'] ?? []),
+      missingDocsCount: (data['missingDocsCount'] as num?)?.toInt() ?? 0,
       documentVersion: data['documentVersion'] ?? 1,
       isLocked: data['isLocked'] ?? false,
       createdAt: data['createdAt'] != null

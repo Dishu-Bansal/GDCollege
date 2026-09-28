@@ -5,6 +5,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:gd_college/constants.dart';
 import 'package:gd_college/providers.dart';
 import '../student_management/models/student_facets.dart';
+import '../student_management/models/student_docs_check.dart';
 import '../student_management/models/student_model.dart';
 import '../repositories/student_repository.dart';
 import '../models/audit_log.dart';
@@ -84,11 +85,19 @@ class FirebaseStudentRepository implements StudentRepository {
 
   // ── CREATE ────────────────────────────────────────────────────────────────
 
+  /// Recomputes the denormalized completeness flags from current URLs.
+  /// Called on every create/update so the stored flags never go stale.
+  static void _refreshDocsFlags(StudentModel student) {
+    student.missingDocs = missingStudentDocuments(student);
+    student.missingDocsCount = student.missingDocs.length;
+  }
+
   @override
   Future<String> create(StudentModel student) async {
     final now = DateTime.now();
     student.createdAt = now;
     student.updatedAt = now;
+    _refreshDocsFlags(student);
     final data = student.toFirestore();
     data['_searchIndex'] = _buildSearchIndex(student);
     final docRef = await _firestore.collection(_collection).add(data);
@@ -111,6 +120,9 @@ class FirebaseStudentRepository implements StudentRepository {
 
     student.updatedAt = DateTime.now();
     student.documentVersion += 1;
+    // Every edit recomputes completeness (files upload before this call,
+    // so new URLs are already on the model).
+    _refreshDocsFlags(student);
     final data = student.toFirestore();
     data['_searchIndex'] = _buildSearchIndex(student);
     await _firestore.collection(_collection).doc(docId).update(data);
@@ -472,6 +484,51 @@ class FirebaseStudentRepository implements StudentRepository {
       out.add(values.sublist(i, (i + size).clamp(0, values.length)));
     }
     return out;
+  }
+
+  // ── Denormalized completeness ──────────────────────────────────────────
+
+  /// Every student flagged incomplete. Single-field range query — no
+  /// composite index needed. The chip then narrows by group/text/chips in
+  /// memory over this (small) result set.
+  @override
+  Future<List<StudentModel>> fetchIncompleteStudents() async {
+    final snap = await _firestore
+        .collection(_collection)
+        .where('missingDocsCount', isGreaterThan: 0)
+        .get();
+    return snap.docs
+        .map((d) => StudentModel.fromFirestore(
+            d.id, d.data() as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Stamps missingDocs/missingDocsCount on every student doc (Helper
+  /// backfill for pre-flag records). Safe to re-run; returns docs touched.
+  @override
+  Future<int> backfillDocsFlags() async {
+    final snap = await _firestore.collection(_collection).get();
+    var touched = 0;
+    var batch = _firestore.batch();
+    var pending = 0;
+    for (final d in snap.docs) {
+      final data = d.data() as Map<String, dynamic>;
+      final s = StudentModel.fromFirestore(d.id, data);
+      final missing = missingStudentDocuments(s);
+      batch.update(d.reference, {
+        'missingDocs': missing,
+        'missingDocsCount': missing.length,
+      });
+      pending++;
+      touched++;
+      if (pending == 450) {
+        await batch.commit();
+        batch = _firestore.batch();
+        pending = 0;
+      }
+    }
+    if (pending > 0) await batch.commit();
+    return touched;
   }
 
   // ─── FILE UPLOAD ─────────────────────────────────────────────────────────
