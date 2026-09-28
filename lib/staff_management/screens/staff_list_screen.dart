@@ -329,8 +329,18 @@ class _StaffTabState extends ConsumerState<_StaffTab> {
 
   static final DateTime _noDate = DateTime.fromMillisecondsSinceEpoch(0);
 
+  /// 0 for current staff (no relieving date), 1 for previous.
+  static int _statusRank(StaffModel s) =>
+      s.dateOfRelieving == null ? 0 : 1;
+
   List<StaffModel> _applySort(List<StaffModel> list) {
     list.sort((a, b) {
+      // Standing rule: current staff above previous staff — unless the user
+      // explicitly sorts the Status column itself (which then takes over).
+      if (widget.sortColumnIndex != 4) {
+        final g = _statusRank(a).compareTo(_statusRank(b));
+        if (g != 0) return g;
+      }
       int cmp;
       // Column 0 is the serial number (display order) — not sortable.
       switch (widget.sortColumnIndex) {

@@ -161,5 +161,17 @@ class FirebaseVisitorRepository implements VisitorRepository {
       'checkOutAt': chosen.toIso8601String(),
       'checkedOutBy': UserSession().currentUser?.email ?? '',
     });
+
+    // Keep the visitor profile's last check-out in step so the Visitors
+    // tab can show it without reading the visit log. Staff check-ins have
+    // no visitor profile (personRefId is the staff doc), so skip those.
+    if (data['personType'] != 'staff') {
+      final refId = (data['personRefId'] ?? '').toString();
+      if (refId.isNotEmpty) {
+        await _visitors.doc(refId).update({
+          'lastCheckOutAt': chosen.toIso8601String(),
+        });
+      }
+    }
   }
 }
