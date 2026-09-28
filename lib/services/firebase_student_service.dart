@@ -322,19 +322,25 @@ class FirebaseStudentRepository implements StudentRepository {
   }
 
   // ── GROUP BROWSE — one tab's page ────────────────────────────────────────
-  // Equality on `group` plus orderBy `createdAt` needs the composite index
-  // (students: group ASC, createdAt DESC) declared in firestore.indexes.*.
+  // Equality on `group` plus orderBy needs the composite index
+  // (students: group ASC, <field> ASC) declared in firestore.indexes.*.
 
   @override
   Future<({List<StudentModel> students, DocumentSnapshot? lastDoc})>
   fetchGroupPage({
     required StudentGroup group,
     DocumentSnapshot? startAfter,
+    String orderBy = 'createdAt',
+    bool descending = true,
   }) async {
+    assert(
+      StudentRepository.groupSortFields.contains(orderBy),
+      'No composite index for group+$orderBy',
+    );
     Query query = _firestore
         .collection(_collection)
         .where('group', isEqualTo: group.name)
-        .orderBy('createdAt', descending: true)
+        .orderBy(orderBy, descending: descending)
         .limit(StudentRepository.pageSize);
 
     if (startAfter != null) {

@@ -34,9 +34,24 @@ abstract class StudentRepository {
   // pages are always full and totals/chips reflect the database, not the
   // loaded pages.
 
-  /// One page of [group]'s students, newest first.
+  /// One page of [group]'s students in [orderBy]/[descending] order
+  /// (server-side, so sorting spans the whole group, not just the page).
+  /// Each field needs its composite index in firestore.indexes.*.
+  static const groupSortFields = {
+    'createdAt',
+    'studentId',
+    'name',
+    'yearOfAdmission',
+    'nameOfCourse',
+  };
+
   Future<({List<StudentModel> students, DocumentSnapshot? lastDoc})>
-  fetchGroupPage({required StudentGroup group, DocumentSnapshot? startAfter});
+  fetchGroupPage({
+    required StudentGroup group,
+    DocumentSnapshot? startAfter,
+    String orderBy = 'createdAt',
+    bool descending = true,
+  });
 
   /// Whole-collection search restricted to [group] (n-gram text index plus
   /// chip filters, all equality filters so no composite index is needed).

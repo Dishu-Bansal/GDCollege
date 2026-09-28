@@ -29,8 +29,33 @@ class PaginationController extends ChangeNotifier {
   static int _byDateAddedDesc(StudentModel a, StudentModel b) =>
       (b.createdAt ?? _oldest).compareTo(a.createdAt ?? _oldest);
 
-  /// Re-applies [sorter] to whatever is currently displayed.
+  // ── Server-side browse ordering ────────────────────────────────────────
+  // Browse pages arrive pre-sorted from Firestore, so a header sort spans
+  // the whole group instead of the 20 visible rows. Search mode has no
+  // server ordering (filters + orderBy would need per-combo indexes), so it
+  // keeps sorting the full fetched result set client-side via [sorter].
+  String orderField = 'createdAt';
+  bool orderDescending = true;
+
+  /// Changes the browse ordering and reloads from page 1 (cursors from the
+  /// old order are invalid). In search mode just re-sorts the results.
+  Future<void> setSort(String field, bool descending) {
+    orderField = field;
+    orderDescending = descending;
+    if (isSearchMode) {
+      _allSearchResults.sort(sorter);
+      students = _pageSlice(_searchPage);
+      notifyListeners();
+      return Future.value();
+    }
+    _cursors.clear();
+    return loadBrowsePage(1);
+  }
+
+  /// Re-applies [sorter] to whatever is currently displayed (search mode
+  /// only — browse order is authoritative from the server).
   void resort() {
+    if (!isSearchMode) return;
     students.sort(sorter);
     notifyListeners();
   }
@@ -92,6 +117,8 @@ class PaginationController extends ChangeNotifier {
       final result = await _service.fetchGroupPage(
         group: group,
         startAfter: startAfter,
+        orderBy: orderField,
+        descending: orderDescending,
       );
 
       if (result.lastDoc != null) {
@@ -100,7 +127,8 @@ class PaginationController extends ChangeNotifier {
 
       _browseTotal = await _service.countGroup(group);
 
-      students = List<StudentModel>.of(result.students)..sort(sorter);
+      // Server order is authoritative — no client re-sort.
+      students = List<StudentModel>.of(result.students);
       _browsePage = page;
     } catch (e) {
       error = e.toString();
@@ -127,13 +155,15 @@ class PaginationController extends ChangeNotifier {
       final result = await _service.fetchGroupPage(
         group: group,
         startAfter: cursor,
+        orderBy: orderField,
+        descending: orderDescending,
       );
       if (result.lastDoc != null) {
         _cursors[p] = result.lastDoc!;
         cursor = result.lastDoc;
       }
       if (p == target) {
-        students = List<StudentModel>.of(result.students)..sort(sorter);
+        students = List<StudentModel>.of(result.students);
         _browsePage = target;
       }
     }
