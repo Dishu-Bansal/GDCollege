@@ -189,6 +189,23 @@ class ItemLocationStock {
   });
 }
 
+/// One room-level item with its parent ids resolved from the doc path
+/// (buildings/{b}/floors/{f}/rooms/{r}/items/{id}). Item docs carry no
+/// parent refs, so consolidation readers derive location from the path.
+class ScopedStockItem {
+  final String buildingId;
+  final String floorId;
+  final String roomId;
+  final StockItem item;
+
+  const ScopedStockItem({
+    required this.buildingId,
+    required this.floorId,
+    required this.roomId,
+    required this.item,
+  });
+}
+
 /// One purchase/adjustment entry from an item's price history.
 class ItemPriceLog {
   final DateTime timestamp;

@@ -84,6 +84,20 @@ abstract class StockRepository {
   Future<List<ItemPriceLog>> fetchItemPriceHistory(
       String catalogItemId, {int limit = 50});
 
+  // ── Consolidated (building/floor) reads ──
+  /// Live stream of every room-level item on campus with parent ids
+  /// resolved from each doc's path. Callers filter to a building/floor in
+  /// memory — no composite index, no backfill, transfers/renames just work.
+  Stream<List<ScopedStockItem>> watchAllRoomItems();
+
+  /// Floor + room names for one building, for location breadcrumbs:
+  /// floorNames[floorId], roomNames['floorId/roomId'].
+  Future<
+      ({
+        Map<String, String> floorNames,
+        Map<String, String> roomNames
+      })> fetchLocationNames(String buildingId);
+
   // ── Quantity Adjustment ──
   Future<void> adjustQuantity({
     required String buildingId,
