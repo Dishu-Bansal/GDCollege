@@ -11,6 +11,17 @@ class FirebaseVisitorRepository implements VisitorRepository {
   CollectionReference get _visitors => _db.collection('visitors');
   CollectionReference get _events => _db.collection('visitEvents');
 
+  /// Old visit docs may store times as ISO strings (current) or Firestore
+  /// Timestamps (legacy). A Timestamp's .toString() does not parse, and the
+  /// old code fell back to DateTime.now() — floating those events to the
+  /// top of the time-sorted log.
+  static DateTime? _parseAt(dynamic v) {
+    if (v == null) return null;
+    if (v is Timestamp) return v.toDate();
+    if (v is DateTime) return v;
+    return DateTime.tryParse(v.toString());
+  }
+
   // ── Streams ─────────────────────────────────────────────────────────────
 
   @override
@@ -179,9 +190,7 @@ class FirebaseVisitorRepository implements VisitorRepository {
       throw ArgumentError('Visit no longer exists.');
     }
     final data = snap.data() as Map<String, dynamic>? ?? {};
-    final checkIn = data['checkInAt'] != null
-        ? DateTime.tryParse(data['checkInAt'].toString())
-        : null;
+    final checkIn = _parseAt(data['checkInAt']);
     if (checkIn != null && chosen.isBefore(checkIn)) {
       throw ArgumentError('Check-out time cannot be before check-in time.');
     }
@@ -227,7 +236,10 @@ class FirebaseVisitorRepository implements VisitorRepository {
 
   @override
   Future<int> backfillVisitEvents() async {
-    // Deterministic doc ids make this safe to re-run.
+    // Deterministic doc ids make this safe to re-run. It also repairs
+    // events stamped with the wrong time (e.g. from the first backfill run
+    // before legacy Timestamp parsing): an existing event whose `at` is
+    // more than a minute off the visit's time is corrected.
     final snap = await _visits.get();
     var written = 0;
     var batch = _db.batch();
@@ -249,54 +261,77 @@ class FirebaseVisitorRepository implements VisitorRepository {
       final fromPlace = (data['fromPlace'] ?? '').toString();
       final accompanying =
           List<String>.from(data['accompanyingPeople'] ?? []);
-      final checkInAt = data['checkInAt']?.toString() ?? '';
-      final checkOutAt = data['checkOutAt']?.toString();
+      final checkInAt = _parseAt(data['checkInAt']);
+      final checkOutAt = _parseAt(data['checkOutAt']);
 
-      final entryRef = _events.doc('${d.id}_entry');
-      if (!(await entryRef.get()).exists && checkInAt.isNotEmpty) {
-        batch.set(
-            entryRef,
-            VisitorEventModel(
-              type: 'entry',
-              at: DateTime.tryParse(checkInAt) ?? DateTime.now(),
-              visitId: d.id,
-              personType: personType,
-              personRefId: personRefId,
-              name: name,
-              vehicleNumber: vehicleNumber,
-              purpose: purpose,
-              fromPlace: fromPlace,
-              accompanyingPeople: accompanying,
-              by: (data['checkedInBy'] ?? '').toString(),
-            ).toFirestore());
-        pending++;
-        written++;
+      if (checkInAt != null) {
+        pending += await _ensureEvent(
+          batch,
+          ref: _events.doc('${d.id}_entry'),
+          expected: VisitorEventModel(
+            type: 'entry',
+            at: checkInAt,
+            visitId: d.id,
+            personType: personType,
+            personRefId: personRefId,
+            name: name,
+            vehicleNumber: vehicleNumber,
+            purpose: purpose,
+            fromPlace: fromPlace,
+            accompanyingPeople: accompanying,
+            by: (data['checkedInBy'] ?? '').toString(),
+          ),
+          onWrite: () => written++,
+        );
       }
-      if (checkOutAt != null && checkOutAt.isNotEmpty) {
-        final exitRef = _events.doc('${d.id}_exit');
-        if (!(await exitRef.get()).exists) {
-          batch.set(
-              exitRef,
-              VisitorEventModel(
-                type: 'exit',
-                at: DateTime.tryParse(checkOutAt) ?? DateTime.now(),
-                visitId: d.id,
-                personType: personType,
-                personRefId: personRefId,
-                name: name,
-                vehicleNumber: vehicleNumber,
-                purpose: purpose,
-                fromPlace: fromPlace,
-                accompanyingPeople: accompanying,
-                by: (data['checkedOutBy'] ?? '').toString(),
-              ).toFirestore());
-          pending++;
-          written++;
-        }
+      if (checkOutAt != null) {
+        pending += await _ensureEvent(
+          batch,
+          ref: _events.doc('${d.id}_exit'),
+          expected: VisitorEventModel(
+            type: 'exit',
+            at: checkOutAt,
+            visitId: d.id,
+            personType: personType,
+            personRefId: personRefId,
+            name: name,
+            vehicleNumber: vehicleNumber,
+            purpose: purpose,
+            fromPlace: fromPlace,
+            accompanyingPeople: accompanying,
+            by: (data['checkedOutBy'] ?? '').toString(),
+          ),
+          onWrite: () => written++,
+        );
       }
       if (pending >= 400) await flush();
     }
     await flush();
     return written;
+  }
+
+  /// Creates [ref] with [expected] when missing, or corrects its `at` when
+  /// it drifted. Returns 1 when a write was queued, else 0.
+  Future<int> _ensureEvent(
+    WriteBatch batch, {
+    required DocumentReference ref,
+    required VisitorEventModel expected,
+    required void Function() onWrite,
+  }) async {
+    final existing = await ref.get();
+    if (!existing.exists) {
+      batch.set(ref, expected.toFirestore());
+      onWrite();
+      return 1;
+    }
+    final current =
+        _parseAt((existing.data() as Map<String, dynamic>?)?['at']);
+    if (current == null ||
+        current.difference(expected.at).abs() > const Duration(minutes: 1)) {
+      batch.update(ref, {'at': expected.at.toIso8601String()});
+      onWrite();
+      return 1;
+    }
+    return 0;
   }
 }
