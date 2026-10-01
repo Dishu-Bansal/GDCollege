@@ -382,8 +382,27 @@ class _VisitorEntryFormScreenState
                 ),
               ))
           .toList(),
-      onChanged: (s) => setState(() => _selectedStaff = s),
+      onChanged: (s) => setState(() {
+        _selectedStaff = s;
+        // Autofill where-from from the staff record (village + district,
+        // falling back to the address) so it rarely needs typing.
+        if (s != null) {
+          final place = _staffFromPlace(s);
+          if (place.isNotEmpty) _fromCtrl.text = place;
+        }
+      }),
     );
+  }
+
+  /// "Where are they from" for a staff member: village + district, or the
+  /// address when those are empty.
+  static String _staffFromPlace(StaffModel s) {
+    final parts = [
+      s.village.trim(),
+      s.district.trim(),
+    ].where((p) => p.isNotEmpty).toList();
+    if (parts.isNotEmpty) return parts.join(', ');
+    return s.address.trim();
   }
 
   Widget _buildVisitorNameField() {
