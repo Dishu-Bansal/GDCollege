@@ -6,6 +6,7 @@ import '../../constants.dart';
 import '../models/student_model.dart';
 import 'student_form_screen.dart';
 import '../../repositories/student_repository.dart';
+import '../../models/user_session.dart';
 import '../../providers.dart';
 import '../../models/audit_log.dart';
 
@@ -191,6 +192,11 @@ class _DetailsTab extends StatelessWidget {
         ),
 
         _MetadataCard(student: student),
+
+        _VerificationCard(
+          student: student,
+          service: service,
+        ),
 
         const SizedBox(height: 20),
       ],
@@ -461,6 +467,12 @@ class _HeaderCard extends StatelessWidget {
                             Colors.amber.shade800),
                       if (student.isLocked)
                         _Chip('Locked', Colors.red.shade700),
+                      _Chip(
+                        student.isVerified ? 'Verified' : 'Unverified',
+                        student.isVerified
+                            ? Colors.green.shade700
+                            : Colors.amber.shade800,
+                      ),
                     ],
                   ),
                 ],
@@ -699,6 +711,13 @@ class _MetadataCard extends StatelessWidget {
             _MetaRow('Doc ID', student.docId ?? '—'),
             _MetaRow('Version', 'v${student.documentVersion}'),
             _MetaRow('Status', student.isLocked ? '🔒 Locked' : '✏️ Editable'),
+            _MetaRow('Verification',
+                student.isVerified ? '✅ Verified' : '⏳ Unverified'),
+            if (student.isVerified) ...[
+              _MetaRow('Verified by', student.verifiedBy),
+              if (student.verifiedAt != null)
+                _MetaRow('Verified at', _fmt(student.verifiedAt!)),
+            ],
             if (student.createdAt != null)
               _MetaRow('Created',
                   _fmt(student.createdAt!)),
@@ -741,6 +760,323 @@ class _MetaRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Verification Card ─────────────────────────────────────────────────────────
+// Reviewer attestation: tick every info group + every uploaded document,
+// then mark verified (who + when stamped, logged). Blocked while required
+// documents are missing. Any later edit auto-revokes (service layer).
+
+class _VerificationCard extends StatefulWidget {
+  final StudentModel student;
+  final StudentRepository service;
+  const _VerificationCard({required this.student, required this.service});
+
+  @override
+  State<_VerificationCard> createState() => _VerificationCardState();
+}
+
+class _VerificationCardState extends State<_VerificationCard> {
+  bool _saving = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.student;
+    final verified = s.isVerified;
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(
+                verified
+                    ? Icons.verified_outlined
+                    : Icons.fact_check_outlined,
+                size: 18,
+                color: verified
+                    ? Colors.green.shade700
+                    : const Color(0xFF1A3C6E),
+              ),
+              const SizedBox(width: 8),
+              const Text('Verification',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      color: Color(0xFF1A3C6E))),
+            ]),
+            const SizedBox(height: 8),
+            if (verified) ...[
+              Text(
+                'Verified by ${s.verifiedBy}'
+                '${s.verifiedAt != null ? ' on ${_fmtDate(s.verifiedAt!)}' : ''}',
+                style:
+                    TextStyle(fontSize: 13, color: Colors.green.shade800),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _saving ? null : _revoke,
+                icon: const Icon(Icons.undo_outlined, size: 16),
+                label: const Text('Revoke verification'),
+                style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red.shade700),
+              ),
+            ] else if (s.missingDocsCount > 0) ...[
+              Text(
+                'Complete ${s.missingDocsCount} missing document${s.missingDocsCount == 1 ? '' : 's'} before verifying:',
+                style: const TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 6),
+              for (final m in s.missingDocs)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Text('• $m',
+                      style: TextStyle(
+                          fontSize: 12, color: Colors.red.shade700)),
+                ),
+            ] else ...[
+              const Text(
+                'Check every info field and document below, one by one, then mark verified.',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: _saving ? null : _verifyFlow,
+                icon: const Icon(Icons.fact_check_outlined, size: 18),
+                label: const Text('Verify checklist'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green.shade700,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+            if (_saving) ...[
+              const SizedBox(height: 12),
+              const LinearProgressIndicator(),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _fmtDate(DateTime d) =>
+      '${d.day}/${d.month}/${d.year}';
+
+  Future<void> _verifyFlow() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => _VerifyDialog(student: widget.student),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _saving = true);
+    try {
+      await widget.service.verifyStudent(widget.student.docId!);
+      widget.student
+        ..isVerified = true
+        ..verifiedBy = UserSession().currentUser?.email ?? ''
+        ..verifiedAt = DateTime.now();
+      if (!mounted) return;
+      _reload('Student verified');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Verification failed: $e')),
+      );
+    }
+  }
+
+  Future<void> _revoke() async {
+    final reasonCtrl = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('Revoke verification?'),
+        content: TextField(
+          controller: reasonCtrl,
+          decoration: const InputDecoration(
+            labelText: 'Reason (optional)',
+            isDense: true,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, reasonCtrl.text.trim()),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Revoke'),
+          ),
+        ],
+      ),
+    );
+    reasonCtrl.dispose();
+    if (reason == null || !mounted) return;
+    setState(() => _saving = true);
+    try {
+      await widget.service.unverifyStudent(widget.student.docId!,
+          reason: reason);
+      widget.student
+        ..isVerified = false
+        ..verifiedBy = ''
+        ..verifiedAt = null;
+      if (!mounted) return;
+      _reload('Verification revoked');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Revoke failed: $e')),
+      );
+    }
+  }
+
+  /// Rebuilds the whole detail screen from the mutated student so header
+  /// chips, metadata and this card all reflect the new state at once.
+  void _reload(String msg) {
+    final s = widget.student;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => StudentDetailScreen(student: s)),
+    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+}
+
+/// Tick-everything checklist: info groups plus one row per uploaded file
+/// (with View link). Missing optional files are shown but don't block.
+class _VerifyDialog extends StatefulWidget {
+  final StudentModel student;
+  const _VerifyDialog({required this.student});
+
+  @override
+  State<_VerifyDialog> createState() => _VerifyDialogState();
+}
+
+class _VerifyDialogState extends State<_VerifyDialog> {
+  final Set<String> _checked = {};
+
+  static const _groups = [
+    'Personal Information',
+    'Address & Contact',
+    'Identity Numbers',
+    'Course & Fees',
+  ];
+
+  List<MapEntry<String, String?>> _files(StudentModel s) => [
+        MapEntry('Photo', s.photoUrl),
+        MapEntry('Aadhar Card', s.aadharUrl),
+        MapEntry('PAN Card', s.panUrl),
+        MapEntry('Family ID', s.familyIdDocUrl),
+        MapEntry('Haryana Residence', s.haryanaResidenceUrl),
+        MapEntry('ABC ID', s.abcIdUrl),
+        MapEntry('SC Certificate', s.scCertificateUrl),
+        MapEntry('BC Certificate', s.bcCertificateUrl),
+        MapEntry('Sports Certificate', s.sportsCertificateUrl),
+        MapEntry('10th', s.tenthUrl),
+        MapEntry('12th', s.twelfthUrl),
+        MapEntry('Graduation', s.graduationUrl),
+        MapEntry('Post Graduation', s.postGraduationUrl),
+        MapEntry('Diploma', s.diplomaUrl),
+        for (int i = 0; i < s.otherFileUrls.length; i++)
+          MapEntry('File ${i + 1}', s.otherFileUrls[i]),
+      ];
+
+  @override
+  Widget build(BuildContext context) {
+    final files = _files(widget.student);
+    final required = {
+      ..._groups,
+      for (final f in files)
+        if (f.value != null && f.value!.isNotEmpty) 'file:${f.key}',
+    };
+    final done = required.difference(_checked).isEmpty;
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      title: Text('Verify ${widget.student.name}',
+          style:
+              const TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Text(
+              'Tick each item after checking it against the record above.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 8),
+            for (final g in _groups)
+              CheckboxListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text(g, style: const TextStyle(fontSize: 13)),
+                value: _checked.contains(g),
+                onChanged: (_) => setState(() {
+                  if (!_checked.remove(g)) _checked.add(g);
+                }),
+              ),
+            const Divider(),
+            for (final f in files)
+              _fileCheckRow(f.key, f.value, required),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: done ? () => Navigator.pop(context, true) : null,
+          style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green.shade700),
+          child: const Text('Mark Verified'),
+        ),
+      ],
+    );
+  }
+
+  Widget _fileCheckRow(
+      String label, String? url, Set<String> required) {
+    final present = url != null && url.isNotEmpty;
+    final key = 'file:$label';
+    return CheckboxListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      title: Row(children: [
+        Expanded(
+          child: Text(label,
+              style: TextStyle(
+                  fontSize: 13,
+                  color: present ? null : Colors.grey.shade500)),
+        ),
+        if (present)
+          TextButton(
+            onPressed: () => launchUrl(Uri.parse(url)),
+            child: const Text('View', style: TextStyle(fontSize: 12)),
+          )
+        else
+          const Text('Not uploaded',
+              style: TextStyle(fontSize: 11, color: Colors.grey)),
+      ]),
+      value: present && _checked.contains(key),
+      onChanged: present
+          ? (_) => setState(() {
+                if (!_checked.remove(key)) _checked.add(key);
+              })
+          : null,
     );
   }
 }

@@ -14,6 +14,13 @@ abstract class StudentRepository {
   Future<void> update(String id, StudentModel student, {bool writeLog = true});
   Future<void> delete(String id);
 
+  /// Marks the student verified (who + when stamped, logged). Any later
+  /// update() auto-revokes.
+  Future<void> verifyStudent(String id);
+
+  /// Clears verification (logged with optional [reason]).
+  Future<void> unverifyStudent(String id, {String reason});
+
   Future<({List<StudentModel> students, DocumentSnapshot? lastDoc})> fetchPage({
     DocumentSnapshot? startAfter,
   });
@@ -87,6 +94,9 @@ abstract class StudentRepository {
   /// Every student flagged with missing required documents
   /// (denormalized `missingDocsCount > 0`; single-field range query).
   Future<List<StudentModel>> fetchIncompleteStudents();
+
+  /// Every verified student (`isVerified == true`; single-field query).
+  Future<List<StudentModel>> fetchVerifiedStudents();
 
   // ── Migration ──
   Future<int> migrateStudentAuditLogs();
