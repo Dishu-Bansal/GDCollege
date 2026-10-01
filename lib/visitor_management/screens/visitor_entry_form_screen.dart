@@ -120,21 +120,45 @@ class _VisitorEntryFormScreenState
   }
 
   /// Picks a previous visitor: remembers the selection, fills the name,
-  /// autofills the last known car plate and from-place, and collapses the
-  /// suggestion list.
+  /// last known car plate and from-place, and collapses the suggestion list.
+  /// Always overwrites the car/from fields (even with empty) so stale values
+  /// from a previous pick never linger.
   void _pickSuggestion(VisitorModel v) {
+    // Setting controller text fires onChanged synchronously, which would
+    // wipe the just-made selection — suppress it for this programmatic set.
+    _programmaticNameSet = true;
+    _nameCtrl.text = v.name;
+    _nameCtrl.selection =
+        TextSelection.collapsed(offset: _nameCtrl.text.length);
+    _programmaticNameSet = false;
     setState(() {
       _suggestionsDismissed = true;
       _selectedVisitor = v;
-      _nameCtrl.text = v.name;
-      _nameCtrl.selection =
-          TextSelection.collapsed(offset: _nameCtrl.text.length);
-      if (v.vehicleNumber.isNotEmpty) {
-        _vehicleCtrl.text = v.vehicleNumber;
+      _vehicleCtrl.text = v.vehicleNumber;
+      _fromCtrl.text = v.fromPlace;
+    });
+  }
+
+  /// True while the name field is being set from a picked suggestion, so the
+  /// manual-edit handler below doesn't invalidate the pick.
+  bool _programmaticNameSet = false;
+
+  /// Switching person type resets every person/entry field so values picked
+  /// in one mode never leak into the other.
+  void _switchMode(bool isStaff) {
+    setState(() {
+      _isStaff = isStaff;
+      _selectedStaff = null;
+      _selectedVisitor = null;
+      _suggestionsDismissed = false;
+      _nameCtrl.clear();
+      _vehicleCtrl.clear();
+      _purposeCtrl.clear();
+      _fromCtrl.clear();
+      for (final c in _accompanyingCtrls) {
+        c.dispose();
       }
-      if (v.fromPlace.isNotEmpty) {
-        _fromCtrl.text = v.fromPlace;
-      }
+      _accompanyingCtrls.clear();
     });
   }
 
@@ -223,8 +247,7 @@ class _VisitorEntryFormScreenState
                   ),
                 ],
                 selected: {_isStaff},
-                onSelectionChanged: (s) =>
-                    setState(() => _isStaff = s.first),
+                onSelectionChanged: (s) => _switchMode(s.first),
               ),
               const SizedBox(height: 16),
 
@@ -418,11 +441,14 @@ class _VisitorEntryFormScreenState
           prefixIcon: Icon(Icons.person_outline),
         ),
         // Any manual edit invalidates a picked suggestion and re-enables
-        // the suggestion list.
-        onChanged: (_) => setState(() {
-          _suggestionsDismissed = false;
-          _selectedVisitor = null;
-        }),
+        // the suggestion list (programmatic fills are ignored).
+        onChanged: (_) {
+          if (_programmaticNameSet) return;
+          setState(() {
+            _suggestionsDismissed = false;
+            _selectedVisitor = null;
+          });
+        },
       ),
       if (suggestions.isNotEmpty) ...[
         const SizedBox(height: 6),
