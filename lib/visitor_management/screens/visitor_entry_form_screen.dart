@@ -71,7 +71,21 @@ class _VisitorEntryFormScreenState
   }
 
   void _onNameFocusChanged() {
-    if (mounted) setState(() {});
+    // Losing focus hides the suggestion list — but a tap on a suggestion
+    // itself steals focus first, so delay the hide: a pick landing within
+    // the window keeps the list alive long enough for onTap to fire.
+    if (_nameFocusNode.hasFocus) {
+      if (mounted) setState(() {});
+      return;
+    }
+    Future.delayed(const Duration(milliseconds: 250), () {
+      if (!mounted ||
+          _nameFocusNode.hasFocus ||
+          _selectedVisitor != null) {
+        return;
+      }
+      setState(() => _suggestionsDismissed = true);
+    });
   }
 
   static String _fmt(DateTime d) =>
@@ -108,10 +122,10 @@ class _VisitorEntryFormScreenState
       .toList();
 
   /// Previous visitors whose name matches the typed text (for autocomplete).
-  /// Only shown while the name field is focused and no suggestion has been
-  /// picked yet.
+  /// Shown once text is typed until a suggestion is picked, focus moves away
+  /// (after a tap grace window), or the mode is switched.
   List<VisitorModel> get _nameSuggestions {
-    if (_suggestionsDismissed || !_nameFocusNode.hasFocus) return const [];
+    if (_suggestionsDismissed) return const [];
     final q = _nameCtrl.text.trim().toLowerCase();
     if (q.isEmpty) return const [];
     return _visitors
