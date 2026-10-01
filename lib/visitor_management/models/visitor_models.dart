@@ -73,8 +73,12 @@ class VisitorEventModel {
   /// 'entry' or 'exit'.
   String type;
 
-  /// When the event happened.
+  /// When the event happened (manually entered check-in/check-out time).
   DateTime at;
+
+  /// When the event doc was created (system time). The global log sorts by
+  /// this, so a backdated entry surfaces at the top as a late log.
+  DateTime createdAt;
 
   /// The visit session this event belongs to.
   String visitId;
@@ -95,6 +99,7 @@ class VisitorEventModel {
     this.id,
     this.type = 'entry',
     DateTime? at,
+    DateTime? createdAt,
     this.visitId = '',
     this.personType = 'visitor',
     this.personRefId = '',
@@ -104,7 +109,8 @@ class VisitorEventModel {
     this.fromPlace = '',
     this.accompanyingPeople = const [],
     this.by = '',
-  }) : at = at ?? DateTime.now();
+  })  : at = at ?? DateTime.now(),
+        createdAt = createdAt ?? DateTime.now();
 
   bool get isEntry => type == 'entry';
   bool get isStaff => personType == 'staff';
@@ -116,6 +122,12 @@ class VisitorEventModel {
         at: d['at'] != null
             ? DateTime.tryParse(d['at']) ?? DateTime.now()
             : DateTime.now(),
+        // Pre-createdAt events fall back to their business time.
+        createdAt: d['createdAt'] != null
+            ? DateTime.tryParse(d['createdAt']) ?? DateTime.now()
+            : (d['at'] != null
+                ? DateTime.tryParse(d['at']) ?? DateTime.now()
+                : DateTime.now()),
         visitId: d['visitId'] ?? '',
         personType: d['personType'] ?? 'visitor',
         personRefId: d['personRefId'] ?? '',
@@ -130,6 +142,7 @@ class VisitorEventModel {
   Map<String, dynamic> toFirestore() => {
     'type': type,
     'at': at.toIso8601String(),
+    'createdAt': createdAt.toIso8601String(),
     'visitId': visitId,
     'personType': personType,
     'personRefId': personRefId,

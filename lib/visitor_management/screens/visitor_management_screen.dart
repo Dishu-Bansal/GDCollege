@@ -517,6 +517,9 @@ class _LogCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isEntry = event.isEntry;
     final accent = isEntry ? Colors.green.shade700 : Colors.red.shade700;
+    // A backdated log stands out so the admin spots late entries.
+    final lateBy = event.createdAt.difference(event.at);
+    final isLate = lateBy > const Duration(hours: 24);
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -561,12 +564,29 @@ class _LogCard extends StatelessWidget {
                           color: accent,
                         ),
                       ),
+                      if (isLate)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            'Logged late',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.amber.shade900,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ]),
           ),
           Text(
-            _fmtDateTime(event.at),
+            _fmtDateTime(event.createdAt),
             style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
           ),
         ]),
@@ -576,6 +596,11 @@ class _LogCard extends StatelessWidget {
               ? 'Checked in at ${_fmtDateTime(event.at)}'
               : 'Checked out at ${_fmtDateTime(event.at)}',
           style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+        ),
+        Text(
+          'Logged ${_fmtDateTime(event.createdAt)}'
+          '${event.by.isNotEmpty ? ' by ${event.by}' : ''}',
+          style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
         ),
         if (event.purpose.isNotEmpty ||
             event.vehicleNumber.isNotEmpty ||

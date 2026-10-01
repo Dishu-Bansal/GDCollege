@@ -67,9 +67,10 @@ class FirebaseVisitorRepository implements VisitorRepository {
 
   @override
   Stream<List<VisitorEventModel>> watchVisitEvents() {
-    // Single-field orderBy — no composite index needed.
+    // Sorted by creation time (single-field orderBy — no composite index
+    // needed), so a backdated entry surfaces at the top as a late log.
     return _events
-        .orderBy('at', descending: true)
+        .orderBy('createdAt', descending: true)
         .limit(500)
         .snapshots()
         .map((s) => s.docs
@@ -160,11 +161,13 @@ class FirebaseVisitorRepository implements VisitorRepository {
     );
     batch.set(visitRef, visit.toFirestore());
     // The global log's entry row — a separate doc from the visit session.
+    // createdAt is the log moment (now); at is the business time.
     batch.set(
         _events.doc('${visitRef.id}_entry'),
         VisitorEventModel(
           type: 'entry',
           at: now,
+          createdAt: DateTime.now(),
           visitId: visitRef.id,
           personType: visit.personType,
           personRefId: personRefId,
@@ -203,11 +206,13 @@ class FirebaseVisitorRepository implements VisitorRepository {
       'checkedOutBy': by,
     });
     // The global log's exit row — a separate doc so it sorts by its own time.
+    // createdAt is the log moment (now); at is the manually picked time.
     batch.set(
         _events.doc('${visitId}_exit'),
         VisitorEventModel(
           type: 'exit',
           at: chosen,
+          createdAt: DateTime.now(),
           visitId: visitId,
           personType: (data['personType'] ?? 'visitor').toString(),
           personRefId: (data['personRefId'] ?? '').toString(),
@@ -271,6 +276,9 @@ class FirebaseVisitorRepository implements VisitorRepository {
           expected: VisitorEventModel(
             type: 'entry',
             at: checkInAt,
+            // Historical reconstruction: true creation time is unknown, so
+            // legacy rows keep business-time ordering among themselves.
+            createdAt: checkInAt,
             visitId: d.id,
             personType: personType,
             personRefId: personRefId,
@@ -291,6 +299,7 @@ class FirebaseVisitorRepository implements VisitorRepository {
           expected: VisitorEventModel(
             type: 'exit',
             at: checkOutAt,
+            createdAt: checkOutAt,
             visitId: d.id,
             personType: personType,
             personRefId: personRefId,
@@ -310,8 +319,9 @@ class FirebaseVisitorRepository implements VisitorRepository {
     return written;
   }
 
-  /// Creates [ref] with [expected] when missing, or corrects its `at` when
-  /// it drifted. Returns 1 when a write was queued, else 0.
+  /// Creates [ref] with [expected] when missing, corrects its `at` when it
+  /// drifted, and stamps `createdAt` on legacy events missing it. Returns 1
+  /// when a write was queued, else 0.
   Future<int> _ensureEvent(
     WriteBatch batch, {
     required DocumentReference ref,
@@ -324,11 +334,19 @@ class FirebaseVisitorRepository implements VisitorRepository {
       onWrite();
       return 1;
     }
+    final data = existing.data() as Map<String, dynamic>?;
     final current =
-        _parseAt((existing.data() as Map<String, dynamic>?)?['at']);
+        _parseAt(data?['at']);
     if (current == null ||
         current.difference(expected.at).abs() > const Duration(minutes: 1)) {
       batch.update(ref, {'at': expected.at.toIso8601String()});
+      onWrite();
+      return 1;
+    }
+    if (data?['createdAt'] == null) {
+      batch.update(ref, {
+        'createdAt': expected.createdAt.toIso8601String(),
+      });
       onWrite();
       return 1;
     }
