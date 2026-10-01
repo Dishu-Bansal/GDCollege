@@ -401,6 +401,18 @@ class _VisitorEntryFormScreenState
         labelText: 'Staff Member',
         prefixIcon: Icon(Icons.badge_outlined),
       ),
+      // Compact single-line selected display: the rich two-line item
+      // overflows the button's selected-value area.
+      selectedItemBuilder: (context) => _staff
+          .map((s) => Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  s.name,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 14),
+                ),
+              ))
+          .toList(),
       items: _staff
           .map((s) => DropdownMenuItem(
                 value: s,
