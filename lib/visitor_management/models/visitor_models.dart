@@ -62,7 +62,87 @@ class VisitorModel {
   };
 }
 
-// ── Visitor Visit (check-in / check-out record) ──────────────────────────────
+// ── Visitor Event (global log record) ───────────────────────────────────────
+// One doc per entry and one per exit, so the global log lists check-outs as
+// their own time-sorted rows instead of merging them into the entry row.
+
+/// A single check-in ('entry') or check-out ('exit') log event.
+class VisitorEventModel {
+  String? id;
+
+  /// 'entry' or 'exit'.
+  String type;
+
+  /// When the event happened.
+  DateTime at;
+
+  /// The visit session this event belongs to.
+  String visitId;
+
+  /// 'staff' or 'visitor'.
+  String personType;
+  String personRefId;
+  String name;
+  String vehicleNumber;
+  String purpose;
+  String fromPlace;
+  List<String> accompanyingPeople;
+
+  /// Staff email that recorded the event.
+  String by;
+
+  VisitorEventModel({
+    this.id,
+    this.type = 'entry',
+    DateTime? at,
+    this.visitId = '',
+    this.personType = 'visitor',
+    this.personRefId = '',
+    this.name = '',
+    this.vehicleNumber = '',
+    this.purpose = '',
+    this.fromPlace = '',
+    this.accompanyingPeople = const [],
+    this.by = '',
+  }) : at = at ?? DateTime.now();
+
+  bool get isEntry => type == 'entry';
+  bool get isStaff => personType == 'staff';
+
+  factory VisitorEventModel.fromFirestore(String id, Map<String, dynamic> d) =>
+      VisitorEventModel(
+        id: id,
+        type: d['type'] ?? 'entry',
+        at: d['at'] != null
+            ? DateTime.tryParse(d['at']) ?? DateTime.now()
+            : DateTime.now(),
+        visitId: d['visitId'] ?? '',
+        personType: d['personType'] ?? 'visitor',
+        personRefId: d['personRefId'] ?? '',
+        name: d['name'] ?? '',
+        vehicleNumber: d['vehicleNumber'] ?? '',
+        purpose: d['purpose'] ?? '',
+        fromPlace: d['fromPlace'] ?? '',
+        accompanyingPeople: List<String>.from(d['accompanyingPeople'] ?? []),
+        by: d['by'] ?? '',
+      );
+
+  Map<String, dynamic> toFirestore() => {
+    'type': type,
+    'at': at.toIso8601String(),
+    'visitId': visitId,
+    'personType': personType,
+    'personRefId': personRefId,
+    'name': name,
+    'vehicleNumber': vehicleNumber,
+    'purpose': purpose,
+    'fromPlace': fromPlace,
+    'accompanyingPeople': accompanyingPeople,
+    'by': by,
+  };
+}
+
+// ── Visitor Visit (check-in / check-out session) ─────────────────────────────
 
 /// One check-in / check-out session, for both staff members and external
 /// visitors.

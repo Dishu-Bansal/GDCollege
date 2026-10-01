@@ -473,6 +473,7 @@ class _VisitorsTab extends StatelessWidget {
 }
 
 // ── Tab 3: global visitor log ────────────────────────────────────────────────
+// Entry and exit are separate time-sorted rows (visitEvents collection).
 
 class _LogsTab extends StatelessWidget {
   final VisitorRepository service;
@@ -481,26 +482,26 @@ class _LogsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<VisitorVisitModel>>(
-      stream: service.watchAllVisits(),
+    return StreamBuilder<List<VisitorEventModel>>(
+      stream: service.watchVisitEvents(),
       builder: (context, snap) {
         if (snap.hasError) {
           return Center(child: Text('Failed to load: ${snap.error}'));
         }
-        final visits = snap.data ?? [];
-        if (snap.connectionState == ConnectionState.waiting && visits.isEmpty) {
+        final events = snap.data ?? [];
+        if (snap.connectionState == ConnectionState.waiting && events.isEmpty) {
           return const Center(child: CircularProgressIndicator());
         }
-        if (visits.isEmpty) {
+        if (events.isEmpty) {
           return const StockEmptyState(
             message: 'No visitor entries yet.\nCheck-ins will appear here.',
           );
         }
         return ListView.separated(
           padding: const EdgeInsets.all(12),
-          itemCount: visits.length,
+          itemCount: events.length,
           separatorBuilder: (_, _) => const SizedBox(height: 10),
-          itemBuilder: (_, i) => _LogCard(visit: visits[i]),
+          itemBuilder: (_, i) => _LogCard(event: events[i]),
         );
       },
     );
@@ -508,12 +509,14 @@ class _LogsTab extends StatelessWidget {
 }
 
 class _LogCard extends StatelessWidget {
-  final VisitorVisitModel visit;
+  final VisitorEventModel event;
 
-  const _LogCard({required this.visit});
+  const _LogCard({required this.event});
 
   @override
   Widget build(BuildContext context) {
+    final isEntry = event.isEntry;
+    final accent = isEntry ? Colors.green.shade700 : Colors.red.shade700;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -525,9 +528,9 @@ class _LogCard extends StatelessWidget {
         Row(children: [
           CircleAvatar(
             radius: 18,
-            backgroundColor: avatarColor(visit.name),
+            backgroundColor: avatarColor(event.name),
             child: Text(
-              _initialOf(visit.name),
+              _initialOf(event.name),
               style: const TextStyle(
                   color: Colors.white,
                   fontSize: 12,
@@ -539,7 +542,7 @@ class _LogCard extends StatelessWidget {
             child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(visit.name,
+                  Text(event.name,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontWeight: FontWeight.w700, fontSize: 14)),
@@ -549,15 +552,13 @@ class _LogCard extends StatelessWidget {
                     runSpacing: 2,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      _TypeChip(isStaff: visit.isStaff),
+                      _TypeChip(isStaff: event.isStaff),
                       Text(
-                        visit.isInside ? 'Inside' : 'Completed',
+                        isEntry ? 'Checked in' : 'Checked out',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: visit.isInside
-                              ? Colors.green.shade700
-                              : Colors.grey.shade500,
+                          color: accent,
                         ),
                       ),
                     ],
@@ -565,34 +566,33 @@ class _LogCard extends StatelessWidget {
                 ]),
           ),
           Text(
-            _fmtDateTime(visit.checkInAt),
+            _fmtDateTime(event.at),
             style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
           ),
         ]),
         const SizedBox(height: 8),
         Text(
-          visit.isInside
-              ? 'Checked in at ${_fmtDateTime(visit.checkInAt)}'
-              : 'Checked in ${_fmtDateTime(visit.checkInAt)}  •  '
-                  'Checked out ${_fmtDateTime(visit.checkOutAt!)}',
+          isEntry
+              ? 'Checked in at ${_fmtDateTime(event.at)}'
+              : 'Checked out at ${_fmtDateTime(event.at)}',
           style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
         ),
-        if (visit.purpose.isNotEmpty ||
-            visit.vehicleNumber.isNotEmpty ||
-            visit.fromPlace.isNotEmpty) ...[
+        if (event.purpose.isNotEmpty ||
+            event.vehicleNumber.isNotEmpty ||
+            event.fromPlace.isNotEmpty) ...[
           const SizedBox(height: 6),
           Wrap(spacing: 12, runSpacing: 4, children: [
-            if (visit.purpose.isNotEmpty)
-              _InfoItem(Icons.info_outline, visit.purpose),
-            if (visit.vehicleNumber.isNotEmpty)
-              _InfoItem(Icons.directions_car_outlined, visit.vehicleNumber),
-            if (visit.fromPlace.isNotEmpty)
-              _InfoItem(Icons.place_outlined, visit.fromPlace),
+            if (event.purpose.isNotEmpty)
+              _InfoItem(Icons.info_outline, event.purpose),
+            if (event.vehicleNumber.isNotEmpty)
+              _InfoItem(Icons.directions_car_outlined, event.vehicleNumber),
+            if (event.fromPlace.isNotEmpty)
+              _InfoItem(Icons.place_outlined, event.fromPlace),
           ]),
         ],
-        if (visit.accompanyingPeople.isNotEmpty) ...[
+        if (event.accompanyingPeople.isNotEmpty) ...[
           const SizedBox(height: 6),
-          Text('With: ${visit.accompanyingPeople.join(', ')}',
+          Text('With: ${event.accompanyingPeople.join(', ')}',
               style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
         ],
       ]),

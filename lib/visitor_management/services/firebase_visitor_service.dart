@@ -9,6 +9,7 @@ class FirebaseVisitorRepository implements VisitorRepository {
 
   CollectionReference get _visits => _db.collection('visits');
   CollectionReference get _visitors => _db.collection('visitors');
+  CollectionReference get _events => _db.collection('visitEvents');
 
   // ── Streams ─────────────────────────────────────────────────────────────
 
@@ -51,6 +52,20 @@ class FirebaseVisitorRepository implements VisitorRepository {
                 VisitorVisitModel.fromFirestore(d.id, d.data() as Map<String, dynamic>))
             .toList())
         .handleError((_) => <VisitorVisitModel>[]);
+  }
+
+  @override
+  Stream<List<VisitorEventModel>> watchVisitEvents() {
+    // Single-field orderBy — no composite index needed.
+    return _events
+        .orderBy('at', descending: true)
+        .limit(500)
+        .snapshots()
+        .map((s) => s.docs
+            .map((d) =>
+                VisitorEventModel.fromFirestore(d.id, d.data() as Map<String, dynamic>))
+            .toList())
+        .handleError((_) => <VisitorEventModel>[]);
   }
 
   @override
@@ -118,21 +133,36 @@ class FirebaseVisitorRepository implements VisitorRepository {
     }
 
     final visitRef = _visits.doc();
+    final visit = VisitorVisitModel(
+      personType: isStaff ? 'staff' : 'visitor',
+      personRefId: personRefId,
+      name: name.trim(),
+      vehicleNumber: vehicleNumber.trim(),
+      purpose: purpose.trim(),
+      fromPlace: fromPlace.trim(),
+      accompanyingPeople: accompanyingPeople
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList(),
+      checkInAt: now,
+      checkedInBy: UserSession().currentUser?.email ?? '',
+    );
+    batch.set(visitRef, visit.toFirestore());
+    // The global log's entry row — a separate doc from the visit session.
     batch.set(
-        visitRef,
-        VisitorVisitModel(
-          personType: isStaff ? 'staff' : 'visitor',
+        _events.doc('${visitRef.id}_entry'),
+        VisitorEventModel(
+          type: 'entry',
+          at: now,
+          visitId: visitRef.id,
+          personType: visit.personType,
           personRefId: personRefId,
-          name: name.trim(),
-          vehicleNumber: vehicleNumber.trim(),
-          purpose: purpose.trim(),
-          fromPlace: fromPlace.trim(),
-          accompanyingPeople: accompanyingPeople
-              .map((e) => e.trim())
-              .where((e) => e.isNotEmpty)
-              .toList(),
-          checkInAt: now,
-          checkedInBy: UserSession().currentUser?.email ?? '',
+          name: visit.name,
+          vehicleNumber: visit.vehicleNumber,
+          purpose: visit.purpose,
+          fromPlace: visit.fromPlace,
+          accompanyingPeople: visit.accompanyingPeople,
+          by: visit.checkedInBy,
         ).toFirestore());
 
     await batch.commit();
@@ -156,11 +186,30 @@ class FirebaseVisitorRepository implements VisitorRepository {
       throw ArgumentError('Check-out time cannot be before check-in time.');
     }
 
-    await _visits.doc(visitId).update({
+    final by = UserSession().currentUser?.email ?? '';
+    final batch = _db.batch();
+    batch.update(_visits.doc(visitId), {
       'inside': false,
       'checkOutAt': chosen.toIso8601String(),
-      'checkedOutBy': UserSession().currentUser?.email ?? '',
+      'checkedOutBy': by,
     });
+    // The global log's exit row — a separate doc so it sorts by its own time.
+    batch.set(
+        _events.doc('${visitId}_exit'),
+        VisitorEventModel(
+          type: 'exit',
+          at: chosen,
+          visitId: visitId,
+          personType: (data['personType'] ?? 'visitor').toString(),
+          personRefId: (data['personRefId'] ?? '').toString(),
+          name: (data['name'] ?? '').toString(),
+          vehicleNumber: (data['vehicleNumber'] ?? '').toString(),
+          purpose: (data['purpose'] ?? '').toString(),
+          fromPlace: (data['fromPlace'] ?? '').toString(),
+          accompanyingPeople:
+              List<String>.from(data['accompanyingPeople'] ?? []),
+          by: by,
+        ).toFirestore());
 
     // Keep the visitor profile's last check-out in step so the Visitors
     // tab can show it without reading the visit log. Staff check-ins have
@@ -168,10 +217,86 @@ class FirebaseVisitorRepository implements VisitorRepository {
     if (data['personType'] != 'staff') {
       final refId = (data['personRefId'] ?? '').toString();
       if (refId.isNotEmpty) {
-        await _visitors.doc(refId).update({
+        batch.update(_visitors.doc(refId), {
           'lastCheckOutAt': chosen.toIso8601String(),
         });
       }
     }
+    await batch.commit();
+  }
+
+  @override
+  Future<int> backfillVisitEvents() async {
+    // Deterministic doc ids make this safe to re-run.
+    final snap = await _visits.get();
+    var written = 0;
+    var batch = _db.batch();
+    var pending = 0;
+    Future<void> flush() async {
+      if (pending == 0) return;
+      await batch.commit();
+      batch = _db.batch();
+      pending = 0;
+    }
+
+    for (final d in snap.docs) {
+      final data = d.data() as Map<String, dynamic>? ?? {};
+      final personType = (data['personType'] ?? 'visitor').toString();
+      final personRefId = (data['personRefId'] ?? '').toString();
+      final name = (data['name'] ?? '').toString();
+      final vehicleNumber = (data['vehicleNumber'] ?? '').toString();
+      final purpose = (data['purpose'] ?? '').toString();
+      final fromPlace = (data['fromPlace'] ?? '').toString();
+      final accompanying =
+          List<String>.from(data['accompanyingPeople'] ?? []);
+      final checkInAt = data['checkInAt']?.toString() ?? '';
+      final checkOutAt = data['checkOutAt']?.toString();
+
+      final entryRef = _events.doc('${d.id}_entry');
+      if (!(await entryRef.get()).exists && checkInAt.isNotEmpty) {
+        batch.set(
+            entryRef,
+            VisitorEventModel(
+              type: 'entry',
+              at: DateTime.tryParse(checkInAt) ?? DateTime.now(),
+              visitId: d.id,
+              personType: personType,
+              personRefId: personRefId,
+              name: name,
+              vehicleNumber: vehicleNumber,
+              purpose: purpose,
+              fromPlace: fromPlace,
+              accompanyingPeople: accompanying,
+              by: (data['checkedInBy'] ?? '').toString(),
+            ).toFirestore());
+        pending++;
+        written++;
+      }
+      if (checkOutAt != null && checkOutAt.isNotEmpty) {
+        final exitRef = _events.doc('${d.id}_exit');
+        if (!(await exitRef.get()).exists) {
+          batch.set(
+              exitRef,
+              VisitorEventModel(
+                type: 'exit',
+                at: DateTime.tryParse(checkOutAt) ?? DateTime.now(),
+                visitId: d.id,
+                personType: personType,
+                personRefId: personRefId,
+                name: name,
+                vehicleNumber: vehicleNumber,
+                purpose: purpose,
+                fromPlace: fromPlace,
+                accompanyingPeople: accompanying,
+                by: (data['checkedOutBy'] ?? '').toString(),
+              ).toFirestore());
+          pending++;
+          written++;
+        }
+      }
+      if (pending >= 400) await flush();
+    }
+    await flush();
+    return written;
   }
 }
