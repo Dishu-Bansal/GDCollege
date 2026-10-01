@@ -17,6 +17,7 @@ class _HelperState extends ConsumerState<Helper> {
   String _staffMsg = 'Migrate Staff Audit Logs';
   String _docsMsg = 'Audit Student Documents';
   String _backfillMsg = 'Backfill Document Flags';
+  String _visitorEventsMsg = 'Backfill Visitor Events';
   bool _running = false;
 
   @override
@@ -58,6 +59,13 @@ class _HelperState extends ConsumerState<Helper> {
                 'Docs flags',
                 (s) => _backfillMsg = s,
                 unit: 'record(s)',
+              )),
+              const SizedBox(height: 16),
+              _buildButton(_visitorEventsMsg, () => _runMigration(
+                ref.read(visitorRepositoryProvider).backfillVisitEvents(),
+                'Visitor events',
+                (s) => _visitorEventsMsg = s,
+                unit: 'event(s)',
               )),
               const SizedBox(height: 12),
               Text(

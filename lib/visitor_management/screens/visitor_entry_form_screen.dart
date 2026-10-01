@@ -71,7 +71,21 @@ class _VisitorEntryFormScreenState
   }
 
   void _onNameFocusChanged() {
-    if (mounted) setState(() {});
+    // Losing focus hides the suggestion list — but a tap on a suggestion
+    // itself steals focus first, so delay the hide: a pick landing within
+    // the window keeps the list alive long enough for onTap to fire.
+    if (_nameFocusNode.hasFocus) {
+      if (mounted) setState(() {});
+      return;
+    }
+    Future.delayed(const Duration(milliseconds: 250), () {
+      if (!mounted ||
+          _nameFocusNode.hasFocus ||
+          _selectedVisitor != null) {
+        return;
+      }
+      setState(() => _suggestionsDismissed = true);
+    });
   }
 
   static String _fmt(DateTime d) =>
@@ -108,10 +122,10 @@ class _VisitorEntryFormScreenState
       .toList();
 
   /// Previous visitors whose name matches the typed text (for autocomplete).
-  /// Only shown while the name field is focused and no suggestion has been
-  /// picked yet.
+  /// Shown once text is typed until a suggestion is picked, focus moves away
+  /// (after a tap grace window), or the mode is switched.
   List<VisitorModel> get _nameSuggestions {
-    if (_suggestionsDismissed || !_nameFocusNode.hasFocus) return const [];
+    if (_suggestionsDismissed) return const [];
     final q = _nameCtrl.text.trim().toLowerCase();
     if (q.isEmpty) return const [];
     return _visitors
@@ -120,21 +134,45 @@ class _VisitorEntryFormScreenState
   }
 
   /// Picks a previous visitor: remembers the selection, fills the name,
-  /// autofills the last known car plate and from-place, and collapses the
-  /// suggestion list.
+  /// last known car plate and from-place, and collapses the suggestion list.
+  /// Always overwrites the car/from fields (even with empty) so stale values
+  /// from a previous pick never linger.
   void _pickSuggestion(VisitorModel v) {
+    // Setting controller text fires onChanged synchronously, which would
+    // wipe the just-made selection — suppress it for this programmatic set.
+    _programmaticNameSet = true;
+    _nameCtrl.text = v.name;
+    _nameCtrl.selection =
+        TextSelection.collapsed(offset: _nameCtrl.text.length);
+    _programmaticNameSet = false;
     setState(() {
       _suggestionsDismissed = true;
       _selectedVisitor = v;
-      _nameCtrl.text = v.name;
-      _nameCtrl.selection =
-          TextSelection.collapsed(offset: _nameCtrl.text.length);
-      if (v.vehicleNumber.isNotEmpty) {
-        _vehicleCtrl.text = v.vehicleNumber;
+      _vehicleCtrl.text = v.vehicleNumber;
+      _fromCtrl.text = v.fromPlace;
+    });
+  }
+
+  /// True while the name field is being set from a picked suggestion, so the
+  /// manual-edit handler below doesn't invalidate the pick.
+  bool _programmaticNameSet = false;
+
+  /// Switching person type resets every person/entry field so values picked
+  /// in one mode never leak into the other.
+  void _switchMode(bool isStaff) {
+    setState(() {
+      _isStaff = isStaff;
+      _selectedStaff = null;
+      _selectedVisitor = null;
+      _suggestionsDismissed = false;
+      _nameCtrl.clear();
+      _vehicleCtrl.clear();
+      _purposeCtrl.clear();
+      _fromCtrl.clear();
+      for (final c in _accompanyingCtrls) {
+        c.dispose();
       }
-      if (v.fromPlace.isNotEmpty) {
-        _fromCtrl.text = v.fromPlace;
-      }
+      _accompanyingCtrls.clear();
     });
   }
 
@@ -223,8 +261,7 @@ class _VisitorEntryFormScreenState
                   ),
                 ],
                 selected: {_isStaff},
-                onSelectionChanged: (s) =>
-                    setState(() => _isStaff = s.first),
+                onSelectionChanged: (s) => _switchMode(s.first),
               ),
               const SizedBox(height: 16),
 
@@ -364,6 +401,18 @@ class _VisitorEntryFormScreenState
         labelText: 'Staff Member',
         prefixIcon: Icon(Icons.badge_outlined),
       ),
+      // Compact single-line selected display: the rich two-line item
+      // overflows the button's selected-value area.
+      selectedItemBuilder: (context) => _staff
+          .map((s) => Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  s.name,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 14),
+                ),
+              ))
+          .toList(),
       items: _staff
           .map((s) => DropdownMenuItem(
                 value: s,
@@ -382,8 +431,27 @@ class _VisitorEntryFormScreenState
                 ),
               ))
           .toList(),
-      onChanged: (s) => setState(() => _selectedStaff = s),
+      onChanged: (s) => setState(() {
+        _selectedStaff = s;
+        // Autofill where-from from the staff record (village + district,
+        // falling back to the address) so it rarely needs typing.
+        if (s != null) {
+          final place = _staffFromPlace(s);
+          if (place.isNotEmpty) _fromCtrl.text = place;
+        }
+      }),
     );
+  }
+
+  /// "Where are they from" for a staff member: village + district, or the
+  /// address when those are empty.
+  static String _staffFromPlace(StaffModel s) {
+    final parts = [
+      s.village.trim(),
+      s.district.trim(),
+    ].where((p) => p.isNotEmpty).toList();
+    if (parts.isNotEmpty) return parts.join(', ');
+    return s.address.trim();
   }
 
   Widget _buildVisitorNameField() {
@@ -399,11 +467,14 @@ class _VisitorEntryFormScreenState
           prefixIcon: Icon(Icons.person_outline),
         ),
         // Any manual edit invalidates a picked suggestion and re-enables
-        // the suggestion list.
-        onChanged: (_) => setState(() {
-          _suggestionsDismissed = false;
-          _selectedVisitor = null;
-        }),
+        // the suggestion list (programmatic fills are ignored).
+        onChanged: (_) {
+          if (_programmaticNameSet) return;
+          setState(() {
+            _suggestionsDismissed = false;
+            _selectedVisitor = null;
+          });
+        },
       ),
       if (suggestions.isNotEmpty) ...[
         const SizedBox(height: 6),

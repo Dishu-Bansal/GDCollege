@@ -12,6 +12,9 @@ abstract class VisitorRepository {
   /// All visits — the global log — newest first.
   Stream<List<VisitorVisitModel>> watchAllVisits();
 
+  /// Entry/exit events — the time-sorted global log — newest first.
+  Stream<List<VisitorEventModel>> watchVisitEvents();
+
   /// All visits of a single visitor, newest first (visitor detail screen).
   Stream<List<VisitorVisitModel>> watchVisitorVisits(String visitorId);
 
@@ -38,4 +41,9 @@ abstract class VisitorRepository {
   /// omitted) as the check-out time. Throws when [at] is before the visit's
   /// check-in time.
   Future<void> checkOut(String visitId, {DateTime? at});
+
+  /// One-time backfill: creates entry events for all visits and exit events
+  /// for completed ones. Safe to re-run (deterministic doc ids). Returns the
+  /// number of event docs written.
+  Future<int> backfillVisitEvents();
 }
