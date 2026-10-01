@@ -7,6 +7,7 @@ import '../../widgets/stock_widgets.dart';
 import 'rooms_screen.dart';
 
 import '../widgets/location_items_tab.dart';
+import 'floor_stock_download.dart';
 
 class FloorsScreen extends ConsumerStatefulWidget {
   final BuildingModel building;
@@ -251,7 +252,14 @@ class _FloorCardTile extends StatelessWidget {
           ),
           PopupMenuButton<String>(
             onSelected: (v) async {
-              if (v == 'rename') {
+              if (v == 'download') {
+                await downloadFloorStock(
+                  context: context,
+                  service: service,
+                  building: building,
+                  floor: floor,
+                );
+              } else if (v == 'rename') {
                 final name = await showNameDialog(context,
                     title: 'Rename Floor', initial: floor.name);
                 if (name != null) {
@@ -268,6 +276,13 @@ class _FloorCardTile extends StatelessWidget {
               }
             },
             itemBuilder: (_) => [
+              const PopupMenuItem(
+                  value: 'download',
+                  child: Row(children: [
+                    Icon(Icons.download_outlined, size: 16),
+                    SizedBox(width: 8),
+                    Text('Download Excel'),
+                  ])),
               const PopupMenuItem(
                   value: 'rename',
                   child: Row(children: [
