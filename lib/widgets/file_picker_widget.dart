@@ -68,7 +68,7 @@ class FilePicker extends StatelessWidget {
       );
       if (result != null && result.files.single.bytes != null) {
         final bytes = await result.files.single.size;
-        if (bytes > 1 * 1024 * 1024) {
+        if (bytes > 5 * 1024 * 1024) {
           if (context.mounted) {
             _showSizeError(context, 'Photo must be under 5 MB');
           }
@@ -270,7 +270,7 @@ class MultiFilePicker extends StatelessWidget {
     );
     if (result != null && result.files.single.bytes != null) {
       final sizeBytes = result.files.single.size;
-      if (sizeBytes > 1 * 1024 * 1024) {
+      if (sizeBytes > 5 * 1024 * 1024) {
         _showSizeError(mycontext!, 'File must be under 5 MB');
         return;
       }
