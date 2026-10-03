@@ -120,6 +120,15 @@ class FirebaseStudentRepository implements StudentRepository {
 
     student.updatedAt = DateTime.now();
     student.documentVersion += 1;
+    // An edit invalidates any attestation: the reviewer checked the old
+    // content. Clear verification (logged below) so stale badges can't linger.
+    var autoRevoked = false;
+    if (writeLog && oldData?['isVerified'] == true) {
+      student.isVerified = false;
+      student.verifiedBy = '';
+      student.verifiedAt = null;
+      autoRevoked = true;
+    }
     // Every edit recomputes completeness (files upload before this call,
     // so new URLs are already on the model).
     _refreshDocsFlags(student);
@@ -131,9 +140,47 @@ class FirebaseStudentRepository implements StudentRepository {
     // facets are maintained by the syncStudentMeta Cloud Function.
 
     if (writeLog) {
-      final detail = _buildUpdateDetail(oldData!, data);
+      var detail = _buildUpdateDetail(oldData!, data);
+      if (autoRevoked) {
+        detail = '$detail. Verification revoked (record edited).';
+      }
       await _writeLog(docId, student.name, 'update', detail);
     }
+  }
+
+  // ── VERIFICATION ────────────────────────────────────────────────────────
+
+  @override
+  Future<void> verifyStudent(String docId) async {
+    final ref = _firestore.collection(_collection).doc(docId);
+    final snap = await ref.get();
+    final data = snap.data() as Map<String, dynamic>? ?? {};
+    final by = UserSession().currentUser?.email ?? '';
+    await ref.update({
+      'isVerified': true,
+      'verifiedBy': by,
+      'verifiedAt': DateTime.now().toIso8601String(),
+    });
+    await _writeLog(docId, (data['name'] ?? '').toString(), 'verify',
+        'Verified by $by');
+  }
+
+  @override
+  Future<void> unverifyStudent(String docId, {String reason = ''}) async {
+    final ref = _firestore.collection(_collection).doc(docId);
+    final snap = await ref.get();
+    final data = snap.data() as Map<String, dynamic>? ?? {};
+    final by = UserSession().currentUser?.email ?? '';
+    await ref.update({
+      'isVerified': false,
+      'verifiedBy': '',
+      'verifiedAt': null,
+    });
+    await _writeLog(
+        docId,
+        (data['name'] ?? '').toString(),
+        'unverify',
+        'Verification revoked by $by${reason.isNotEmpty ? ': $reason' : ''}');
   }
 
   static const _fieldLabels = {
@@ -506,6 +553,59 @@ class FirebaseStudentRepository implements StudentRepository {
     return snap.docs
         .map((d) => StudentModel.fromFirestore(d.id, d.data()))
         .toList();
+  }
+
+  @override
+  Future<List<StudentModel>> fetchVerifiedStudents() async {
+    final snap = await _firestore
+        .collection(_collection)
+        .where('isVerified', isEqualTo: true)
+        .get();
+    return snap.docs
+        .map((d) => StudentModel.fromFirestore(d.id, d.data()))
+        .toList();
+  }
+
+  @override
+  Future<List<StudentModel>> fetchUnverifiedStudents() async {
+    // Cheap single-field query — valid because every write path stamps
+    // `isVerified` (create/update/verify/unverify) and the Helper backfill
+    // stamped pre-feature records.
+    final snap = await _firestore
+        .collection(_collection)
+        .where('isVerified', isEqualTo: false)
+        .get();
+    return snap.docs
+        .map((d) => StudentModel.fromFirestore(d.id, d.data()))
+        .toList();
+  }
+
+  /// Stamps `isVerified: false` (+ empty attestation) on docs predating the
+  /// verification feature. Skips docs that already carry the field, so
+  /// re-runs are cheap; returns docs touched.
+  @override
+  Future<int> backfillVerificationFlags() async {
+    final snap = await _firestore.collection(_collection).get();
+    var touched = 0;
+    var batch = _firestore.batch();
+    var pending = 0;
+    for (final d in snap.docs) {
+      if ((d.data()).containsKey('isVerified')) continue;
+      batch.update(d.reference, {
+        'isVerified': false,
+        'verifiedBy': '',
+        'verifiedAt': null,
+      });
+      pending++;
+      touched++;
+      if (pending == 450) {
+        await batch.commit();
+        batch = _firestore.batch();
+        pending = 0;
+      }
+    }
+    if (pending > 0) await batch.commit();
+    return touched;
   }
 
   /// Stamps missingDocs/missingDocsCount on every student doc (Helper

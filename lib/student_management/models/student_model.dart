@@ -108,6 +108,12 @@ class StudentModel {
   List<String> missingDocs;
   int missingDocsCount;
 
+  /// Verification attestation: who checked every document/info and when.
+  /// Defaults to unverified; any update() auto-clears it.
+  bool isVerified;
+  String verifiedBy;
+  DateTime? verifiedAt;
+
   // Metadata
   int documentVersion;
   bool isLocked;
@@ -190,6 +196,9 @@ class StudentModel {
     this.otherFileUrls = const [],
     this.missingDocs = const [],
     this.missingDocsCount = 0,
+    this.isVerified = false,
+    this.verifiedBy = '',
+    this.verifiedAt,
     this.documentVersion = 1,
     this.isLocked = false,
     this.createdAt,
@@ -242,6 +251,9 @@ class StudentModel {
       'otherFileUrls': otherFileUrls,
       'missingDocs': missingDocs,
       'missingDocsCount': missingDocsCount,
+      'isVerified': isVerified,
+      'verifiedBy': verifiedBy,
+      'verifiedAt': verifiedAt?.toIso8601String(),
       'documentVersion': documentVersion,
       'isLocked': isLocked,
       'createdAt': createdAt?.toIso8601String(),
@@ -280,6 +292,9 @@ class StudentModel {
       otherFileUrls: List.from(otherFileUrls),
       missingDocs: List.from(missingDocs),
       missingDocsCount: missingDocsCount,
+      isVerified: isVerified,
+      verifiedBy: verifiedBy,
+      verifiedAt: verifiedAt,
       documentVersion: documentVersion, isLocked: isLocked,
       createdAt: createdAt, updatedAt: updatedAt,
       createdBy: createdBy, lastUpdatedBy: lastUpdatedBy,
@@ -361,6 +376,12 @@ class StudentModel {
       // the Helper backfill (or next save) stamps them.
       missingDocs: List<String>.from(data['missingDocs'] ?? []),
       missingDocsCount: (data['missingDocsCount'] as num?)?.toInt() ?? 0,
+      // Pre-verification documents lack these keys → unverified.
+      isVerified: data['isVerified'] == true,
+      verifiedBy: data['verifiedBy'] ?? '',
+      verifiedAt: data['verifiedAt'] != null
+          ? DateTime.tryParse(data['verifiedAt'])
+          : null,
       documentVersion: data['documentVersion'] ?? 1,
       isLocked: data['isLocked'] ?? false,
       createdAt: data['createdAt'] != null
