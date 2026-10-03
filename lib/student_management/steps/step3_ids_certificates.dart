@@ -23,6 +23,7 @@ class _Step3IdsAndCertificatesState extends State<Step3IdsAndCertificates> {
   late final TextEditingController _aadharCtrl;
   late final TextEditingController _panCtrl;
   late final TextEditingController _familyIdCtrl;
+  late final TextEditingController _abcIdCtrl;
 
   @override
   void initState() {
@@ -30,6 +31,7 @@ class _Step3IdsAndCertificatesState extends State<Step3IdsAndCertificates> {
     _aadharCtrl = TextEditingController(text: widget.student.aadharNumber);
     _panCtrl = TextEditingController(text: widget.student.panCard);
     _familyIdCtrl = TextEditingController(text: widget.student.familyId);
+    _abcIdCtrl = TextEditingController(text: widget.student.abcIdNumber);
   }
 
   @override
@@ -37,6 +39,7 @@ class _Step3IdsAndCertificatesState extends State<Step3IdsAndCertificates> {
     _aadharCtrl.dispose();
     _panCtrl.dispose();
     _familyIdCtrl.dispose();
+    _abcIdCtrl.dispose();
     super.dispose();
   }
 
@@ -90,6 +93,24 @@ class _Step3IdsAndCertificatesState extends State<Step3IdsAndCertificates> {
             decoration: InputDecoration(label: Text('Family ID'), hint: Text('Optional for other states')),
             controller: _familyIdCtrl,
             onChanged: (v) => widget.student.familyId = v,
+          ),
+
+          TextFormField(
+            decoration: InputDecoration(label: Text('ABC ID Number'), hint: Text('12-digit APAAR ID')),
+            controller: _abcIdCtrl,
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(12),
+            ],
+            validator: (v) {
+              final clean = v?.replaceAll(' ', '') ?? '';
+              if (clean.isEmpty) return null;
+              if (clean.length != 12) return 'Enter valid 12-digit ABC ID';
+              return null;
+            },
+            onChanged: (v) =>
+                widget.student.abcIdNumber = v.replaceAll(' ', ''),
           ),
 
           const SectionHeader(

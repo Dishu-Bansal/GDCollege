@@ -31,6 +31,7 @@ final Map<String, List<_DownloadField>> _downloadFieldGroups = {
     _DownloadField('Aadhar Number', (s) => s.aadharNumber),
     _DownloadField('PAN', (s) => s.panCard),
     _DownloadField('Family ID', (s) => s.familyId),
+    _DownloadField('ABC ID Number', (s) => s.abcIdNumber),
   ],
   'Address': [
     _DownloadField('Address', (s) => s.address),

@@ -189,6 +189,7 @@ class FirebaseStudentRepository implements StudentRepository {
     'address': 'Address', 'village': 'Village', 'district': 'District',
     'state': 'State', 'pin': 'PIN', 'mobileNo1': 'Mobile 1', 'mobileNo2': 'Mobile 2',
     'aadharNumber': 'Aadhar', 'panCard': 'PAN', 'familyId': 'Family ID',
+    'abcIdNumber': 'ABC ID',
     'nameOfCourse': 'Course', 'yearOfAdmission': 'Year',
     'feeDetails1stYear': '1st Year Fee', 'feeDetails2ndYear': '2nd Year Fee',
     'feeDetails3rdYear': '3rd Year Fee', 'placementDetails': 'Placement',
