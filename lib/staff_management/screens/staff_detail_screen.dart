@@ -140,8 +140,7 @@ class _DetailsTab extends StatelessWidget {
           title: 'Identity & Certificates',
           icon: Icons.badge_outlined,
           fields: [
-            _Field('Aadhar Number',
-                _maskAadhar(staff.aadharNumber)),
+            _Field('Aadhar Number', staff.aadharNumber),
             _Field('PAN Card', staff.panCard),
             _Field('Family ID', staff.familyId),
           ],
@@ -200,11 +199,6 @@ class _DetailsTab extends StatelessWidget {
         const SizedBox(height: 20),
       ],
     );
-  }
-
-  static String _maskAadhar(String n) {
-    if (n.length < 4) return n;
-    return 'XXXX XXXX ${n.substring(n.length - 4)}';
   }
 
   /// dd/MM/yyyy, or empty when the date is unknown (the field is hidden).

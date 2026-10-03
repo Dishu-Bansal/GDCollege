@@ -140,7 +140,7 @@ class _DetailsTab extends StatelessWidget {
           title: 'Identity & Certificates',
           icon: Icons.badge_outlined,
           fields: [
-            _Field('Aadhar Number', _maskAadhar(student.aadharNumber)),
+            _Field('Aadhar Number', student.aadharNumber),
             _Field('PAN Card', student.panCard),
             _Field('Family ID', student.familyId),
           ],
@@ -201,11 +201,6 @@ class _DetailsTab extends StatelessWidget {
         const SizedBox(height: 20),
       ],
     );
-  }
-
-  static String _maskAadhar(String n) {
-    if (n.length < 4) return n;
-    return 'XXXX XXXX ${n.substring(n.length - 4)}';
   }
 
   /// Prefixes a whole-rupee amount with the ₹ symbol ('' stays empty).
