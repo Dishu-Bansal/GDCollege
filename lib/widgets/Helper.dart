@@ -17,6 +17,7 @@ class _HelperState extends ConsumerState<Helper> {
   String _staffMsg = 'Migrate Staff Audit Logs';
   String _docsMsg = 'Audit Student Documents';
   String _backfillMsg = 'Backfill Document Flags';
+  String _verifyBackfillMsg = 'Backfill Verification Flags';
   String _visitorEventsMsg = 'Backfill Visitor Events';
   bool _running = false;
 
@@ -58,6 +59,15 @@ class _HelperState extends ConsumerState<Helper> {
                 ref.read(studentRepositoryProvider).backfillDocsFlags(),
                 'Docs flags',
                 (s) => _backfillMsg = s,
+                unit: 'record(s)',
+              )),
+              const SizedBox(height: 16),
+              _buildButton(_verifyBackfillMsg, () => _runMigration(
+                ref
+                    .read(studentRepositoryProvider)
+                    .backfillVerificationFlags(),
+                'Verification flags',
+                (s) => _verifyBackfillMsg = s,
                 unit: 'record(s)',
               )),
               const SizedBox(height: 16),

@@ -568,8 +568,44 @@ class FirebaseStudentRepository implements StudentRepository {
 
   @override
   Future<List<StudentModel>> fetchUnverifiedStudents() async {
-    final all = await fetchAllStudents();
-    return all.where((s) => !s.isVerified).toList();
+    // Cheap single-field query — valid because every write path stamps
+    // `isVerified` (create/update/verify/unverify) and the Helper backfill
+    // stamped pre-feature records.
+    final snap = await _firestore
+        .collection(_collection)
+        .where('isVerified', isEqualTo: false)
+        .get();
+    return snap.docs
+        .map((d) => StudentModel.fromFirestore(d.id, d.data()))
+        .toList();
+  }
+
+  /// Stamps `isVerified: false` (+ empty attestation) on docs predating the
+  /// verification feature. Skips docs that already carry the field, so
+  /// re-runs are cheap; returns docs touched.
+  @override
+  Future<int> backfillVerificationFlags() async {
+    final snap = await _firestore.collection(_collection).get();
+    var touched = 0;
+    var batch = _firestore.batch();
+    var pending = 0;
+    for (final d in snap.docs) {
+      if ((d.data()).containsKey('isVerified')) continue;
+      batch.update(d.reference, {
+        'isVerified': false,
+        'verifiedBy': '',
+        'verifiedAt': null,
+      });
+      pending++;
+      touched++;
+      if (pending == 450) {
+        await batch.commit();
+        batch = _firestore.batch();
+        pending = 0;
+      }
+    }
+    if (pending > 0) await batch.commit();
+    return touched;
   }
 
   /// Stamps missingDocs/missingDocsCount on every student doc (Helper

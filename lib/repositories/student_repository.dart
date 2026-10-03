@@ -98,10 +98,14 @@ abstract class StudentRepository {
   /// Every verified student (`isVerified == true`; single-field query).
   Future<List<StudentModel>> fetchVerifiedStudents();
 
-  /// Every unverified student. Client-side filter over a full fetch:
-  /// legacy docs lacking the `isVerified` field read as unverified, which
-  /// a server `== false` query would miss.
+  /// Every unverified student (`isVerified == false`; single-field query).
+  /// Valid because every write stamps the flag and the Helper backfill
+  /// covered pre-feature docs.
   Future<List<StudentModel>> fetchUnverifiedStudents();
+
+  /// One-time backfill stamping `isVerified: false` on pre-feature docs
+  /// (Helper screen). Safe to re-run; returns docs touched.
+  Future<int> backfillVerificationFlags();
 
   // ── Migration ──
   Future<int> migrateStudentAuditLogs();
