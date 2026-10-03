@@ -66,11 +66,18 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     _groupCount,
     (_) => false,
   );
+  // Per-group "Unverified" filter. Exclusive with both above.
+  final List<bool> _unverifiedOnly = List.generate(
+    _groupCount,
+    (_) => false,
+  );
   // Cached campus-wide incomplete fetch per tab (one read burst per toggle,
   // reused across filter/page changes) + the tab's current page.
   final List<Future<List<StudentModel>>?> _incompleteFutures =
       List.generate(_groupCount, (_) => null);
   final List<Future<List<StudentModel>>?> _verifiedFutures =
+      List.generate(_groupCount, (_) => null);
+  final List<Future<List<StudentModel>>?> _unverifiedFutures =
       List.generate(_groupCount, (_) => null);
   final List<int> _missingPage = List.generate(_groupCount, (_) => 0);
   final List<Timer?> _debounce = List.generate(_groupCount, (_) => null);
@@ -168,7 +175,8 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
       _selectedYears[g].isNotEmpty ||
       _selectedCourses[g].isNotEmpty ||
       _missingDocsOnly[g] ||
-      _verifiedOnly[g];
+      _verifiedOnly[g] ||
+      _unverifiedOnly[g];
 
   int _compareStudents(StudentModel a, StudentModel b) {
     int cmp;
@@ -209,7 +217,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
   void _onSearchChanged(int g, String _) {
     // Debounce: wait for a typing pause before hitting the server.
     _debounce[g]?.cancel();
-    if (_missingDocsOnly[g] || _verifiedOnly[g]) {
+    if (_missingDocsOnly[g] || _verifiedOnly[g] || _unverifiedOnly[g]) {
       // Flagged modes filter the cached fetch: back to page 1.
       setState(() => _missingPage[g] = 0);
       return;
@@ -244,7 +252,9 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
   /// tab's browse pages when no filter remains. In flagged modes the
   /// server controller is idle — only the page resets.
   void _filterChipsChanged(int g) {
-    if (_missingDocsOnly[g] || _verifiedOnly[g]) return;
+    if (_missingDocsOnly[g] || _verifiedOnly[g] || _unverifiedOnly[g]) {
+      return;
+    }
     if (!_hasActiveFilters(g)) {
       _pageCtrls[g].resetToBrowse();
       return;
@@ -260,6 +270,8 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
         // Flagged modes are exclusive.
         _verifiedOnly[g] = false;
         _verifiedFutures[g] = null;
+        _unverifiedOnly[g] = false;
+        _unverifiedFutures[g] = null;
         // One read burst; reused across filter/page changes while active.
         _incompleteFutures[g] ??= _service.fetchIncompleteStudents();
       } else {
@@ -278,12 +290,40 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
         // Flagged modes are exclusive.
         _missingDocsOnly[g] = false;
         _incompleteFutures[g] = null;
+        _unverifiedOnly[g] = false;
+        _unverifiedFutures[g] = null;
         _verifiedFutures[g] ??= _service.fetchVerifiedStudents();
       } else {
         _verifiedFutures[g] = null;
       }
     });
     if (!_verifiedOnly[g]) _filterChipsChanged(g);
+  }
+
+  void _toggleUnverified(int g) {
+    setState(() {
+      _unverifiedOnly[g] = !_unverifiedOnly[g];
+      _missingPage[g] = 0;
+      if (_unverifiedOnly[g]) {
+        // Flagged modes are exclusive.
+        _missingDocsOnly[g] = false;
+        _incompleteFutures[g] = null;
+        _verifiedOnly[g] = false;
+        _verifiedFutures[g] = null;
+        _unverifiedFutures[g] ??= _service.fetchUnverifiedStudents();
+      } else {
+        _unverifiedFutures[g] = null;
+      }
+    });
+    if (!_unverifiedOnly[g]) _filterChipsChanged(g);
+  }
+
+  /// Re-runs the tab's unverified fetch (e.g. after verifying from detail).
+  void _refreshUnverified(int g) {
+    setState(() {
+      _missingPage[g] = 0;
+      _unverifiedFutures[g] = _service.fetchUnverifiedStudents();
+    });
   }
 
   /// Re-runs the tab's verified fetch (e.g. after verifying from detail).
@@ -314,9 +354,11 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
       _selectedCourses[g].clear();
       _missingDocsOnly[g] = false;
       _verifiedOnly[g] = false;
+      _unverifiedOnly[g] = false;
       _missingPage[g] = 0;
       _incompleteFutures[g] = null;
       _verifiedFutures[g] = null;
+      _unverifiedFutures[g] = null;
     });
     _pageCtrls[g].resetToBrowse();
   }
@@ -329,9 +371,11 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
       _selectedCourses[g].clear();
       _missingDocsOnly[g] = false;
       _verifiedOnly[g] = false;
+      _unverifiedOnly[g] = false;
       _missingPage[g] = 0;
       _incompleteFutures[g] = null;
       _verifiedFutures[g] = null;
+      _unverifiedFutures[g] = null;
     }
     setState(() {});
     // Back to page 1 of each tab's browse view, then fresh chip options.
@@ -549,6 +593,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
               hasActiveFilters: _hasActiveFilters(g),
               missingDocsOnly: _missingDocsOnly[g],
               verifiedOnly: _verifiedOnly[g],
+              unverifiedOnly: _unverifiedOnly[g],
               sortColumnIndex: _sortColumnIndex,
               sortAscending: _sortAscending,
               onSort: _onSort,
@@ -557,6 +602,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
               onCourseToggled: (v) => _toggleCourse(g, v),
               onMissingDocsToggled: () => _toggleMissingDocs(g),
               onVerifiedToggled: () => _toggleVerified(g),
+              onUnverifiedToggled: () => _toggleUnverified(g),
               onClear: () => _clearFilters(g),
               onView: _openDetail,
               onEdit: _openEdit,
@@ -564,10 +610,12 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
               sorter: _compareStudents,
               incompleteFuture: _incompleteFutures[g],
               verifiedFuture: _verifiedFutures[g],
+              unverifiedFuture: _unverifiedFutures[g],
               missingPage: _missingPage[g],
               onMissingPageChanged: (p) => _setMissingPage(g, p),
               onMissingRefresh: () => _refreshMissingDocs(g),
               onVerifiedRefresh: () => _refreshVerified(g),
+              onUnverifiedRefresh: () => _refreshUnverified(g),
             ),
           _StudentGlobalLogTab(service: _service),
         ],
@@ -604,6 +652,7 @@ class _GroupStudentsTab extends StatelessWidget {
   final bool hasActiveFilters;
   final bool missingDocsOnly;
   final bool verifiedOnly;
+  final bool unverifiedOnly;
   final int sortColumnIndex;
   final bool sortAscending;
   final void Function(int, bool) onSort;
@@ -612,6 +661,7 @@ class _GroupStudentsTab extends StatelessWidget {
   final void Function(String) onCourseToggled;
   final VoidCallback onMissingDocsToggled;
   final VoidCallback onVerifiedToggled;
+  final VoidCallback onUnverifiedToggled;
   final VoidCallback onClear;
   final void Function(StudentModel) onView;
   final void Function(StudentModel) onEdit;
@@ -619,10 +669,12 @@ class _GroupStudentsTab extends StatelessWidget {
   final int Function(StudentModel, StudentModel) sorter;
   final Future<List<StudentModel>>? incompleteFuture;
   final Future<List<StudentModel>>? verifiedFuture;
+  final Future<List<StudentModel>>? unverifiedFuture;
   final int missingPage;
   final void Function(int page) onMissingPageChanged;
   final VoidCallback onMissingRefresh;
   final VoidCallback onVerifiedRefresh;
+  final VoidCallback onUnverifiedRefresh;
 
   const _GroupStudentsTab({
     required this.title,
@@ -636,6 +688,7 @@ class _GroupStudentsTab extends StatelessWidget {
     required this.hasActiveFilters,
     required this.missingDocsOnly,
     required this.verifiedOnly,
+    required this.unverifiedOnly,
     required this.sortColumnIndex,
     required this.sortAscending,
     required this.onSort,
@@ -644,6 +697,7 @@ class _GroupStudentsTab extends StatelessWidget {
     required this.onCourseToggled,
     required this.onMissingDocsToggled,
     required this.onVerifiedToggled,
+    required this.onUnverifiedToggled,
     required this.onClear,
     required this.onView,
     required this.onEdit,
@@ -651,10 +705,12 @@ class _GroupStudentsTab extends StatelessWidget {
     required this.sorter,
     required this.incompleteFuture,
     required this.verifiedFuture,
+    required this.unverifiedFuture,
     required this.missingPage,
     required this.onMissingPageChanged,
     required this.onMissingRefresh,
     required this.onVerifiedRefresh,
+    required this.onUnverifiedRefresh,
   });
 
   @override
@@ -675,11 +731,13 @@ class _GroupStudentsTab extends StatelessWidget {
               hasActiveFilters: hasActiveFilters,
               missingDocsOnly: missingDocsOnly,
               verifiedOnly: verifiedOnly,
+              unverifiedOnly: unverifiedOnly,
               onSearchChanged: onSearchChanged,
               onYearToggled: onYearToggled,
               onCourseToggled: onCourseToggled,
               onMissingDocsToggled: onMissingDocsToggled,
               onVerifiedToggled: onVerifiedToggled,
+              onUnverifiedToggled: onUnverifiedToggled,
               onClear: onClear,
             ),
             if (controller.error != null)
@@ -749,7 +807,28 @@ class _GroupStudentsTab extends StatelessWidget {
                           bannerBg: Colors.green.shade50,
                           bannerFg: Colors.green.shade800,
                         )
-                      : loadingInitial
+                      : unverifiedOnly
+                          ? _FlaggedList(
+                              group: group,
+                              future: unverifiedFuture,
+                              query: searchCtrl.text.trim(),
+                              years: selectedYears,
+                              courses: selectedCourses,
+                              sorter: sorter,
+                              page: missingPage,
+                              onView: onView,
+                              onEdit: onEdit,
+                              onDelete: onDelete,
+                              onPageChanged: onMissingPageChanged,
+                              onRefresh: onUnverifiedRefresh,
+                              emptyIcon: Icons.fact_check_outlined,
+                              emptyMessage: 'All students verified',
+                              countText: (n) =>
+                                  '$n unverified student${n == 1 ? '' : 's'}',
+                              bannerBg: Colors.amber.shade50,
+                              bannerFg: Colors.amber.shade900,
+                            )
+                          : loadingInitial
                       ? const Center(
                           child: CircularProgressIndicator(
                             valueColor: AlwaysStoppedAnimation(
@@ -774,7 +853,7 @@ class _GroupStudentsTab extends StatelessWidget {
                               onDelete: onDelete,
                             ),
             ),
-            if (!missingDocsOnly && !verifiedOnly)
+            if (!missingDocsOnly && !verifiedOnly && !unverifiedOnly)
               PaginationBar(controller: controller),
           ],
         );
@@ -1195,11 +1274,13 @@ class _SearchChipsPanel extends StatelessWidget {
   final bool hasActiveFilters;
   final bool missingDocsOnly;
   final bool verifiedOnly;
+  final bool unverifiedOnly;
   final ValueChanged<String> onSearchChanged;
   final void Function(String) onYearToggled;
   final void Function(String) onCourseToggled;
   final VoidCallback onMissingDocsToggled;
   final VoidCallback onVerifiedToggled;
+  final VoidCallback onUnverifiedToggled;
   final VoidCallback onClear;
   const _SearchChipsPanel({
     required this.searchCtrl,
@@ -1210,11 +1291,13 @@ class _SearchChipsPanel extends StatelessWidget {
     required this.hasActiveFilters,
     required this.missingDocsOnly,
     required this.verifiedOnly,
+    required this.unverifiedOnly,
     required this.onSearchChanged,
     required this.onYearToggled,
     required this.onCourseToggled,
     required this.onMissingDocsToggled,
     required this.onVerifiedToggled,
+    required this.onUnverifiedToggled,
     required this.onClear,
   });
 
@@ -1363,6 +1446,28 @@ class _SearchChipsPanel extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                   side: BorderSide(color: Colors.green.shade300),
+                ),
+                FilterChip(
+                  label: const Text('Unverified',
+                      style: TextStyle(fontSize: 12)),
+                  avatar: Icon(
+                    Icons.pending_outlined,
+                    size: 16,
+                    color: unverifiedOnly
+                        ? Colors.white
+                        : Colors.amber.shade800,
+                  ),
+                  selected: unverifiedOnly,
+                  onSelected: (_) => onUnverifiedToggled(),
+                  tooltip: 'Show only unverified students',
+                  selectedColor: Colors.amber.shade700,
+                  labelStyle: TextStyle(
+                    color: unverifiedOnly
+                        ? Colors.white
+                        : Colors.amber.shade800,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  side: BorderSide(color: Colors.amber.shade300),
                 ),
               ],
             ),

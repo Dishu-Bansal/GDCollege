@@ -566,6 +566,12 @@ class FirebaseStudentRepository implements StudentRepository {
         .toList();
   }
 
+  @override
+  Future<List<StudentModel>> fetchUnverifiedStudents() async {
+    final all = await fetchAllStudents();
+    return all.where((s) => !s.isVerified).toList();
+  }
+
   /// Stamps missingDocs/missingDocsCount on every student doc (Helper
   /// backfill for pre-flag records). Safe to re-run; returns docs touched.
   @override
