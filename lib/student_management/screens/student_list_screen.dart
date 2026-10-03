@@ -478,11 +478,14 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     }
   }
 
-  void _openDetail(StudentModel student) {
-    Navigator.push(
+  Future<void> _openDetail(StudentModel student) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => StudentDetailScreen(student: student)),
     );
+    // Verifying (or editing docs) from detail changes flagged membership —
+    // drop active flagged caches so the list is fresh on return.
+    if (mounted) _refreshActiveFlaggedCaches();
   }
 
   Future<void> _openEdit(StudentModel student) async {
@@ -522,7 +525,30 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
   /// membership, totals, or facet values may have changed.
   Future<void> _refreshAfterMutation() async {
     await Future.wait([for (final c in _pageCtrls) c.refresh()]);
+    if (mounted) _refreshActiveFlaggedCaches();
     if (mounted) await _loadFacets();
+  }
+
+  /// Re-runs the cached fetch behind every tab currently in a flagged
+  /// mode (missing-docs / verified / unverified). Only active modes hold
+  /// a future, so untouched tabs cost nothing.
+  void _refreshActiveFlaggedCaches() {
+    var changed = false;
+    for (var g = 0; g < _groupCount; g++) {
+      if (_missingDocsOnly[g] && _incompleteFutures[g] != null) {
+        _incompleteFutures[g] = _service.fetchIncompleteStudents();
+        changed = true;
+      }
+      if (_verifiedOnly[g] && _verifiedFutures[g] != null) {
+        _verifiedFutures[g] = _service.fetchVerifiedStudents();
+        changed = true;
+      }
+      if (_unverifiedOnly[g] && _unverifiedFutures[g] != null) {
+        _unverifiedFutures[g] = _service.fetchUnverifiedStudents();
+        changed = true;
+      }
+    }
+    if (changed) setState(() {});
   }
 
   @override
