@@ -29,6 +29,9 @@ class StudentModel {
   String aadharNumber;
   String panCard;
   String familyId;
+  // ABC (APAAR) ID number. Added after launch: old docs lack the key and
+  // read as '' (fromFirestore defaults), so nothing breaks.
+  String abcIdNumber;
 
   // Step 4: Educational Qualifications
   String? tenthName;
@@ -140,6 +143,7 @@ class StudentModel {
     this.aadharNumber = '',
     this.panCard = '',
     this.familyId = '',
+    this.abcIdNumber = '',
     this.nameOfCourse = '',
     this.group = '',
     this.yearOfAdmission,
@@ -227,6 +231,7 @@ class StudentModel {
       'panCard': panCard,
       'panurl': panUrl,
       'familyId': familyId,
+      'abcIdNumber': abcIdNumber,
       'tenth': tenthUrl,
       'twelfth': twelfthUrl,
       'graduation': graduationUrl,
@@ -271,6 +276,7 @@ class StudentModel {
       address: address, village: village, district: district,
       state: state, pin: pin, mobileNo1: mobileNo1, mobileNo2: mobileNo2,
       aadharNumber: aadharNumber, aadharUrl: aadharUrl, panCard: panCard, panUrl: panUrl, familyId: familyId,
+      abcIdNumber: abcIdNumber,
       tenthUrl: tenthUrl, twelfthUrl: twelfthUrl, graduationUrl: graduationUrl,
       postGraduationUrl: postGraduationUrl, diplomaUrl: diplomaUrl,
       nameOfCourse: nameOfCourse, group: group, yearOfAdmission: yearOfAdmission,
@@ -348,6 +354,7 @@ class StudentModel {
       panCard: data['panCard'] ?? '',
       panUrl: data['panurl'] ?? '',
       familyId: data['familyId'] ?? '',
+      abcIdNumber: data['abcIdNumber'] ?? '',
       tenthUrl: data['tenth'] ?? '',
       twelfthUrl: data['twelfth'] ?? '',
       graduationUrl: data['graduation'] ?? '',

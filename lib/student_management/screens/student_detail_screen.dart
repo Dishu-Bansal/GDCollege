@@ -143,6 +143,7 @@ class _DetailsTab extends StatelessWidget {
             _Field('Aadhar Number', student.aadharNumber),
             _Field('PAN Card', student.panCard),
             _Field('Family ID', student.familyId),
+            _Field('ABC ID Number', student.abcIdNumber),
           ],
           fileUrls: {
             'Aadhar Card': student.aadharUrl,
