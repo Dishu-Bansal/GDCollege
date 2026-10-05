@@ -7,12 +7,14 @@ import 'repositories/stock_repository.dart';
 import 'repositories/analytics_repository.dart';
 import 'repositories/bill_repository.dart';
 import 'visitor_management/repositories/visitor_repository.dart';
+import 'fees_management/repositories/fees_repository.dart';
 import 'services/firebase_student_service.dart';
 import 'services/firebase_staff_service.dart';
 import 'services/stock_service.dart';
 import 'services/firebase_analytics_service.dart';
 import 'services/firebase_bill_service.dart';
 import 'visitor_management/services/firebase_visitor_service.dart';
+import 'fees_management/services/firebase_fees_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -73,4 +75,8 @@ final billLogsStreamProvider = StreamProvider<List<BillLog>>(
 
 final visitorRepositoryProvider = Provider<VisitorRepository>((ref) {
   return FirebaseVisitorRepository();
+});
+
+final feesRepositoryProvider = Provider<FeesRepository>((ref) {
+  return FirebaseFeesService();
 });
