@@ -46,6 +46,7 @@ class _VisitorEntryFormScreenState
   final _vehicleCtrl = TextEditingController();
   final _purposeCtrl = TextEditingController();
   final _fromCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
   final List<TextEditingController> _accompanyingCtrls = [];
 
   bool _saving = false;
@@ -53,12 +54,19 @@ class _VisitorEntryFormScreenState
   /// Chosen check-in moment (defaults to now, minute precision).
   late DateTime _checkInAt;
 
+  /// Whether a check-out time is entered together with the check-in.
+  bool _addCheckOut = false;
+
+  /// Chosen check-out moment for a one-step completed entry.
+  late DateTime _checkOutAt;
+
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
     _checkInAt =
         DateTime(now.year, now.month, now.day, now.hour, now.minute);
+    _checkOutAt = _checkInAt;
     // Rebuild when the name field gains/loses focus so the suggestion list
     // appears and dismisses with focus.
     _nameFocusNode.addListener(_onNameFocusChanged);
@@ -100,6 +108,7 @@ class _VisitorEntryFormScreenState
     _vehicleCtrl.dispose();
     _purposeCtrl.dispose();
     _fromCtrl.dispose();
+    _phoneCtrl.dispose();
     for (final c in _accompanyingCtrls) {
       c.dispose();
     }
@@ -134,9 +143,9 @@ class _VisitorEntryFormScreenState
   }
 
   /// Picks a previous visitor: remembers the selection, fills the name,
-  /// last known car plate and from-place, and collapses the suggestion list.
-  /// Always overwrites the car/from fields (even with empty) so stale values
-  /// from a previous pick never linger.
+  /// last known car plate, from-place and phone, and collapses the
+  /// suggestion list. Always overwrites those fields (even with empty) so
+  /// stale values from a previous pick never linger.
   void _pickSuggestion(VisitorModel v) {
     // Setting controller text fires onChanged synchronously, which would
     // wipe the just-made selection — suppress it for this programmatic set.
@@ -150,6 +159,7 @@ class _VisitorEntryFormScreenState
       _selectedVisitor = v;
       _vehicleCtrl.text = v.vehicleNumber;
       _fromCtrl.text = v.fromPlace;
+      _phoneCtrl.text = v.phone;
     });
   }
 
@@ -169,6 +179,7 @@ class _VisitorEntryFormScreenState
       _vehicleCtrl.clear();
       _purposeCtrl.clear();
       _fromCtrl.clear();
+      _phoneCtrl.clear();
       for (final c in _accompanyingCtrls) {
         c.dispose();
       }
@@ -196,11 +207,38 @@ class _VisitorEntryFormScreenState
       );
       return;
     }
+    final phoneDigits = _phoneCtrl.text.replaceAll(RegExp(r'\D'), '');
+    if (phoneDigits.isNotEmpty && phoneDigits.length < 10) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid 10-digit phone number')),
+      );
+      return;
+    }
     if (_checkInAt.isAfter(DateTime.now())) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Check-in time cannot be in the future')),
       );
       return;
+    }
+    // Optional one-step check-out: when the toggle is on, the visit is
+    // registered complete under the same name.
+    DateTime? checkOutAt;
+    if (_addCheckOut) {
+      checkOutAt = _checkOutAt;
+      if (checkOutAt.isBefore(_checkInAt)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Check-out cannot be before check-in')),
+        );
+        return;
+      }
+      if (checkOutAt.isAfter(DateTime.now())) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Check-out time cannot be in the future')),
+        );
+        return;
+      }
     }
 
     setState(() => _saving = true);
@@ -214,14 +252,20 @@ class _VisitorEntryFormScreenState
         vehicleNumber: _vehicleCtrl.text,
         purpose: _purposeCtrl.text,
         fromPlace: fromPlace,
+        phone: _phoneCtrl.text,
         accompanyingPeople: _accompanyingNames,
         at: _checkInAt,
+        checkOutAt: checkOutAt,
       );
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
       Navigator.pop(context);
       messenger.showSnackBar(
-        SnackBar(content: Text('$name checked in at ${_fmt(_checkInAt)}')),
+        SnackBar(
+            content: Text(checkOutAt == null
+                ? '$name checked in at ${_fmt(_checkInAt)}'
+                : '$name registered (in ${_fmt(_checkInAt)}, '
+                    'out ${_fmt(checkOutAt)})')),
       );
     } catch (e) {
       setState(() => _saving = false);
@@ -284,6 +328,18 @@ class _VisitorEntryFormScreenState
               ),
               const SizedBox(height: 12),
 
+              // Phone number (autofills from the picked visitor / staff)
+              TextField(
+                controller: _phoneCtrl,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Phone Number (optional)',
+                  hintText: 'e.g. 98765 43210',
+                  prefixIcon: Icon(Icons.phone_outlined),
+                ),
+              ),
+              const SizedBox(height: 12),
+
               // Purpose of visit
               TextField(
                 controller: _purposeCtrl,
@@ -315,7 +371,32 @@ class _VisitorEntryFormScreenState
                 initial: _checkInAt,
                 onChanged: (v) => _checkInAt = v,
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
+
+              // Optional one-step check-out (same for staff and visitors)
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Add check-out time',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 14)),
+                subtitle: const Text(
+                    'Register this entry complete with both times',
+                    style: TextStyle(fontSize: 12)),
+                value: _addCheckOut,
+                onChanged: (v) => setState(() => _addCheckOut = v),
+              ),
+              if (_addCheckOut) ...[
+                const Text('Check-out Date & Time',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 14)),
+                const SizedBox(height: 8),
+                VisitDateTimeInput(
+                  initial: _checkOutAt,
+                  onChanged: (v) => _checkOutAt = v,
+                ),
+                const SizedBox(height: 8),
+              ],
+              const SizedBox(height: 12),
 
               // Accompanying people
               Row(children: [
@@ -438,6 +519,11 @@ class _VisitorEntryFormScreenState
         if (s != null) {
           final place = _staffFromPlace(s);
           if (place.isNotEmpty) _fromCtrl.text = place;
+          // Same for the phone number (primary mobile, else secondary).
+          final phone = s.mobileNo1.trim().isNotEmpty
+              ? s.mobileNo1.trim()
+              : s.mobileNo2.trim();
+          if (phone.isNotEmpty) _phoneCtrl.text = phone;
         }
       }),
     );

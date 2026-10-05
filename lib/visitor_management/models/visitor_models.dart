@@ -19,6 +19,10 @@ class VisitorModel {
   /// Last known place the visitor comes from (autocomplete suggestions).
   String fromPlace;
 
+  /// Last known phone number (autofills the check-in form on pick).
+  /// Added after launch: old docs lack the key and read as ''.
+  String phone;
+
   VisitorModel({
     this.id,
     this.name = '',
@@ -28,6 +32,7 @@ class VisitorModel {
     this.lastCheckOutAt,
     this.vehicleNumber = '',
     this.fromPlace = '',
+    this.phone = '',
   });
 
   factory VisitorModel.fromFirestore(String id, Map<String, dynamic> d) =>
@@ -46,6 +51,7 @@ class VisitorModel {
             : null,
         vehicleNumber: d['vehicleNumber'] ?? '',
         fromPlace: d['fromPlace'] ?? '',
+        phone: d['phone'] ?? '',
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -59,6 +65,7 @@ class VisitorModel {
     'lastCheckOutAt': lastCheckOutAt?.toIso8601String(),
     'vehicleNumber': vehicleNumber,
     'fromPlace': fromPlace,
+    'phone': phone,
   };
 }
 
@@ -90,6 +97,11 @@ class VisitorEventModel {
   String vehicleNumber;
   String purpose;
   String fromPlace;
+  String phone;
+
+  /// Business time of the check-out for single-row completed entries.
+  /// Null for plain entry/exit rows.
+  DateTime? outAt;
   List<String> accompanyingPeople;
 
   /// Staff email that recorded the event.
@@ -107,12 +119,18 @@ class VisitorEventModel {
     this.vehicleNumber = '',
     this.purpose = '',
     this.fromPlace = '',
+    this.phone = '',
+    this.outAt,
     this.accompanyingPeople = const [],
     this.by = '',
   })  : at = at ?? DateTime.now(),
         createdAt = createdAt ?? DateTime.now();
 
   bool get isEntry => type == 'entry';
+
+  /// A one-step completed entry (check-in + check-out logged together as a
+  /// single 'Entry added' row).
+  bool get isCompleted => type == 'completed';
   bool get isStaff => personType == 'staff';
 
   factory VisitorEventModel.fromFirestore(String id, Map<String, dynamic> d) =>
@@ -135,6 +153,10 @@ class VisitorEventModel {
         vehicleNumber: d['vehicleNumber'] ?? '',
         purpose: d['purpose'] ?? '',
         fromPlace: d['fromPlace'] ?? '',
+        phone: d['phone'] ?? '',
+        outAt: d['outAt'] != null
+            ? DateTime.tryParse(d['outAt'])
+            : null,
         accompanyingPeople: List<String>.from(d['accompanyingPeople'] ?? []),
         by: d['by'] ?? '',
       );
@@ -150,6 +172,8 @@ class VisitorEventModel {
     'vehicleNumber': vehicleNumber,
     'purpose': purpose,
     'fromPlace': fromPlace,
+    'phone': phone,
+    'outAt': outAt?.toIso8601String(),
     'accompanyingPeople': accompanyingPeople,
     'by': by,
   };
@@ -173,9 +197,15 @@ class VisitorVisitModel {
   String vehicleNumber;
   String purpose;
   String fromPlace;
+  String phone;
   List<String> accompanyingPeople;
   DateTime checkInAt;
   DateTime? checkOutAt;
+
+  /// True when the visit was registered complete in one step (check-in +
+  /// check-out entered together), so the log keeps a single 'Entry added'
+  /// row instead of separate entry/exit rows. Old docs lack the key.
+  bool completedAtEntry;
   String checkedInBy;
   String checkedOutBy;
 
@@ -187,9 +217,11 @@ class VisitorVisitModel {
     this.vehicleNumber = '',
     this.purpose = '',
     this.fromPlace = '',
+    this.phone = '',
     this.accompanyingPeople = const [],
     DateTime? checkInAt,
     this.checkOutAt,
+    this.completedAtEntry = false,
     this.checkedInBy = '',
     this.checkedOutBy = '',
   }) : checkInAt = checkInAt ?? DateTime.now();
@@ -208,6 +240,7 @@ class VisitorVisitModel {
         vehicleNumber: d['vehicleNumber'] ?? '',
         purpose: d['purpose'] ?? '',
         fromPlace: d['fromPlace'] ?? '',
+        phone: d['phone'] ?? '',
         accompanyingPeople: List<String>.from(d['accompanyingPeople'] ?? []),
         checkInAt: d['checkInAt'] != null
             ? DateTime.tryParse(d['checkInAt']) ?? DateTime.now()
@@ -215,6 +248,7 @@ class VisitorVisitModel {
         checkOutAt: d['checkOutAt'] != null
             ? DateTime.tryParse(d['checkOutAt'])
             : null,
+        completedAtEntry: d['completedAtEntry'] == true,
         checkedInBy: d['checkedInBy'] ?? '',
         checkedOutBy: d['checkedOutBy'] ?? '',
       );
@@ -226,9 +260,11 @@ class VisitorVisitModel {
     'vehicleNumber': vehicleNumber,
     'purpose': purpose,
     'fromPlace': fromPlace,
+    'phone': phone,
     'accompanyingPeople': accompanyingPeople,
     'checkInAt': checkInAt.toIso8601String(),
     'checkOutAt': checkOutAt?.toIso8601String(),
+    'completedAtEntry': completedAtEntry,
     // Explicit boolean so the "currently inside" query can use a reliable
     // equality filter (null-equality filters don't re-evaluate reliably when
     // a doc's field changes from missing to a value).
