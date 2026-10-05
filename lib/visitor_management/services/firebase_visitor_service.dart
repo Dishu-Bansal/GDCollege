@@ -104,6 +104,7 @@ class FirebaseVisitorRepository implements VisitorRepository {
     required String vehicleNumber,
     required String purpose,
     required String fromPlace,
+    required String phone,
     required List<String> accompanyingPeople,
     DateTime? at,
   }) async {
@@ -127,6 +128,9 @@ class FirebaseVisitorRepository implements VisitorRepository {
       if (fromPlace.trim().isNotEmpty) {
         update['fromPlace'] = fromPlace.trim();
       }
+      if (phone.trim().isNotEmpty) {
+        update['phone'] = phone.trim();
+      }
       batch.update(_visitors.doc(visitorId), update);
       personRefId = visitorId;
     } else {
@@ -140,6 +144,7 @@ class FirebaseVisitorRepository implements VisitorRepository {
         lastVisitAt: now,
         vehicleNumber: vehicleNumber.trim(),
         fromPlace: fromPlace.trim(),
+        phone: phone.trim(),
       ).toFirestore());
       personRefId = ref.id;
     }
@@ -152,6 +157,7 @@ class FirebaseVisitorRepository implements VisitorRepository {
       vehicleNumber: vehicleNumber.trim(),
       purpose: purpose.trim(),
       fromPlace: fromPlace.trim(),
+      phone: phone.trim(),
       accompanyingPeople: accompanyingPeople
           .map((e) => e.trim())
           .where((e) => e.isNotEmpty)
@@ -175,6 +181,7 @@ class FirebaseVisitorRepository implements VisitorRepository {
           vehicleNumber: visit.vehicleNumber,
           purpose: visit.purpose,
           fromPlace: visit.fromPlace,
+          phone: visit.phone,
           accompanyingPeople: visit.accompanyingPeople,
           by: visit.checkedInBy,
         ).toFirestore());
@@ -220,6 +227,7 @@ class FirebaseVisitorRepository implements VisitorRepository {
           vehicleNumber: (data['vehicleNumber'] ?? '').toString(),
           purpose: (data['purpose'] ?? '').toString(),
           fromPlace: (data['fromPlace'] ?? '').toString(),
+          phone: (data['phone'] ?? '').toString(),
           accompanyingPeople:
               List<String>.from(data['accompanyingPeople'] ?? []),
           by: by,
@@ -264,6 +272,7 @@ class FirebaseVisitorRepository implements VisitorRepository {
       final vehicleNumber = (data['vehicleNumber'] ?? '').toString();
       final purpose = (data['purpose'] ?? '').toString();
       final fromPlace = (data['fromPlace'] ?? '').toString();
+      final phone = (data['phone'] ?? '').toString();
       final accompanying =
           List<String>.from(data['accompanyingPeople'] ?? []);
       final checkInAt = _parseAt(data['checkInAt']);
@@ -286,6 +295,7 @@ class FirebaseVisitorRepository implements VisitorRepository {
             vehicleNumber: vehicleNumber,
             purpose: purpose,
             fromPlace: fromPlace,
+            phone: phone,
             accompanyingPeople: accompanying,
             by: (data['checkedInBy'] ?? '').toString(),
           ),
@@ -307,6 +317,7 @@ class FirebaseVisitorRepository implements VisitorRepository {
             vehicleNumber: vehicleNumber,
             purpose: purpose,
             fromPlace: fromPlace,
+            phone: phone,
             accompanyingPeople: accompanying,
             by: (data['checkedOutBy'] ?? '').toString(),
           ),
