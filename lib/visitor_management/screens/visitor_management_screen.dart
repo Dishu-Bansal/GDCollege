@@ -7,6 +7,7 @@ import '../../access/widgets/access_gate.dart';
 import '../../widgets/stock_widgets.dart';
 import '../models/visitor_models.dart';
 import '../repositories/visitor_repository.dart';
+import '../../staff_management/models/staff_model.dart';
 import '../widgets/visit_datetime_input.dart';
 import 'visitor_detail_screen.dart';
 import 'visitor_entry_form_screen.dart';
@@ -29,7 +30,7 @@ class _VisitorManagementScreenState
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 3, vsync: this);
+    _tabs = TabController(length: 4, vsync: this);
     _tabs.addListener(() => setState(() {}));
   }
 
@@ -76,6 +77,9 @@ class _VisitorManagementScreenState
             Tab(
                 icon: Icon(Icons.people_alt_outlined, size: 18),
                 text: 'Visitors'),
+            Tab(
+                icon: Icon(Icons.badge_outlined, size: 18),
+                text: 'Staff'),
             Tab(icon: Icon(Icons.history, size: 18), text: 'Logs'),
           ],
         ),
@@ -85,6 +89,7 @@ class _VisitorManagementScreenState
         children: [
           _InsideTab(service: service),
           _VisitorsTab(service: service),
+          _StaffTab(service: service),
           _LogsTab(service: service),
         ],
       ),
@@ -472,7 +477,187 @@ class _VisitorsTab extends StatelessWidget {
   }
 }
 
-// ── Tab 3: global visitor log ────────────────────────────────────────────────
+// ── Tab 3: staff members and their visits ────────────────────────────────────
+// Mirrors the Visitors tab: every staff profile with visit count + last
+// in/out, aggregated live from all visits (personType staff + personRefId).
+// Rows expand inline to list the member's visits (no cross-module nav).
+
+class _StaffTab extends ConsumerWidget {
+  final VisitorRepository service;
+
+  const _StaffTab({required this.service});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return StreamBuilder<List<StaffModel>>(
+      stream: ref.read(staffRepositoryProvider).watchAll(),
+      builder: (context, staffSnap) => _StaffTabBody(
+        service: service,
+        staffSnap: staffSnap,
+      ),
+    );
+  }
+}
+
+class _StaffTabBody extends StatelessWidget {
+  final VisitorRepository service;
+  final AsyncSnapshot<List<StaffModel>> staffSnap;
+
+  const _StaffTabBody({required this.service, required this.staffSnap});
+
+  @override
+  Widget build(BuildContext context) {
+    if (staffSnap.hasError) {
+      return Center(child: Text('Failed to load: ${staffSnap.error}'));
+    }
+    final staff = staffSnap.data ?? [];
+    if (staffSnap.connectionState == ConnectionState.waiting &&
+        staff.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (staff.isEmpty) {
+      return const StockEmptyState(
+        message: 'No staff members yet.\nAdd staff in Staff Management.',
+      );
+    }
+    return StreamBuilder<List<VisitorVisitModel>>(
+      stream: service.watchAllVisits(),
+      builder: (context, visitSnap) {
+        if (visitSnap.hasError) {
+          return Center(child: Text('Failed to load: ${visitSnap.error}'));
+        }
+        final visits = visitSnap.data ?? [];
+        final byStaff = <String, List<VisitorVisitModel>>{};
+        for (final v in visits) {
+          if (v.personType != 'staff' || v.personRefId.isEmpty) continue;
+          (byStaff[v.personRefId] ??= []).add(v);
+        }
+        for (final list in byStaff.values) {
+          list.sort((a, b) => b.checkInAt.compareTo(a.checkInAt));
+        }
+        final ordered = [...staff]..sort((a, b) {
+            final la = _lastIn(byStaff[a.docId]);
+            final lb = _lastIn(byStaff[b.docId]);
+            if (la == null && lb == null) return a.name.compareTo(b.name);
+            if (la == null) return 1;
+            if (lb == null) return -1;
+            return lb.compareTo(la);
+          });
+        return ListView.separated(
+          padding: const EdgeInsets.all(12),
+          itemCount: ordered.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 10),
+          itemBuilder: (_, i) => _StaffCard(
+            staff: ordered[i],
+            visits: byStaff[ordered[i].docId] ?? const [],
+          ),
+        );
+      },
+    );
+  }
+
+  static DateTime? _lastIn(List<VisitorVisitModel>? visits) =>
+      visits == null || visits.isEmpty ? null : visits.first.checkInAt;
+}
+
+class _StaffCard extends StatelessWidget {
+  final StaffModel staff;
+  final List<VisitorVisitModel> visits;
+
+  const _StaffCard({required this.staff, required this.visits});
+
+  @override
+  Widget build(BuildContext context) {
+    DateTime? lastOut;
+    for (final v in visits) {
+      if (v.checkOutAt != null &&
+          (lastOut == null || v.checkOutAt!.isAfter(lastOut))) {
+        lastOut = v.checkOutAt;
+      }
+    }
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: ExpansionTile(
+        shape: const Border(),
+        leading: CircleAvatar(
+          backgroundColor: avatarColor(staff.name),
+          child: Text(
+            _initialOf(staff.name),
+            style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.w700),
+          ),
+        ),
+        title: Text(staff.name,
+            style: const TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${visits.length} visit${visits.length == 1 ? '' : 's'}'
+                '${visits.isNotEmpty ? '  •  In: ${_fmtDateTime(visits.first.checkInAt)}' : ''}'
+                '${lastOut != null ? '  •  Out: ${_fmtDateTime(lastOut)}' : ''}',
+                style:
+                    TextStyle(fontSize: 11, color: Colors.grey.shade600),
+              ),
+              if (staff.village.isNotEmpty || staff.district.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 3),
+                  child: _InfoItem(
+                    Icons.place_outlined,
+                    [staff.village, staff.district]
+                        .where((p) => p.isNotEmpty)
+                        .join(', '),
+                  ),
+                ),
+            ]),
+        children: visits.isEmpty
+            ? [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Text('No visits recorded yet.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey)),
+                ),
+              ]
+            : [
+                for (final v in visits.take(20))
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Row(children: [
+                      Icon(
+                        v.isInside
+                            ? Icons.login_outlined
+                            : Icons.logout_outlined,
+                        size: 14,
+                        color: v.isInside
+                            ? Colors.green.shade700
+                            : Colors.grey.shade500,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'In: ${_fmtDateTime(v.checkInAt)}'
+                          '${v.checkOutAt != null ? '  •  Out: ${_fmtDateTime(v.checkOutAt!)}' : '  •  Inside'}'
+                          '${v.purpose.isNotEmpty ? '  •  ${v.purpose}' : ''}'
+                          '${v.vehicleNumber.isNotEmpty ? '  •  ${v.vehicleNumber}' : ''}'
+                          '${v.fromPlace.isNotEmpty ? '  •  ${v.fromPlace}' : ''}',
+                          style: TextStyle(
+                              fontSize: 11, color: Colors.grey.shade700),
+                        ),
+                      ),
+                    ]),
+                  ),
+                const SizedBox(height: 4),
+              ],
+      ),
+    );
+  }
+}
+
+// ── Tab 4: global visitor log ────────────────────────────────────────────────
 // Entry and exit are separate time-sorted rows (visitEvents collection).
 
 class _LogsTab extends StatelessWidget {
