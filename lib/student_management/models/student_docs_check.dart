@@ -9,15 +9,21 @@ import 'student_model.dart';
 /// 3) caste BC (form stores OBC): BC Certificate;
 /// 4) state Haryana: Family ID, Haryana Residence, ABC ID.
 ///
+/// ID rules (Aadhar, Family ID, ABC ID) are satisfied by the typed number,
+/// not the uploaded file: the number is the must-have, the scan is
+/// optional. Certificate rules (10th, 12th, SC, BC, Haryana Residence)
+/// have no number field, so they still require the file.
+///
 /// Returns the labels of required-but-missing documents (empty = complete).
 /// Missing keys on pre-feature records read as null, so old students simply
 /// report their gaps instead of erroring. Creation/editing is never blocked
 /// — failures surface as row alerts and filter results only.
 List<String> missingStudentDocuments(StudentModel s) {
   bool empty(String? url) => url == null || url.isEmpty;
+  bool blank(String? text) => text == null || text.trim().isEmpty;
   final missing = <String>[];
 
-  if (empty(s.aadharUrl)) missing.add('Aadhar Card');
+  if (blank(s.aadharNumber)) missing.add('Aadhar Number');
   if (empty(s.tenthUrl)) missing.add('10th');
   if (empty(s.twelfthUrl)) missing.add('12th');
 
@@ -30,11 +36,11 @@ List<String> missingStudentDocuments(StudentModel s) {
   }
 
   if (s.state.trim().toUpperCase() == 'HARYANA') {
-    if (empty(s.familyIdDocUrl)) missing.add('Family ID');
+    if (blank(s.familyId)) missing.add('Family ID');
     if (empty(s.haryanaResidenceUrl)) {
       missing.add('Haryana Residence');
     }
-    if (empty(s.abcIdUrl)) missing.add('ABC ID');
+    if (blank(s.abcIdNumber)) missing.add('ABC ID Number');
   }
 
   return missing;
