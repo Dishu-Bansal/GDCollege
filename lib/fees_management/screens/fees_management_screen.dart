@@ -5,7 +5,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:gd_college/access/widgets/access_gate.dart';
 import 'package:gd_college/constants.dart';
 import 'package:gd_college/providers.dart';
-import 'package:gd_college/repositories/student_repository.dart';
 import 'package:gd_college/student_management/models/student_model.dart';
 import 'package:gd_college/widgets/drawer.dart';
 import '../models/receipt_model.dart';
@@ -69,7 +68,6 @@ class _FeesManagementScreenState extends ConsumerState<FeesManagementScreen>
   }
 
   Widget _content() {
-    final studentService = ref.read(studentRepositoryProvider);
     final feesService = ref.read(feesRepositoryProvider);
     // Same breakpoint as the table/card switch: on mobile the FAB would
     // cover the pagination arrows, so Add moves into the top bar.
@@ -82,6 +80,11 @@ class _FeesManagementScreenState extends ConsumerState<FeesManagementScreen>
         title: const Text('Fees Management',
             style: TextStyle(fontWeight: FontWeight.w700)),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Reload students',
+            onPressed: () => ref.invalidate(allStudentsProvider),
+          ),
           if (isNarrow && showAdd)
             IconButton(
               icon: const Icon(Icons.add),
@@ -109,13 +112,11 @@ class _FeesManagementScreenState extends ConsumerState<FeesManagementScreen>
         children: [
           _StudentsTab(
             group: StudentGroup.gdCollege,
-            studentService: studentService,
             feesService: feesService,
             onOpen: _openStudentFees,
           ),
           _StudentsTab(
             group: StudentGroup.mlsn,
-            studentService: studentService,
             feesService: feesService,
             onOpen: _openStudentFees,
           ),
@@ -139,32 +140,29 @@ class _FeesManagementScreenState extends ConsumerState<FeesManagementScreen>
 
 // ── Students tab (one per college) ───────────────────────────────────────────
 
-class _StudentsTab extends StatefulWidget {
+class _StudentsTab extends ConsumerStatefulWidget {
   final StudentGroup group;
-  final StudentRepository studentService;
   final FeesRepository feesService;
   final void Function(StudentModel) onOpen;
 
   const _StudentsTab({
     required this.group,
-    required this.studentService,
     required this.feesService,
     required this.onOpen,
   });
 
   @override
-  State<_StudentsTab> createState() => _StudentsTabState();
+  ConsumerState<_StudentsTab> createState() => _StudentsTabState();
 }
 
-class _StudentsTabState extends State<_StudentsTab> {
+class _StudentsTabState extends ConsumerState<_StudentsTab> {
   static const _pageSize = 10;
 
   final _searchCtrl = TextEditingController();
 
-  // One-shot student load + live receipts: keystrokes in the search box
-  // only re-filter the already-loaded data.
-  late final Future<List<StudentModel>> _studentsFuture =
-      widget.studentService.fetchAllStudents();
+  // Students come from the shared session cache (one download for both
+  // tabs + the receipt picker); only receipts stream live here.
+  // Keystrokes in the search box then only re-filter already-loaded data.
   late final Stream<List<ReceiptModel>> _receiptsStream =
       widget.feesService.watchAllReceipts();
 
@@ -208,20 +206,20 @@ class _StudentsTabState extends State<_StudentsTab> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<StudentModel>>(
-      future: _studentsFuture,
-      builder: (context, studentSnap) {
-        if (studentSnap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (studentSnap.hasError) {
-          return Center(
-              child: Text('Failed to load: ${studentSnap.error}'));
-        }
+    final studentsAsync = ref.watch(allStudentsProvider);
+    return studentsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Failed to load: $e')),
+      data: (all) => _buildLoaded(
         // This tab's college only (stored group, by-course fallback).
-        final students = (studentSnap.data ?? [])
+        all
             .where((s) => collegeLabelOf(s) == widget.group.label)
-            .toList();
+            .toList(),
+      ),
+    );
+  }
+
+  Widget _buildLoaded(List<StudentModel> students) {
         final years = students
             .map((s) => s.yearOfAdmission)
             .whereType<int>()
@@ -587,8 +585,6 @@ class _StudentsTabState extends State<_StudentsTab> {
             ]);
           },
         );
-      },
-    );
   }
 
   Widget _sectionLabel(String text) {

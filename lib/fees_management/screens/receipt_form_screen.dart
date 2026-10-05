@@ -23,9 +23,6 @@ class _ReceiptFormScreenState extends ConsumerState<ReceiptFormScreen> {
   late final FeesRepository _feesService = ref.read(feesRepositoryProvider);
   final _formKey = GlobalKey<FormState>();
 
-  List<StudentModel> _students = [];
-  bool _studentsLoaded = false;
-
   String _college = StudentGroup.gdCollege.label;
   String _course = 'B.ED';
   late int _year;
@@ -50,14 +47,6 @@ class _ReceiptFormScreenState extends ConsumerState<ReceiptFormScreen> {
   void initState() {
     super.initState();
     _year = DateTime.now().year;
-    ref.read(studentRepositoryProvider).fetchAllStudents().then((s) {
-      if (mounted) {
-        setState(() {
-          _students = s;
-          _studentsLoaded = true;
-        });
-      }
-    });
   }
 
   @override
@@ -69,16 +58,16 @@ class _ReceiptFormScreenState extends ConsumerState<ReceiptFormScreen> {
     super.dispose();
   }
 
-  List<StudentModel> get _filteredStudents => _students
-      .where((s) =>
-          collegeLabelOf(s) == _college &&
-          s.nameOfCourse == _course &&
-          s.yearOfAdmission == _year)
-      .toList()
-    ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  List<StudentModel> _filteredStudents(List<StudentModel> students) =>
+      students
+          .where((s) =>
+              collegeLabelOf(s) == _college &&
+              s.nameOfCourse == _course &&
+              s.yearOfAdmission == _year)
+          .toList()
+        ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
-  Future<void> _openStudentPicker() async {
-    final students = _filteredStudents;
+  Future<void> _openStudentPicker(List<StudentModel> students) async {
     if (students.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('No students match College/Course/Year.')));
@@ -166,15 +155,26 @@ class _ReceiptFormScreenState extends ConsumerState<ReceiptFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _filteredStudents;
+    final studentsAsync = ref.watch(allStudentsProvider);
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
       appBar: AppBar(title: const Text('Add Receipt')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
+      body: studentsAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Failed to load: $e')),
+        data: (all) => SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: _form(all),
+        ),
+      ),
+    );
+  }
+
+  Widget _form(List<StudentModel> all) {
+    final filtered = _filteredStudents(all);
+    return Form(
+      key: _formKey,
+      child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // College / Course
@@ -261,7 +261,7 @@ class _ReceiptFormScreenState extends ConsumerState<ReceiptFormScreen> {
               TextFormField(
                 controller: _studentCtrl,
                 readOnly: true,
-                onTap: _saving ? null : _openStudentPicker,
+                onTap: _saving ? null : () => _openStudentPicker(filtered),
                 decoration: const InputDecoration(
                   labelText: 'Student *',
                   hintText: 'Search by name, father or student ID',
@@ -274,13 +274,7 @@ class _ReceiptFormScreenState extends ConsumerState<ReceiptFormScreen> {
                   padding: const EdgeInsets.only(top: 6),
                   child: _StudentSummary(student: _selectedStudent!),
                 ),
-              if (!_studentsLoaded)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text('Loading students…',
-                      style: TextStyle(fontSize: 12, color: Colors.grey)),
-                )
-              else if (filtered.isEmpty)
+              if (filtered.isEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
@@ -392,9 +386,7 @@ class _ReceiptFormScreenState extends ConsumerState<ReceiptFormScreen> {
               ),
             ],
           ),
-        ),
-      ),
-    );
+        );
   }
 }
 

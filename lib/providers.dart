@@ -8,6 +8,7 @@ import 'repositories/analytics_repository.dart';
 import 'repositories/bill_repository.dart';
 import 'visitor_management/repositories/visitor_repository.dart';
 import 'fees_management/repositories/fees_repository.dart';
+import 'student_management/models/student_model.dart';
 import 'services/firebase_student_service.dart';
 import 'services/firebase_staff_service.dart';
 import 'services/stock_service.dart';
@@ -79,4 +80,12 @@ final visitorRepositoryProvider = Provider<VisitorRepository>((ref) {
 
 final feesRepositoryProvider = Provider<FeesRepository>((ref) {
   return FirebaseFeesService();
+});
+
+/// All students, fetched once per app session and shared by every consumer
+/// (fees tabs, receipt picker, …). A plain [FutureProvider] (not
+/// auto-dispose) caches the result, so tab switches and reopening the
+/// receipt form cost no re-download. Invalidate to force a refresh.
+final allStudentsProvider = FutureProvider<List<StudentModel>>((ref) {
+  return ref.watch(studentRepositoryProvider).fetchAllStudents();
 });
