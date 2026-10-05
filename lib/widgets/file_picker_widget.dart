@@ -6,7 +6,29 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 // Alias to avoid conflict with package name
 import 'package:file_picker/file_picker.dart' as file_picker;
+import 'package:pdfx/pdfx.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+/// Renders page 1 of [pdfBytes] to PNG bytes (2x resolution, white
+/// background). Throws when the PDF can't be opened.
+Future<Uint8List> _pdfFirstPageToPng(Uint8List pdfBytes) async {
+  final doc = await PdfDocument.openData(pdfBytes);
+  try {
+    final page = await doc.getPage(1);
+    try {
+      final img = await page.render(
+        width: page.width * 2,
+        height: page.height * 2,
+        backgroundColor: '#FFFFFF',
+      );
+      return img!.bytes;
+    } finally {
+      await page.close();
+    }
+  } finally {
+    await doc.close();
+  }
+}
 
 class FilePicker extends StatelessWidget {
   final String label;
@@ -67,15 +89,33 @@ class FilePicker extends StatelessWidget {
           type: file_picker.FileType.custom,
           allowedExtensions: ['pdf'],
         );
-        if (result != null && result.files.single.bytes != null) {
-          final bytes = await result.files.single.size;
-          if (bytes > 5 * 1024 * 1024) {
-            if (context.mounted) {
-              _showSizeError(context, 'Photo must be under 5 MB');
-            }
-            return;
+        if (result == null || result.files.single.bytes == null) return;
+        final bytes = await result.files.single.size;
+        if (bytes > 5 * 1024 * 1024) {
+          if (context.mounted) {
+            _showSizeError(context, 'Photo must be under 5 MB');
           }
-          onFilePicked(result.files.single.bytes!, result.files.single.name!);
+          return;
+        }
+        // Convert page 1 to a PNG photo on-device; only the image is
+        // uploaded, the PDF itself is never stored.
+        if (!context.mounted) return;
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const Center(child: CircularProgressIndicator()),
+        );
+        try {
+          final png = await _pdfFirstPageToPng(result.files.single.bytes!);
+          if (!context.mounted) return;
+          Navigator.pop(context); // progress
+          final base = result.files.single.name.replaceAll(
+              RegExp(r'\.pdf$', caseSensitive: false), '');
+          onFilePicked(png, '$base.png');
+        } catch (e) {
+          if (!context.mounted) return;
+          Navigator.pop(context); // progress
+          _showSizeError(context, 'Could not read that PDF: $e');
         }
         return;
       }
@@ -120,11 +160,6 @@ class FilePicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasFile = filePath != null && filePath!.isNotEmpty;
-    // A PDF picked as "photo" can't render in an Image widget — show the
-    // file icon instead.
-    final isPdfPhoto = hasFile &&
-        imageOnly &&
-        (filename ?? '').toLowerCase().endsWith('.pdf');
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Column(
@@ -158,7 +193,7 @@ class FilePicker extends StatelessWidget {
               child: Row(
                 children: [
                   // Preview if image
-                  if (hasFile && imageOnly && !isPdfPhoto)
+                  if (hasFile && imageOnly)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(6),
                       child: Image.memory(
@@ -180,9 +215,7 @@ class FilePicker extends StatelessWidget {
                       ),
                       child: Icon(
                         hasFile
-                            ? (imageOnly && !isPdfPhoto
-                                ? Icons.image
-                                : Icons.description)
+                            ? (imageOnly ? Icons.image : Icons.description)
                             : Icons.upload_file,
                         color: hasFile
                             ? const Color(0xFF1A3C6E)
