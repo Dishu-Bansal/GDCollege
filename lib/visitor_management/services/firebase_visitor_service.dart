@@ -107,9 +107,18 @@ class FirebaseVisitorRepository implements VisitorRepository {
     required String phone,
     required List<String> accompanyingPeople,
     DateTime? at,
+    DateTime? checkOutAt,
   }) async {
     final now = at ?? DateTime.now();
+    if (checkOutAt != null && checkOutAt.isBefore(now)) {
+      throw ArgumentError('Check-out time cannot be before check-in time.');
+    }
     final batch = _db.batch();
+
+    // Visitor profile doc this entry belongs to (null for staff, who have
+    // no visitor profile). Needed below to stamp last check-out on a
+    // one-step completed visit.
+    String? visitorDocId;
 
     final String personRefId;
     if (isStaff) {
@@ -133,6 +142,7 @@ class FirebaseVisitorRepository implements VisitorRepository {
       }
       batch.update(_visitors.doc(visitorId), update);
       personRefId = visitorId;
+      visitorDocId = visitorId;
     } else {
       // No suggestion was picked: always create a new visitor, even when
       // the name matches an existing one (two visitors can share a name).
@@ -142,11 +152,13 @@ class FirebaseVisitorRepository implements VisitorRepository {
         visitCount: 1,
         firstVisitAt: now,
         lastVisitAt: now,
+        lastCheckOutAt: checkOutAt,
         vehicleNumber: vehicleNumber.trim(),
         fromPlace: fromPlace.trim(),
         phone: phone.trim(),
       ).toFirestore());
       personRefId = ref.id;
+      visitorDocId = ref.id;
     }
 
     final visitRef = _visits.doc();
@@ -163,6 +175,7 @@ class FirebaseVisitorRepository implements VisitorRepository {
           .where((e) => e.isNotEmpty)
           .toList(),
       checkInAt: now,
+      checkOutAt: checkOutAt,
       checkedInBy: UserSession().currentUser?.email ?? '',
     );
     batch.set(visitRef, visit.toFirestore());
@@ -185,6 +198,33 @@ class FirebaseVisitorRepository implements VisitorRepository {
           accompanyingPeople: visit.accompanyingPeople,
           by: visit.checkedInBy,
         ).toFirestore());
+    if (checkOutAt != null) {
+      // One-step completed visit: write its exit log row now (createdAt is
+      // the log moment, at is the entered business time) and stamp the
+      // visitor profile's last check-out, mirroring checkOut().
+      batch.set(
+          _events.doc('${visitRef.id}_exit'),
+          VisitorEventModel(
+            type: 'exit',
+            at: checkOutAt,
+            createdAt: DateTime.now(),
+            visitId: visitRef.id,
+            personType: visit.personType,
+            personRefId: personRefId,
+            name: visit.name,
+            vehicleNumber: visit.vehicleNumber,
+            purpose: visit.purpose,
+            fromPlace: visit.fromPlace,
+            phone: visit.phone,
+            accompanyingPeople: visit.accompanyingPeople,
+            by: visit.checkedInBy,
+          ).toFirestore());
+      if (visitorDocId != null) {
+        batch.update(_visitors.doc(visitorDocId), {
+          'lastCheckOutAt': checkOutAt.toIso8601String(),
+        });
+      }
+    }
 
     await batch.commit();
   }

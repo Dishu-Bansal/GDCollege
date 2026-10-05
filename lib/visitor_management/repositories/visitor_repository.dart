@@ -25,6 +25,11 @@ abstract class VisitorRepository {
   /// autocomplete) to reuse that visitor's profile; when it is null the
   /// entry always creates a new visitor, even if the name matches an
   /// existing one.
+  ///
+  /// Pass [checkOutAt] for a one-step completed visit (check-in and
+  /// check-out entered together): the visit is stored closed, its exit log
+  /// row is written, and the visitor profile's last check-out is stamped.
+  /// Throws when [checkOutAt] is before the check-in time.
   Future<void> checkIn({
     required bool isStaff,
     required String? staffId,
@@ -36,6 +41,7 @@ abstract class VisitorRepository {
     required String phone,
     required List<String> accompanyingPeople,
     DateTime? at,
+    DateTime? checkOutAt,
   });
 
   /// Checks out an open visit, stamping [at] (or the current time when

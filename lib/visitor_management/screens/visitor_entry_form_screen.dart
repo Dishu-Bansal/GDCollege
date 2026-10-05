@@ -54,12 +54,19 @@ class _VisitorEntryFormScreenState
   /// Chosen check-in moment (defaults to now, minute precision).
   late DateTime _checkInAt;
 
+  /// Whether a check-out time is entered together with the check-in.
+  bool _addCheckOut = false;
+
+  /// Chosen check-out moment for a one-step completed entry.
+  late DateTime _checkOutAt;
+
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
     _checkInAt =
         DateTime(now.year, now.month, now.day, now.hour, now.minute);
+    _checkOutAt = _checkInAt;
     // Rebuild when the name field gains/loses focus so the suggestion list
     // appears and dismisses with focus.
     _nameFocusNode.addListener(_onNameFocusChanged);
@@ -213,6 +220,26 @@ class _VisitorEntryFormScreenState
       );
       return;
     }
+    // Optional one-step check-out: when the toggle is on, the visit is
+    // registered complete under the same name.
+    DateTime? checkOutAt;
+    if (_addCheckOut) {
+      checkOutAt = _checkOutAt;
+      if (checkOutAt.isBefore(_checkInAt)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Check-out cannot be before check-in')),
+        );
+        return;
+      }
+      if (checkOutAt.isAfter(DateTime.now())) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Check-out time cannot be in the future')),
+        );
+        return;
+      }
+    }
 
     setState(() => _saving = true);
     try {
@@ -228,12 +255,17 @@ class _VisitorEntryFormScreenState
         phone: _phoneCtrl.text,
         accompanyingPeople: _accompanyingNames,
         at: _checkInAt,
+        checkOutAt: checkOutAt,
       );
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
       Navigator.pop(context);
       messenger.showSnackBar(
-        SnackBar(content: Text('$name checked in at ${_fmt(_checkInAt)}')),
+        SnackBar(
+            content: Text(checkOutAt == null
+                ? '$name checked in at ${_fmt(_checkInAt)}'
+                : '$name registered (in ${_fmt(_checkInAt)}, '
+                    'out ${_fmt(checkOutAt)})')),
       );
     } catch (e) {
       setState(() => _saving = false);
@@ -339,7 +371,32 @@ class _VisitorEntryFormScreenState
                 initial: _checkInAt,
                 onChanged: (v) => _checkInAt = v,
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
+
+              // Optional one-step check-out (same for staff and visitors)
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Add check-out time',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 14)),
+                subtitle: const Text(
+                    'Register this entry complete with both times',
+                    style: TextStyle(fontSize: 12)),
+                value: _addCheckOut,
+                onChanged: (v) => setState(() => _addCheckOut = v),
+              ),
+              if (_addCheckOut) ...[
+                const Text('Check-out Date & Time',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 14)),
+                const SizedBox(height: 8),
+                VisitDateTimeInput(
+                  initial: _checkOutAt,
+                  onChanged: (v) => _checkOutAt = v,
+                ),
+                const SizedBox(height: 8),
+              ],
+              const SizedBox(height: 12),
 
               // Accompanying people
               Row(children: [
