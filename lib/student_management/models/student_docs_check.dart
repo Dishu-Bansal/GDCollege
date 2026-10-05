@@ -1,5 +1,18 @@
 import 'student_model.dart';
 
+/// Every label missingStudentDocuments() can emit, in chip display order.
+/// Used by the list's per-document filter chips.
+const kMissingDocLabels = [
+  'Aadhar Number',
+  '10th',
+  '12th',
+  'SC Certificate',
+  'BC Certificate',
+  'Family ID',
+  'Haryana Residence',
+  'ABC ID Number',
+];
+
 /// Document-completeness checks shared by the student list (row alerts +
 /// "Missing documents" filter) and the Helper audit.
 ///

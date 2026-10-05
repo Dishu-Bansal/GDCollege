@@ -7,6 +7,7 @@ import '../../access/widgets/access_gate.dart';
 import '../../controllers/pagination_controller.dart';
 import '../../models/audit_log.dart';
 import '../models/student_facets.dart';
+import '../models/student_docs_check.dart';
 import '../models/student_model.dart';
 import '../../repositories/student_repository.dart';
 import '../../providers.dart';
@@ -55,11 +56,12 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     _groupCount,
     (_) => <String>{},
   );
-  // Per-group "Missing documents" filter. Backed by the denormalized
-  // missingDocsCount flag (server query), narrowed further in memory.
-  final List<bool> _missingDocsOnly = List.generate(
+  // Per-group per-document "Missing <doc>" filters. Non-empty selection
+  // activates flagged mode: one cached incomplete fetch (server query on
+  // the denormalized flags), narrowed in memory by selected labels.
+  final List<Set<String>> _selectedMissing = List.generate(
     _groupCount,
-    (_) => false,
+    (_) => <String>{},
   );
   // Per-group "Verified" filter (isVerified flag). Exclusive with the above.
   final List<bool> _verifiedOnly = List.generate(
@@ -174,9 +176,12 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
       _searchCtrls[g].text.isNotEmpty ||
       _selectedYears[g].isNotEmpty ||
       _selectedCourses[g].isNotEmpty ||
-      _missingDocsOnly[g] ||
+      _selectedMissing[g].isNotEmpty ||
       _verifiedOnly[g] ||
       _unverifiedOnly[g];
+
+  /// Flagged mode is on when any per-document chip is selected.
+  bool _missingMode(int g) => _selectedMissing[g].isNotEmpty;
 
   int _compareStudents(StudentModel a, StudentModel b) {
     int cmp;
@@ -217,7 +222,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
   void _onSearchChanged(int g, String _) {
     // Debounce: wait for a typing pause before hitting the server.
     _debounce[g]?.cancel();
-    if (_missingDocsOnly[g] || _verifiedOnly[g] || _unverifiedOnly[g]) {
+    if (_missingMode(g) || _verifiedOnly[g] || _unverifiedOnly[g]) {
       // Flagged modes filter the cached fetch: back to page 1.
       setState(() => _missingPage[g] = 0);
       return;
@@ -252,7 +257,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
   /// tab's browse pages when no filter remains. In flagged modes the
   /// server controller is idle — only the page resets.
   void _filterChipsChanged(int g) {
-    if (_missingDocsOnly[g] || _verifiedOnly[g] || _unverifiedOnly[g]) {
+    if (_missingMode(g) || _verifiedOnly[g] || _unverifiedOnly[g]) {
       return;
     }
     if (!_hasActiveFilters(g)) {
@@ -262,11 +267,15 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
     _runSearch(g);
   }
 
-  void _toggleMissingDocs(int g) {
+  /// Toggles one per-document chip ("Missing Aadhar Number", ...). First
+  /// selection starts flagged mode; deselecting the last one leaves it.
+  void _toggleMissingDoc(int g, String label) {
     setState(() {
-      _missingDocsOnly[g] = !_missingDocsOnly[g];
+      if (!_selectedMissing[g].remove(label)) {
+        _selectedMissing[g].add(label);
+      }
       _missingPage[g] = 0;
-      if (_missingDocsOnly[g]) {
+      if (_selectedMissing[g].isNotEmpty) {
         // Flagged modes are exclusive.
         _verifiedOnly[g] = false;
         _verifiedFutures[g] = null;
@@ -278,8 +287,8 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
         _incompleteFutures[g] = null;
       }
     });
-    // Leaving missing-docs mode returns to browse/search.
-    if (!_missingDocsOnly[g]) _filterChipsChanged(g);
+    // Leaving missing mode returns to browse/search.
+    if (_selectedMissing[g].isEmpty) _filterChipsChanged(g);
   }
 
   void _toggleVerified(int g) {
@@ -288,7 +297,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
       _missingPage[g] = 0;
       if (_verifiedOnly[g]) {
         // Flagged modes are exclusive.
-        _missingDocsOnly[g] = false;
+        _selectedMissing[g].clear();
         _incompleteFutures[g] = null;
         _unverifiedOnly[g] = false;
         _unverifiedFutures[g] = null;
@@ -306,7 +315,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
       _missingPage[g] = 0;
       if (_unverifiedOnly[g]) {
         // Flagged modes are exclusive.
-        _missingDocsOnly[g] = false;
+        _selectedMissing[g].clear();
         _incompleteFutures[g] = null;
         _verifiedOnly[g] = false;
         _verifiedFutures[g] = null;
@@ -352,7 +361,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
       _searchCtrls[g].clear();
       _selectedYears[g].clear();
       _selectedCourses[g].clear();
-      _missingDocsOnly[g] = false;
+      _selectedMissing[g].clear();
       _verifiedOnly[g] = false;
       _unverifiedOnly[g] = false;
       _missingPage[g] = 0;
@@ -369,7 +378,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
       _searchCtrls[g].clear();
       _selectedYears[g].clear();
       _selectedCourses[g].clear();
-      _missingDocsOnly[g] = false;
+      _selectedMissing[g].clear();
       _verifiedOnly[g] = false;
       _unverifiedOnly[g] = false;
       _missingPage[g] = 0;
@@ -535,7 +544,8 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
   void _refreshActiveFlaggedCaches() {
     var changed = false;
     for (var g = 0; g < _groupCount; g++) {
-      if (_missingDocsOnly[g] && _incompleteFutures[g] != null) {
+      if (_selectedMissing[g].isNotEmpty &&
+          _incompleteFutures[g] != null) {
         _incompleteFutures[g] = _service.fetchIncompleteStudents();
         changed = true;
       }
@@ -617,7 +627,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
               courseOptions: _courseOptions(g),
               selectedCourses: _selectedCourses[g],
               hasActiveFilters: _hasActiveFilters(g),
-              missingDocsOnly: _missingDocsOnly[g],
+              selectedMissing: _selectedMissing[g],
               verifiedOnly: _verifiedOnly[g],
               unverifiedOnly: _unverifiedOnly[g],
               sortColumnIndex: _sortColumnIndex,
@@ -626,7 +636,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
               onSearchChanged: (v) => _onSearchChanged(g, v),
               onYearToggled: (v) => _toggleYear(g, v),
               onCourseToggled: (v) => _toggleCourse(g, v),
-              onMissingDocsToggled: () => _toggleMissingDocs(g),
+              onMissingDocToggled: (label) => _toggleMissingDoc(g, label),
               onVerifiedToggled: () => _toggleVerified(g),
               onUnverifiedToggled: () => _toggleUnverified(g),
               onClear: () => _clearFilters(g),
@@ -676,7 +686,7 @@ class _GroupStudentsTab extends StatelessWidget {
   final List<String> courseOptions;
   final Set<String> selectedCourses;
   final bool hasActiveFilters;
-  final bool missingDocsOnly;
+  final Set<String> selectedMissing;
   final bool verifiedOnly;
   final bool unverifiedOnly;
   final int sortColumnIndex;
@@ -685,7 +695,7 @@ class _GroupStudentsTab extends StatelessWidget {
   final ValueChanged<String> onSearchChanged;
   final void Function(String) onYearToggled;
   final void Function(String) onCourseToggled;
-  final VoidCallback onMissingDocsToggled;
+  final void Function(String label) onMissingDocToggled;
   final VoidCallback onVerifiedToggled;
   final VoidCallback onUnverifiedToggled;
   final VoidCallback onClear;
@@ -712,7 +722,7 @@ class _GroupStudentsTab extends StatelessWidget {
     required this.courseOptions,
     required this.selectedCourses,
     required this.hasActiveFilters,
-    required this.missingDocsOnly,
+    required this.selectedMissing,
     required this.verifiedOnly,
     required this.unverifiedOnly,
     required this.sortColumnIndex,
@@ -721,7 +731,7 @@ class _GroupStudentsTab extends StatelessWidget {
     required this.onSearchChanged,
     required this.onYearToggled,
     required this.onCourseToggled,
-    required this.onMissingDocsToggled,
+    required this.onMissingDocToggled,
     required this.onVerifiedToggled,
     required this.onUnverifiedToggled,
     required this.onClear,
@@ -755,13 +765,13 @@ class _GroupStudentsTab extends StatelessWidget {
               courseOptions: courseOptions,
               selectedCourses: selectedCourses,
               hasActiveFilters: hasActiveFilters,
-              missingDocsOnly: missingDocsOnly,
+              selectedMissing: selectedMissing,
               verifiedOnly: verifiedOnly,
               unverifiedOnly: unverifiedOnly,
               onSearchChanged: onSearchChanged,
               onYearToggled: onYearToggled,
               onCourseToggled: onCourseToggled,
-              onMissingDocsToggled: onMissingDocsToggled,
+              onMissingDocToggled: onMissingDocToggled,
               onVerifiedToggled: onVerifiedToggled,
               onUnverifiedToggled: onUnverifiedToggled,
               onClear: onClear,
@@ -791,13 +801,14 @@ class _GroupStudentsTab extends StatelessWidget {
                 ),
               ),
             Expanded(
-              child: missingDocsOnly
+              child: selectedMissing.isNotEmpty
                   ? _FlaggedList(
                       group: group,
                       future: incompleteFuture,
                       query: searchCtrl.text.trim(),
                       years: selectedYears,
                       courses: selectedCourses,
+                      missingLabels: selectedMissing,
                       sorter: sorter,
                       page: missingPage,
                       onView: onView,
@@ -806,9 +817,10 @@ class _GroupStudentsTab extends StatelessWidget {
                       onPageChanged: onMissingPageChanged,
                       onRefresh: onMissingRefresh,
                       emptyIcon: Icons.verified_outlined,
-                      emptyMessage: 'All documents complete',
+                      emptyMessage:
+                          'Nobody missing ${selectedMissing.join(', ')}',
                       countText: (n) =>
-                          '$n student${n == 1 ? '' : 's'} missing documents',
+                          '$n student${n == 1 ? '' : 's'} missing ${selectedMissing.join(', ')}',
                       bannerBg: Colors.red.shade50,
                       bannerFg: Colors.red.shade700,
                     )
@@ -879,7 +891,9 @@ class _GroupStudentsTab extends StatelessWidget {
                               onDelete: onDelete,
                             ),
             ),
-            if (!missingDocsOnly && !verifiedOnly && !unverifiedOnly)
+            if (selectedMissing.isEmpty &&
+                !verifiedOnly &&
+                !unverifiedOnly)
               PaginationBar(controller: controller),
           ],
         );
@@ -903,6 +917,9 @@ class _FlaggedList extends StatelessWidget {
   final String query;
   final Set<String> years;
   final Set<String> courses;
+  // Per-document mode only: keep students missing at least one of these
+  // labels (stored denormalized flags). Empty = no label filtering.
+  final Set<String> missingLabels;
   final int Function(StudentModel, StudentModel) sorter;
   final int page;
   final void Function(StudentModel) onView;
@@ -924,6 +941,7 @@ class _FlaggedList extends StatelessWidget {
     required this.query,
     required this.years,
     required this.courses,
+    this.missingLabels = const {},
     required this.sorter,
     required this.page,
     required this.onView,
@@ -969,6 +987,10 @@ class _FlaggedList extends StatelessWidget {
             return false;
           }
           if (courses.isNotEmpty && !courses.contains(s.nameOfCourse)) {
+            return false;
+          }
+          if (missingLabels.isNotEmpty &&
+              !s.missingDocs.any(missingLabels.contains)) {
             return false;
           }
           return true;
@@ -1298,13 +1320,13 @@ class _SearchChipsPanel extends StatelessWidget {
   final List<String> courseOptions;
   final Set<String> selectedCourses;
   final bool hasActiveFilters;
-  final bool missingDocsOnly;
+  final Set<String> selectedMissing;
   final bool verifiedOnly;
   final bool unverifiedOnly;
   final ValueChanged<String> onSearchChanged;
   final void Function(String) onYearToggled;
   final void Function(String) onCourseToggled;
-  final VoidCallback onMissingDocsToggled;
+  final void Function(String label) onMissingDocToggled;
   final VoidCallback onVerifiedToggled;
   final VoidCallback onUnverifiedToggled;
   final VoidCallback onClear;
@@ -1315,13 +1337,13 @@ class _SearchChipsPanel extends StatelessWidget {
     required this.courseOptions,
     required this.selectedCourses,
     required this.hasActiveFilters,
-    required this.missingDocsOnly,
+    required this.selectedMissing,
     required this.verifiedOnly,
     required this.unverifiedOnly,
     required this.onSearchChanged,
     required this.onYearToggled,
     required this.onCourseToggled,
-    required this.onMissingDocsToggled,
+    required this.onMissingDocToggled,
     required this.onVerifiedToggled,
     required this.onUnverifiedToggled,
     required this.onClear,
@@ -1428,29 +1450,30 @@ class _SearchChipsPanel extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: [
-                FilterChip(
-                  label: const Text('Missing documents',
-                      style: TextStyle(fontSize: 12)),
-                  avatar: Icon(
-                    Icons.warning_amber_rounded,
-                    size: 16,
-                    color: missingDocsOnly
-                        ? Colors.white
-                        : Colors.red.shade700,
+                for (final label in kMissingDocLabels)
+                  FilterChip(
+                    label: Text('Missing $label',
+                        style: const TextStyle(fontSize: 12)),
+                    avatar: Icon(
+                      Icons.warning_amber_rounded,
+                      size: 16,
+                      color: selectedMissing.contains(label)
+                          ? Colors.white
+                          : Colors.red.shade700,
+                    ),
+                    selected: selectedMissing.contains(label),
+                    onSelected: (_) => onMissingDocToggled(label),
+                    tooltip:
+                        'Show only students missing $label',
+                    selectedColor: Colors.red.shade600,
+                    labelStyle: TextStyle(
+                      color: selectedMissing.contains(label)
+                          ? Colors.white
+                          : Colors.red.shade700,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    side: BorderSide(color: Colors.red.shade300),
                   ),
-                  selected: missingDocsOnly,
-                  onSelected: (_) => onMissingDocsToggled(),
-                  tooltip:
-                      'Show only students missing required documents',
-                  selectedColor: Colors.red.shade600,
-                  labelStyle: TextStyle(
-                    color: missingDocsOnly
-                        ? Colors.white
-                        : Colors.red.shade700,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  side: BorderSide(color: Colors.red.shade300),
-                ),
                 FilterChip(
                   label: const Text('Verified',
                       style: TextStyle(fontSize: 12)),
