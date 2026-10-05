@@ -6,7 +6,29 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 // Alias to avoid conflict with package name
 import 'package:file_picker/file_picker.dart' as file_picker;
+import 'package:pdfx/pdfx.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+/// Renders page 1 of [pdfBytes] to PNG bytes (2x resolution, white
+/// background). Throws when the PDF can't be opened.
+Future<Uint8List> _pdfFirstPageToPng(Uint8List pdfBytes) async {
+  final doc = await PdfDocument.openData(pdfBytes);
+  try {
+    final page = await doc.getPage(1);
+    try {
+      final img = await page.render(
+        width: page.width * 2,
+        height: page.height * 2,
+        backgroundColor: '#FFFFFF',
+      );
+      return img!.bytes;
+    } finally {
+      await page.close();
+    }
+  } finally {
+    await doc.close();
+  }
+}
 
 class FilePicker extends StatelessWidget {
   final String label;
@@ -52,11 +74,51 @@ class FilePicker extends StatelessWidget {
                 title: const Text('Gallery'),
                 onTap: () => Navigator.pop(context, 'gallery'),
               ),
+              ListTile(
+                leading: const Icon(Icons.picture_as_pdf_outlined),
+                title: const Text('PDF file'),
+                onTap: () => Navigator.pop(context, 'pdf'),
+              ),
             ],
           ),
         ),
       );
       if (action == null) return;
+      if (action == 'pdf') {
+        final result = await file_picker.FilePicker.platform.pickFiles(
+          type: file_picker.FileType.custom,
+          allowedExtensions: ['pdf'],
+        );
+        if (result == null || result.files.single.bytes == null) return;
+        final bytes = await result.files.single.size;
+        if (bytes > 5 * 1024 * 1024) {
+          if (context.mounted) {
+            _showSizeError(context, 'Photo must be under 5 MB');
+          }
+          return;
+        }
+        // Convert page 1 to a PNG photo on-device; only the image is
+        // uploaded, the PDF itself is never stored.
+        if (!context.mounted) return;
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const Center(child: CircularProgressIndicator()),
+        );
+        try {
+          final png = await _pdfFirstPageToPng(result.files.single.bytes!);
+          if (!context.mounted) return;
+          Navigator.pop(context); // progress
+          final base = result.files.single.name.replaceAll(
+              RegExp(r'\.pdf$', caseSensitive: false), '');
+          onFilePicked(png, '$base.png');
+        } catch (e) {
+          if (!context.mounted) return;
+          Navigator.pop(context); // progress
+          _showSizeError(context, 'Could not read that PDF: $e');
+        }
+        return;
+      }
       final XFile? img = action == 'camera'
           ? await picker.pickImage(source: ImageSource.camera, imageQuality: 80)
           : await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
@@ -185,7 +247,7 @@ class FilePicker extends StatelessWidget {
                         if (!hasFile)
                           Text(
                             imageOnly
-                                ? 'JPG, PNG supported'
+                                ? 'JPG, PNG, PDF supported'
                                 : 'PDF, JPG, PNG, DOC supported',
                             style: TextStyle(
                                 fontSize: 11, color: Colors.grey.shade400),
