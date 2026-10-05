@@ -52,11 +52,33 @@ class FilePicker extends StatelessWidget {
                 title: const Text('Gallery'),
                 onTap: () => Navigator.pop(context, 'gallery'),
               ),
+              ListTile(
+                leading: const Icon(Icons.picture_as_pdf_outlined),
+                title: const Text('PDF file'),
+                onTap: () => Navigator.pop(context, 'pdf'),
+              ),
             ],
           ),
         ),
       );
       if (action == null) return;
+      if (action == 'pdf') {
+        final result = await file_picker.FilePicker.platform.pickFiles(
+          type: file_picker.FileType.custom,
+          allowedExtensions: ['pdf'],
+        );
+        if (result != null && result.files.single.bytes != null) {
+          final bytes = await result.files.single.size;
+          if (bytes > 5 * 1024 * 1024) {
+            if (context.mounted) {
+              _showSizeError(context, 'Photo must be under 5 MB');
+            }
+            return;
+          }
+          onFilePicked(result.files.single.bytes!, result.files.single.name!);
+        }
+        return;
+      }
       final XFile? img = action == 'camera'
           ? await picker.pickImage(source: ImageSource.camera, imageQuality: 80)
           : await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
@@ -98,6 +120,11 @@ class FilePicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasFile = filePath != null && filePath!.isNotEmpty;
+    // A PDF picked as "photo" can't render in an Image widget — show the
+    // file icon instead.
+    final isPdfPhoto = hasFile &&
+        imageOnly &&
+        (filename ?? '').toLowerCase().endsWith('.pdf');
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Column(
@@ -131,7 +158,7 @@ class FilePicker extends StatelessWidget {
               child: Row(
                 children: [
                   // Preview if image
-                  if (hasFile && imageOnly)
+                  if (hasFile && imageOnly && !isPdfPhoto)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(6),
                       child: Image.memory(
@@ -153,7 +180,9 @@ class FilePicker extends StatelessWidget {
                       ),
                       child: Icon(
                         hasFile
-                            ? (imageOnly ? Icons.image : Icons.description)
+                            ? (imageOnly && !isPdfPhoto
+                                ? Icons.image
+                                : Icons.description)
                             : Icons.upload_file,
                         color: hasFile
                             ? const Color(0xFF1A3C6E)
@@ -185,7 +214,7 @@ class FilePicker extends StatelessWidget {
                         if (!hasFile)
                           Text(
                             imageOnly
-                                ? 'JPG, PNG supported'
+                                ? 'JPG, PNG, PDF supported'
                                 : 'PDF, JPG, PNG, DOC supported',
                             style: TextStyle(
                                 fontSize: 11, color: Colors.grey.shade400),

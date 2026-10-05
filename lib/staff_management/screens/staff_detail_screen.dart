@@ -389,7 +389,9 @@ class _HeaderCard extends StatelessWidget {
         child: Row(
           children: [
             // Photo or avatar
-            student.photoUrl == null ? const Icon(Icons.person, size: 64) : ImageNetwork(image: student.photoUrl!, height: 100, width: 100, fitWeb: BoxFitWeb.fill, borderRadius: BorderRadius.all(Radius.circular(32),)),
+            student.photoUrl == null ? const Icon(Icons.person, size: 64) : _isPdfUrl(student.photoUrl!)
+                ? _PdfPhotoThumb(url: student.photoUrl!)
+                : ImageNetwork(image: student.photoUrl!, height: 100, width: 100, fitWeb: BoxFitWeb.fill, borderRadius: BorderRadius.all(Radius.circular(32),)),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
@@ -698,6 +700,47 @@ class _MetaRow extends StatelessWidget {
                     fontSize: 11, fontWeight: FontWeight.w500)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Storage URLs keep the original filename (with extension) before the
+/// query string, so a photo uploaded as .pdf is detectable here.
+bool _isPdfUrl(String url) =>
+    url.split('?').first.toLowerCase().endsWith('.pdf');
+
+/// 100x100 thumbnail for a photo uploaded as PDF: opens the file instead
+/// of trying to render it as an image.
+class _PdfPhotoThumb extends StatelessWidget {
+  final String url;
+  const _PdfPhotoThumb({required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => launchUrl(Uri.parse(url)),
+      borderRadius: const BorderRadius.all(Radius.circular(32)),
+      child: Container(
+        height: 100,
+        width: 100,
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A3C6E).withOpacity(0.08),
+          borderRadius: const BorderRadius.all(Radius.circular(32)),
+        ),
+        child: const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.picture_as_pdf_outlined,
+                size: 36, color: Color(0xFF1A3C6E)),
+            SizedBox(height: 4),
+            Text('View PDF',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF1A3C6E),
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
       ),
     );
   }
