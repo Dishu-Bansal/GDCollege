@@ -33,6 +33,7 @@ abstract class VisitorRepository {
     required String vehicleNumber,
     required String purpose,
     required String fromPlace,
+    required String phone,
     required List<String> accompanyingPeople,
     DateTime? at,
   });

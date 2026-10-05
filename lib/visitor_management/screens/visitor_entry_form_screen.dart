@@ -46,6 +46,7 @@ class _VisitorEntryFormScreenState
   final _vehicleCtrl = TextEditingController();
   final _purposeCtrl = TextEditingController();
   final _fromCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
   final List<TextEditingController> _accompanyingCtrls = [];
 
   bool _saving = false;
@@ -100,6 +101,7 @@ class _VisitorEntryFormScreenState
     _vehicleCtrl.dispose();
     _purposeCtrl.dispose();
     _fromCtrl.dispose();
+    _phoneCtrl.dispose();
     for (final c in _accompanyingCtrls) {
       c.dispose();
     }
@@ -134,9 +136,9 @@ class _VisitorEntryFormScreenState
   }
 
   /// Picks a previous visitor: remembers the selection, fills the name,
-  /// last known car plate and from-place, and collapses the suggestion list.
-  /// Always overwrites the car/from fields (even with empty) so stale values
-  /// from a previous pick never linger.
+  /// last known car plate, from-place and phone, and collapses the
+  /// suggestion list. Always overwrites those fields (even with empty) so
+  /// stale values from a previous pick never linger.
   void _pickSuggestion(VisitorModel v) {
     // Setting controller text fires onChanged synchronously, which would
     // wipe the just-made selection — suppress it for this programmatic set.
@@ -150,6 +152,7 @@ class _VisitorEntryFormScreenState
       _selectedVisitor = v;
       _vehicleCtrl.text = v.vehicleNumber;
       _fromCtrl.text = v.fromPlace;
+      _phoneCtrl.text = v.phone;
     });
   }
 
@@ -169,6 +172,7 @@ class _VisitorEntryFormScreenState
       _vehicleCtrl.clear();
       _purposeCtrl.clear();
       _fromCtrl.clear();
+      _phoneCtrl.clear();
       for (final c in _accompanyingCtrls) {
         c.dispose();
       }
@@ -196,6 +200,13 @@ class _VisitorEntryFormScreenState
       );
       return;
     }
+    final phoneDigits = _phoneCtrl.text.replaceAll(RegExp(r'\D'), '');
+    if (phoneDigits.isNotEmpty && phoneDigits.length < 10) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid 10-digit phone number')),
+      );
+      return;
+    }
     if (_checkInAt.isAfter(DateTime.now())) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Check-in time cannot be in the future')),
@@ -214,6 +225,7 @@ class _VisitorEntryFormScreenState
         vehicleNumber: _vehicleCtrl.text,
         purpose: _purposeCtrl.text,
         fromPlace: fromPlace,
+        phone: _phoneCtrl.text,
         accompanyingPeople: _accompanyingNames,
         at: _checkInAt,
       );
@@ -280,6 +292,18 @@ class _VisitorEntryFormScreenState
                   labelText: 'Car License Plate (optional)',
                   hintText: 'e.g. HR 26 AB 1234',
                   prefixIcon: Icon(Icons.directions_car_outlined),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Phone number (autofills from the picked visitor / staff)
+              TextField(
+                controller: _phoneCtrl,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Phone Number (optional)',
+                  hintText: 'e.g. 98765 43210',
+                  prefixIcon: Icon(Icons.phone_outlined),
                 ),
               ),
               const SizedBox(height: 12),
@@ -438,6 +462,11 @@ class _VisitorEntryFormScreenState
         if (s != null) {
           final place = _staffFromPlace(s);
           if (place.isNotEmpty) _fromCtrl.text = place;
+          // Same for the phone number (primary mobile, else secondary).
+          final phone = s.mobileNo1.trim().isNotEmpty
+              ? s.mobileNo1.trim()
+              : s.mobileNo2.trim();
+          if (phone.isNotEmpty) _phoneCtrl.text = phone;
         }
       }),
     );

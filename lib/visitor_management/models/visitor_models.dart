@@ -19,6 +19,10 @@ class VisitorModel {
   /// Last known place the visitor comes from (autocomplete suggestions).
   String fromPlace;
 
+  /// Last known phone number (autofills the check-in form on pick).
+  /// Added after launch: old docs lack the key and read as ''.
+  String phone;
+
   VisitorModel({
     this.id,
     this.name = '',
@@ -28,6 +32,7 @@ class VisitorModel {
     this.lastCheckOutAt,
     this.vehicleNumber = '',
     this.fromPlace = '',
+    this.phone = '',
   });
 
   factory VisitorModel.fromFirestore(String id, Map<String, dynamic> d) =>
@@ -46,6 +51,7 @@ class VisitorModel {
             : null,
         vehicleNumber: d['vehicleNumber'] ?? '',
         fromPlace: d['fromPlace'] ?? '',
+        phone: d['phone'] ?? '',
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -59,6 +65,7 @@ class VisitorModel {
     'lastCheckOutAt': lastCheckOutAt?.toIso8601String(),
     'vehicleNumber': vehicleNumber,
     'fromPlace': fromPlace,
+    'phone': phone,
   };
 }
 
@@ -90,6 +97,7 @@ class VisitorEventModel {
   String vehicleNumber;
   String purpose;
   String fromPlace;
+  String phone;
   List<String> accompanyingPeople;
 
   /// Staff email that recorded the event.
@@ -107,6 +115,7 @@ class VisitorEventModel {
     this.vehicleNumber = '',
     this.purpose = '',
     this.fromPlace = '',
+    this.phone = '',
     this.accompanyingPeople = const [],
     this.by = '',
   })  : at = at ?? DateTime.now(),
@@ -135,6 +144,7 @@ class VisitorEventModel {
         vehicleNumber: d['vehicleNumber'] ?? '',
         purpose: d['purpose'] ?? '',
         fromPlace: d['fromPlace'] ?? '',
+        phone: d['phone'] ?? '',
         accompanyingPeople: List<String>.from(d['accompanyingPeople'] ?? []),
         by: d['by'] ?? '',
       );
@@ -150,6 +160,7 @@ class VisitorEventModel {
     'vehicleNumber': vehicleNumber,
     'purpose': purpose,
     'fromPlace': fromPlace,
+    'phone': phone,
     'accompanyingPeople': accompanyingPeople,
     'by': by,
   };
@@ -173,6 +184,7 @@ class VisitorVisitModel {
   String vehicleNumber;
   String purpose;
   String fromPlace;
+  String phone;
   List<String> accompanyingPeople;
   DateTime checkInAt;
   DateTime? checkOutAt;
@@ -187,6 +199,7 @@ class VisitorVisitModel {
     this.vehicleNumber = '',
     this.purpose = '',
     this.fromPlace = '',
+    this.phone = '',
     this.accompanyingPeople = const [],
     DateTime? checkInAt,
     this.checkOutAt,
@@ -208,6 +221,7 @@ class VisitorVisitModel {
         vehicleNumber: d['vehicleNumber'] ?? '',
         purpose: d['purpose'] ?? '',
         fromPlace: d['fromPlace'] ?? '',
+        phone: d['phone'] ?? '',
         accompanyingPeople: List<String>.from(d['accompanyingPeople'] ?? []),
         checkInAt: d['checkInAt'] != null
             ? DateTime.tryParse(d['checkInAt']) ?? DateTime.now()
@@ -226,6 +240,7 @@ class VisitorVisitModel {
     'vehicleNumber': vehicleNumber,
     'purpose': purpose,
     'fromPlace': fromPlace,
+    'phone': phone,
     'accompanyingPeople': accompanyingPeople,
     'checkInAt': checkInAt.toIso8601String(),
     'checkOutAt': checkOutAt?.toIso8601String(),

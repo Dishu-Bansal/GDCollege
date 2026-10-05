@@ -64,6 +64,12 @@ class VisitorDetailScreen extends StatelessWidget {
                       style: TextStyle(
                           fontSize: 13, color: Colors.grey.shade600),
                     ),
+                    if (visitor.phone.isNotEmpty)
+                      Text(
+                        'Phone: ${visitor.phone}',
+                        style: TextStyle(
+                            fontSize: 13, color: Colors.grey.shade600),
+                      ),
                     if (visitor.firstVisitAt != null)
                       Text(
                         'First visit: ${_fmtDateTime(visitor.firstVisitAt!)}',
@@ -162,7 +168,8 @@ class _VisitCard extends StatelessWidget {
               style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
         if (visit.purpose.isNotEmpty ||
             visit.vehicleNumber.isNotEmpty ||
-            visit.fromPlace.isNotEmpty) ...[
+            visit.fromPlace.isNotEmpty ||
+            visit.phone.isNotEmpty) ...[
           const SizedBox(height: 6),
           Wrap(spacing: 12, runSpacing: 4, children: [
             if (visit.purpose.isNotEmpty)
@@ -171,6 +178,8 @@ class _VisitCard extends StatelessWidget {
               _InfoItem(Icons.directions_car_outlined, visit.vehicleNumber),
             if (visit.fromPlace.isNotEmpty)
               _InfoItem(Icons.place_outlined, visit.fromPlace),
+            if (visit.phone.isNotEmpty)
+              _InfoItem(Icons.phone_outlined, visit.phone),
           ]),
         ],
         if (visit.accompanyingPeople.isNotEmpty) ...[
