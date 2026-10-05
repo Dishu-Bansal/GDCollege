@@ -701,7 +701,12 @@ class _LogCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isEntry = event.isEntry;
-    final accent = isEntry ? Colors.green.shade700 : Colors.red.shade700;
+    final isCompleted = event.isCompleted;
+    final accent = isCompleted
+        ? Colors.blue.shade700
+        : isEntry
+            ? Colors.green.shade700
+            : Colors.red.shade700;
     // A backdated log stands out so the admin spots late entries.
     final lateBy = event.createdAt.difference(event.at);
     final isLate = lateBy > const Duration(hours: 24);
@@ -742,7 +747,11 @@ class _LogCard extends StatelessWidget {
                     children: [
                       _TypeChip(isStaff: event.isStaff),
                       Text(
-                        isEntry ? 'Checked in' : 'Checked out',
+                        isCompleted
+                            ? 'Entry added'
+                            : isEntry
+                                ? 'Checked in'
+                                : 'Checked out',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
@@ -777,9 +786,12 @@ class _LogCard extends StatelessWidget {
         ]),
         const SizedBox(height: 8),
         Text(
-          isEntry
-              ? 'Checked in at ${_fmtDateTime(event.at)}'
-              : 'Checked out at ${_fmtDateTime(event.at)}',
+          isCompleted
+              ? 'In: ${_fmtDateTime(event.at)}'
+                  '${event.outAt != null ? '  •  Out: ${_fmtDateTime(event.outAt!)}' : ''}'
+              : isEntry
+                  ? 'Checked in at ${_fmtDateTime(event.at)}'
+                  : 'Checked out at ${_fmtDateTime(event.at)}',
           style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
         ),
         Text(

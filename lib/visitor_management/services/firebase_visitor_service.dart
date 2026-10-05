@@ -115,34 +115,57 @@ class FirebaseVisitorRepository implements VisitorRepository {
     }
     final batch = _db.batch();
 
-    // Visitor profile doc this entry belongs to (null for staff, who have
-    // no visitor profile). Needed below to stamp last check-out on a
-    // one-step completed visit.
-    String? visitorDocId;
-
     final String personRefId;
     if (isStaff) {
       // Staff entries are linked to the staff document id.
       personRefId = staffId!;
     } else if (visitorId != null && visitorId.isNotEmpty) {
       // The user explicitly picked this visitor from the autocomplete list:
-      // reuse their profile and remember the latest car plate / from-place.
+      // reuse their profile. Timestamps and remembered details only move
+      // forward: a backdated entry must not drag lastVisitAt (which drives
+      // the Visitors tab order) or the remembered car/place/phone back.
+      final prevSnap = await _visitors.doc(visitorId).get();
+      final prev = prevSnap.data() as Map<String, dynamic>?;
+      final prevIn = _parseAt(prev?['lastVisitAt']);
+      final isLatest = prevIn == null || !now.isBefore(prevIn);
       final update = <String, dynamic>{
         'visitCount': FieldValue.increment(1),
-        'lastVisitAt': now.toIso8601String(),
       };
-      if (vehicleNumber.trim().isNotEmpty) {
-        update['vehicleNumber'] = vehicleNumber.trim();
+      if (isLatest) {
+        update['lastVisitAt'] = now.toIso8601String();
+        if (vehicleNumber.trim().isNotEmpty) {
+          update['vehicleNumber'] = vehicleNumber.trim();
+        }
+        if (fromPlace.trim().isNotEmpty) {
+          update['fromPlace'] = fromPlace.trim();
+        }
+        if (phone.trim().isNotEmpty) {
+          update['phone'] = phone.trim();
+        }
+      } else {
+        // Backdated entry: still fill details the profile lacks, but never
+        // overwrite what a later visit already recorded.
+        if (vehicleNumber.trim().isNotEmpty &&
+            (prev?['vehicleNumber'] ?? '').toString().isEmpty) {
+          update['vehicleNumber'] = vehicleNumber.trim();
+        }
+        if (fromPlace.trim().isNotEmpty &&
+            (prev?['fromPlace'] ?? '').toString().isEmpty) {
+          update['fromPlace'] = fromPlace.trim();
+        }
+        if (phone.trim().isNotEmpty &&
+            (prev?['phone'] ?? '').toString().isEmpty) {
+          update['phone'] = phone.trim();
+        }
       }
-      if (fromPlace.trim().isNotEmpty) {
-        update['fromPlace'] = fromPlace.trim();
-      }
-      if (phone.trim().isNotEmpty) {
-        update['phone'] = phone.trim();
+      if (checkOutAt != null) {
+        final prevOut = _parseAt(prev?['lastCheckOutAt']);
+        if (prevOut == null || checkOutAt.isAfter(prevOut)) {
+          update['lastCheckOutAt'] = checkOutAt.toIso8601String();
+        }
       }
       batch.update(_visitors.doc(visitorId), update);
       personRefId = visitorId;
-      visitorDocId = visitorId;
     } else {
       // No suggestion was picked: always create a new visitor, even when
       // the name matches an existing one (two visitors can share a name).
@@ -158,7 +181,6 @@ class FirebaseVisitorRepository implements VisitorRepository {
         phone: phone.trim(),
       ).toFirestore());
       personRefId = ref.id;
-      visitorDocId = ref.id;
     }
 
     final visitRef = _visits.doc();
@@ -176,15 +198,18 @@ class FirebaseVisitorRepository implements VisitorRepository {
           .toList(),
       checkInAt: now,
       checkOutAt: checkOutAt,
+      completedAtEntry: checkOutAt != null,
       checkedInBy: UserSession().currentUser?.email ?? '',
     );
     batch.set(visitRef, visit.toFirestore());
-    // The global log's entry row — a separate doc from the visit session.
-    // createdAt is the log moment (now); at is the business time.
+    // The global log row for this check-in — a separate doc from the visit
+    // session. createdAt is the log moment (now); at is the business time.
+    // A one-step completed visit logs a single 'Entry added' row carrying
+    // both times instead of separate entry/exit rows.
     batch.set(
         _events.doc('${visitRef.id}_entry'),
         VisitorEventModel(
-          type: 'entry',
+          type: checkOutAt == null ? 'entry' : 'completed',
           at: now,
           createdAt: DateTime.now(),
           visitId: visitRef.id,
@@ -195,36 +220,10 @@ class FirebaseVisitorRepository implements VisitorRepository {
           purpose: visit.purpose,
           fromPlace: visit.fromPlace,
           phone: visit.phone,
+          outAt: checkOutAt,
           accompanyingPeople: visit.accompanyingPeople,
           by: visit.checkedInBy,
         ).toFirestore());
-    if (checkOutAt != null) {
-      // One-step completed visit: write its exit log row now (createdAt is
-      // the log moment, at is the entered business time) and stamp the
-      // visitor profile's last check-out, mirroring checkOut().
-      batch.set(
-          _events.doc('${visitRef.id}_exit'),
-          VisitorEventModel(
-            type: 'exit',
-            at: checkOutAt,
-            createdAt: DateTime.now(),
-            visitId: visitRef.id,
-            personType: visit.personType,
-            personRefId: personRefId,
-            name: visit.name,
-            vehicleNumber: visit.vehicleNumber,
-            purpose: visit.purpose,
-            fromPlace: visit.fromPlace,
-            phone: visit.phone,
-            accompanyingPeople: visit.accompanyingPeople,
-            by: visit.checkedInBy,
-          ).toFirestore());
-      if (visitorDocId != null) {
-        batch.update(_visitors.doc(visitorDocId), {
-          'lastCheckOutAt': checkOutAt.toIso8601String(),
-        });
-      }
-    }
 
     await batch.commit();
   }
@@ -317,13 +316,14 @@ class FirebaseVisitorRepository implements VisitorRepository {
           List<String>.from(data['accompanyingPeople'] ?? []);
       final checkInAt = _parseAt(data['checkInAt']);
       final checkOutAt = _parseAt(data['checkOutAt']);
+      final completedAtEntry = data['completedAtEntry'] == true;
 
       if (checkInAt != null) {
         pending += await _ensureEvent(
           batch,
           ref: _events.doc('${d.id}_entry'),
           expected: VisitorEventModel(
-            type: 'entry',
+            type: completedAtEntry ? 'completed' : 'entry',
             at: checkInAt,
             // Historical reconstruction: true creation time is unknown, so
             // legacy rows keep business-time ordering among themselves.
@@ -336,13 +336,14 @@ class FirebaseVisitorRepository implements VisitorRepository {
             purpose: purpose,
             fromPlace: fromPlace,
             phone: phone,
+            outAt: completedAtEntry ? checkOutAt : null,
             accompanyingPeople: accompanying,
             by: (data['checkedInBy'] ?? '').toString(),
           ),
           onWrite: () => written++,
         );
       }
-      if (checkOutAt != null) {
+      if (checkOutAt != null && !completedAtEntry) {
         pending += await _ensureEvent(
           batch,
           ref: _events.doc('${d.id}_exit'),
