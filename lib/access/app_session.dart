@@ -9,6 +9,7 @@ class AppSession {
   final bool canAccessStock;
   final bool canAccessBills;
   final bool canAccessVisitors;
+  final bool canAccessFees;
 
   const AppSession({
     required this.uid,
@@ -19,6 +20,7 @@ class AppSession {
     required this.canAccessStock,
     required this.canAccessBills,
     required this.canAccessVisitors,
+    required this.canAccessFees,
   });
 }
 
@@ -31,6 +33,7 @@ class AppUser {
   final bool canAccessStock;
   final bool canAccessBills;
   final bool canAccessVisitors;
+  final bool canAccessFees;
 
   const AppUser({
     required this.uid,
@@ -40,6 +43,7 @@ class AppUser {
     required this.canAccessStock,
     required this.canAccessBills,
     required this.canAccessVisitors,
+    required this.canAccessFees,
   });
 
   factory AppUser.fromDoc(String uid, Map<String, dynamic> d) => AppUser(
@@ -50,5 +54,6 @@ class AppUser {
         canAccessStock: d['canAccessStock'] ?? true,
         canAccessBills: d['canAccessBills'] ?? true,
         canAccessVisitors: d['canAccessVisitors'] ?? true,
+        canAccessFees: d['canAccessFees'] ?? true,
       );
 }
