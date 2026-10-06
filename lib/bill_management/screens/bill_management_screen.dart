@@ -175,6 +175,7 @@ class _BillsTab extends ConsumerStatefulWidget {
 class _BillsTabState extends ConsumerState<_BillsTab> {
   final TextEditingController _searchCtrl = TextEditingController();
   final Set<String> _selectedStatuses = {};
+  final Set<String> _selectedTypes = {};
 
   @override
   void dispose() {
@@ -183,7 +184,9 @@ class _BillsTabState extends ConsumerState<_BillsTab> {
   }
 
   bool get _hasActiveFilters =>
-      _searchCtrl.text.isNotEmpty || _selectedStatuses.isNotEmpty;
+      _searchCtrl.text.isNotEmpty ||
+      _selectedStatuses.isNotEmpty ||
+      _selectedTypes.isNotEmpty;
 
   List<BillModel> _applyFiltersAndSort(List<BillModel> all) {
     final query = _searchCtrl.text.toLowerCase().trim();
@@ -194,7 +197,11 @@ class _BillsTabState extends ConsumerState<_BillsTab> {
       final statusMatch = _selectedStatuses.isEmpty ||
           (_selectedStatuses.contains('Pending') && !b.paid) ||
           (_selectedStatuses.contains('Paid') && b.paid);
-      return storeMatch && statusMatch;
+      // Type chips are OR-ed within the group.
+      final typeMatch = _selectedTypes.isEmpty ||
+          (_selectedTypes.contains('Stock') && !b.isService) ||
+          (_selectedTypes.contains('Service') && b.isService);
+      return storeMatch && statusMatch && typeMatch;
     }).toList();
     // Latest bill date at the top; createdAt breaks ties for same-day bills.
     filtered.sort((a, b) {
@@ -210,9 +217,16 @@ class _BillsTabState extends ConsumerState<_BillsTab> {
     });
   }
 
+  void _toggleType(String type) {
+    setState(() {
+      if (!_selectedTypes.remove(type)) _selectedTypes.add(type);
+    });
+  }
+
   void _clearFilters() {
     _searchCtrl.clear();
     _selectedStatuses.clear();
+    _selectedTypes.clear();
     setState(() {});
   }
 
@@ -245,9 +259,11 @@ class _BillsTabState extends ConsumerState<_BillsTab> {
             _BillFilterBar(
               searchCtrl: _searchCtrl,
               selectedStatuses: _selectedStatuses,
+              selectedTypes: _selectedTypes,
               hasActiveFilters: _hasActiveFilters,
               onSearchChanged: (_) => setState(() {}),
               onStatusToggled: _toggleStatus,
+              onTypeToggled: _toggleType,
               onClear: _clearFilters,
             ),
             Expanded(
@@ -289,17 +305,21 @@ class _BillsTabState extends ConsumerState<_BillsTab> {
 class _BillFilterBar extends StatelessWidget {
   final TextEditingController searchCtrl;
   final Set<String> selectedStatuses;
+  final Set<String> selectedTypes;
   final bool hasActiveFilters;
   final void Function(String) onSearchChanged;
   final void Function(String) onStatusToggled;
+  final void Function(String) onTypeToggled;
   final VoidCallback onClear;
 
   const _BillFilterBar({
     required this.searchCtrl,
     required this.selectedStatuses,
+    required this.selectedTypes,
     required this.hasActiveFilters,
     required this.onSearchChanged,
     required this.onStatusToggled,
+    required this.onTypeToggled,
     required this.onClear,
   });
 
@@ -394,6 +414,35 @@ class _BillFilterBar extends StatelessWidget {
                 selected: selectedStatuses.contains('Paid'),
                 color: const Color(0xFF2E7D32),
                 onTap: () => onStatusToggled('Paid'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const SizedBox(
+                width: 100,
+                child: Text(
+                  'Type',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                    color: Color(0xFF1A3C6E),
+                  ),
+                ),
+              ),
+              _BillStatusChip(
+                label: 'Stock',
+                selected: selectedTypes.contains('Stock'),
+                color: const Color(0xFF1A3C6E),
+                onTap: () => onTypeToggled('Stock'),
+              ),
+              const SizedBox(width: 6),
+              _BillStatusChip(
+                label: 'Service',
+                selected: selectedTypes.contains('Service'),
+                color: const Color(0xFF6A1B9A),
+                onTap: () => onTypeToggled('Service'),
               ),
             ],
           ),
@@ -494,6 +543,8 @@ class _BillCard extends StatelessWidget {
                   ),
                 ),
               ),
+              _typeChip(bill.isService),
+              const SizedBox(width: 6),
               _statusChip(pending),
             ],
           ),
@@ -510,8 +561,12 @@ class _BillCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _infoRow(
-                      Icons.storefront_outlined,
-                      'Store: ${bill.storeName}',
+                      bill.isService
+                          ? Icons.miscellaneous_services_outlined
+                          : Icons.storefront_outlined,
+                      bill.isService
+                          ? 'Provider: ${bill.storeName}'
+                          : 'Store: ${bill.storeName}',
                     ),
                     _infoRow(
                       Icons.event_outlined,
@@ -545,8 +600,10 @@ class _BillCard extends StatelessWidget {
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 2),
                           child: Text(
-                            '${item.quantity} × ${item.name}'
-                            ' (${item.unit}) — ${_money(item.total)}',
+                            bill.isService
+                                ? '${item.name} — ${_money(item.total)}'
+                                : '${item.quantity} × ${item.name}'
+                                    ' (${item.unit}) — ${_money(item.total)}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -611,6 +668,33 @@ class _BillCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _typeChip(bool isService) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: isService
+            ? const Color(0xFF6A1B9A).withValues(alpha: 0.08)
+            : const Color(0xFF1A3C6E).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: isService
+              ? const Color(0xFF6A1B9A).withValues(alpha: 0.3)
+              : const Color(0xFF1A3C6E).withValues(alpha: 0.3),
+        ),
+      ),
+      child: Text(
+        isService ? 'Service' : 'Stock',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: isService
+              ? const Color(0xFF6A1B9A)
+              : const Color(0xFF1A3C6E),
+        ),
       ),
     );
   }
