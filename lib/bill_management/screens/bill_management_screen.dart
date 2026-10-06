@@ -600,10 +600,8 @@ class _BillCard extends StatelessWidget {
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 2),
                           child: Text(
-                            bill.isService
-                                ? '${item.name} — ${_money(item.total)}'
-                                : '${item.quantity} × ${item.name}'
-                                    ' (${item.unit}) — ${_money(item.total)}',
+                            '${item.quantity} × ${item.name}'
+                            ' (${item.unit}) — ${_money(item.total)}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
