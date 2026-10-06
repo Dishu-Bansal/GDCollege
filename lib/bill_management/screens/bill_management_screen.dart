@@ -572,6 +572,11 @@ class _BillCard extends StatelessWidget {
                       Icons.event_outlined,
                       'Bill Date: ${_fmtDate(bill.billDate)}',
                     ),
+                    if (bill.receivedDate != null)
+                      _infoRow(
+                        Icons.inbox_outlined,
+                        'Received: ${_fmtDate(bill.receivedDate!)}',
+                      ),
                     if (bill.paid && bill.paymentDate != null)
                       _infoRow(
                         Icons.check_circle_outline,

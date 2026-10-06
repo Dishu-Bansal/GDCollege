@@ -47,6 +47,7 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
   final _reimbursedByCtrl = TextEditingController();
 
   late DateTime _billDate;
+  DateTime? _receivedDate;
   DateTime? _paymentDate;
   DateTime? _reimbursementDate;
   bool _reimbursementRequired = false;
@@ -73,6 +74,7 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
     super.initState();
     final bill = widget.existingBill;
     _billDate = bill?.billDate ?? DateTime.now();
+    _receivedDate = bill?.receivedDate;
     _billType = bill?.billType ?? 'stock';
     _paymentDate = bill?.paymentDate;
     _reimbursementDate = bill?.reimbursementDate;
@@ -133,6 +135,16 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
       lastDate: DateTime.now(),
     );
     if (picked != null) setState(() => _billDate = picked);
+  }
+
+  Future<void> _pickReceivedDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _receivedDate ?? _billDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked != null) setState(() => _receivedDate = picked);
   }
 
   Future<void> _pickPaymentDate() async {
@@ -317,6 +329,7 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
       storeName: _storeNameCtrl.text.trim(),
       billType: _billType,
       billDate: _billDate,
+      receivedDate: _receivedDate,
       paymentDate: paymentDate,
       paymentBy: paymentBy,
       reimbursementDate: _reimbursementDate,
@@ -453,6 +466,14 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
                 _fmtDate(_billDate),
                 _pickBillDate,
                 Icons.event,
+              ),
+              _buildDateTile(
+                'Bill Received On',
+                _receivedDate == null
+                    ? 'Not set'
+                    : _fmtDate(_receivedDate!),
+                _pickReceivedDate,
+                Icons.inbox_outlined,
               ),
               _buildDateTile(
                 _reimbursementRequired ? 'Payment Date *' : 'Payment Date',

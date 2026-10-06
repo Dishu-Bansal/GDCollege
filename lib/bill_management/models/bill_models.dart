@@ -70,6 +70,7 @@ class BillModel {
   /// and read as 'stock', which matches how they were created.
   String billType;
   DateTime billDate;
+  DateTime? receivedDate;
   DateTime? paymentDate;
   String paymentBy;
   DateTime? reimbursementDate;
@@ -89,6 +90,7 @@ class BillModel {
     this.storeName = '',
     this.billType = 'stock',
     DateTime? billDate,
+    this.receivedDate,
     this.paymentDate,
     this.paymentBy = '',
     this.reimbursementDate,
@@ -121,6 +123,9 @@ class BillModel {
         billDate: d['billDate'] != null
             ? DateTime.tryParse(d['billDate']) ?? DateTime.now()
             : DateTime.now(),
+        receivedDate: d['receivedDate'] != null
+            ? DateTime.tryParse(d['receivedDate'])
+            : null,
         paymentDate: d['paymentDate'] != null
             ? DateTime.tryParse(d['paymentDate'])
             : null,
@@ -150,6 +155,7 @@ class BillModel {
     'storeName': storeName,
     'billType': billType,
     'billDate': billDate.toIso8601String(),
+    'receivedDate': receivedDate?.toIso8601String(),
     'paymentDate': paymentDate?.toIso8601String(),
     'paymentBy': paymentBy,
     'reimbursementDate': reimbursementDate?.toIso8601String(),
