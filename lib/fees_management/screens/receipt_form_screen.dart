@@ -13,7 +13,11 @@ import '../repositories/fees_repository.dart';
 /// Records a fee receipt for a student. The student is picked through
 /// College → Course → Admission year → a searchable student list.
 class ReceiptFormScreen extends ConsumerStatefulWidget {
-  const ReceiptFormScreen({super.key});
+  /// College preselected in the picker (the tab the form was opened from).
+  final String initialCollege;
+
+  const ReceiptFormScreen(
+      {super.key, this.initialCollege = 'GD College'});
 
   @override
   ConsumerState<ReceiptFormScreen> createState() => _ReceiptFormScreenState();
@@ -47,6 +51,10 @@ class _ReceiptFormScreenState extends ConsumerState<ReceiptFormScreen> {
   void initState() {
     super.initState();
     _year = DateTime.now().year;
+    if (widget.initialCollege == StudentGroup.mlsn.label) {
+      _college = StudentGroup.mlsn.label;
+      _course = 'ANM';
+    }
   }
 
   @override

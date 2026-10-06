@@ -13,10 +13,10 @@ import '../repositories/fees_repository.dart';
 import 'receipt_form_screen.dart';
 import 'student_fees_detail_screen.dart';
 
-/// Fees Management: a Students table per college (GD College / MLSN),
-/// latest Receipts, and a Receipts log. Adapted from the reference fees
-/// module: the college tabs replace its single Students tab + College
-/// filter, and fee heads come from each student's fee-details fields.
+/// Fees Management: one self-contained college section per tab (GD College /
+/// MLSN). Each college shows only its own students, receipts and logs —
+/// nothing is shared between the colleges. Adapted from the reference fees
+/// module: fee heads come from each student's fee-details fields.
 class FeesManagementScreen extends ConsumerStatefulWidget {
   const FeesManagementScreen({super.key});
 
@@ -32,7 +32,7 @@ class _FeesManagementScreenState extends ConsumerState<FeesManagementScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 4, vsync: this);
+    _tabs = TabController(length: 2, vsync: this);
     _tabs.addListener(() => setState(() {}));
   }
 
@@ -43,9 +43,13 @@ class _FeesManagementScreenState extends ConsumerState<FeesManagementScreen>
   }
 
   void _openReceiptForm() {
+    final college = _tabs.index == 1
+        ? StudentGroup.mlsn.label
+        : StudentGroup.gdCollege.label;
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const ReceiptFormScreen()),
+      MaterialPageRoute(
+          builder: (_) => ReceiptFormScreen(initialCollege: college)),
     );
   }
 
@@ -72,7 +76,6 @@ class _FeesManagementScreenState extends ConsumerState<FeesManagementScreen>
     // Same breakpoint as the table/card switch: on mobile the FAB would
     // cover the pagination arrows, so Add moves into the top bar.
     final isNarrow = MediaQuery.of(context).size.width < 600;
-    final showAdd = _tabs.index <= 2;
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
       drawer: getSideDrawer(context),
@@ -85,13 +88,12 @@ class _FeesManagementScreenState extends ConsumerState<FeesManagementScreen>
             tooltip: 'Reload students',
             onPressed: () => ref.invalidate(allStudentsProvider),
           ),
-          if (isNarrow && showAdd)
+          if (isNarrow)
             IconButton(
               icon: const Icon(Icons.add),
               tooltip: 'Add Receipt',
               onPressed: _openReceiptForm,
-            ),
-        ],
+            ),        ],
         bottom: TabBar(
           controller: _tabs,
           indicatorColor: Colors.amber,
@@ -100,31 +102,25 @@ class _FeesManagementScreenState extends ConsumerState<FeesManagementScreen>
           tabs: const [
             Tab(icon: Icon(Icons.school_outlined, size: 18), text: 'GD College'),
             Tab(icon: Icon(Icons.school_outlined, size: 18), text: 'MLSN'),
-            Tab(
-                icon: Icon(Icons.receipt_long_outlined, size: 18),
-                text: 'Receipts'),
-            Tab(icon: Icon(Icons.history, size: 18), text: 'Logs'),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabs,
         children: [
-          _StudentsTab(
+          _CollegeTab(
             group: StudentGroup.gdCollege,
             feesService: feesService,
             onOpen: _openStudentFees,
           ),
-          _StudentsTab(
+          _CollegeTab(
             group: StudentGroup.mlsn,
             feesService: feesService,
             onOpen: _openStudentFees,
           ),
-          _ReceiptsTab(service: feesService),
-          _LogsTab(service: feesService),
         ],
       ),
-      floatingActionButton: !isNarrow && showAdd
+      floatingActionButton: !isNarrow
           ? FloatingActionButton.extended(
               onPressed: _openReceiptForm,
               backgroundColor: const Color(0xFF1A3C6E),
@@ -134,6 +130,87 @@ class _FeesManagementScreenState extends ConsumerState<FeesManagementScreen>
                       color: Colors.white, fontWeight: FontWeight.w600)),
             )
           : null,
+    );
+  }
+}
+
+// ── College section: Students + Receipts + Logs for one college only ────────
+
+/// One top-level tab: the college's own students, receipts and logs.
+/// The [group] filters all three inner tabs, so GD College and MLSN never
+/// share pending fees, receipts or log entries.
+class _CollegeTab extends StatefulWidget {
+  final StudentGroup group;
+  final FeesRepository feesService;
+  final void Function(StudentModel) onOpen;
+
+  const _CollegeTab({
+    required this.group,
+    required this.feesService,
+    required this.onOpen,
+  });
+
+  @override
+  State<_CollegeTab> createState() => _CollegeTabState();
+}
+
+class _CollegeTabState extends State<_CollegeTab>
+    with SingleTickerProviderStateMixin {
+  late final TabController _inner;
+
+  @override
+  void initState() {
+    super.initState();
+    _inner = TabController(length: 3, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _inner.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          color: Colors.white,
+          child: TabBar(
+            controller: _inner,
+            indicatorColor: const Color(0xFF1A3C6E),
+            labelColor: const Color(0xFF1A3C6E),
+            unselectedLabelColor: Colors.grey,
+            tabs: const [
+              Tab(icon: Icon(Icons.people_alt_outlined, size: 18),
+                  text: 'Students'),
+              Tab(icon: Icon(Icons.receipt_long_outlined, size: 18),
+                  text: 'Receipts'),
+              Tab(icon: Icon(Icons.history, size: 18), text: 'Logs'),
+            ],
+          ),
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _inner,
+            children: [
+              _StudentsTab(
+                group: widget.group,
+                feesService: widget.feesService,
+                onOpen: widget.onOpen,
+              ),
+              _ReceiptsTab(
+                service: widget.feesService,
+                group: widget.group,
+              ),
+              _LogsTab(
+                service: widget.feesService,
+                group: widget.group,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -760,8 +837,9 @@ class _StudentCard extends StatelessWidget {
 
 class _ReceiptsTab extends StatefulWidget {
   final FeesRepository service;
+  final StudentGroup group;
 
-  const _ReceiptsTab({required this.service});
+  const _ReceiptsTab({required this.service, required this.group});
 
   @override
   State<_ReceiptsTab> createState() => _ReceiptsTabState();
@@ -795,7 +873,10 @@ class _ReceiptsTabState extends State<_ReceiptsTab> {
     return StreamBuilder<List<ReceiptModel>>(
       stream: _receiptsStream,
       builder: (context, snap) {
-        final receipts = snap.data ?? [];
+        // This college only: receipts carry their college snapshot.
+        final receipts = (snap.data ?? [])
+            .where((r) => r.college == widget.group.label)
+            .toList();
         if (snap.connectionState == ConnectionState.waiting &&
             receipts.isEmpty) {
           return const Center(child: CircularProgressIndicator());
@@ -905,8 +986,9 @@ class _ReceiptsTabState extends State<_ReceiptsTab> {
 
 class _LogsTab extends StatefulWidget {
   final FeesRepository service;
+  final StudentGroup group;
 
-  const _LogsTab({required this.service});
+  const _LogsTab({required this.service, required this.group});
 
   @override
   State<_LogsTab> createState() => _LogsTabState();
@@ -915,6 +997,8 @@ class _LogsTab extends StatefulWidget {
 class _LogsTabState extends State<_LogsTab> {
   late final Stream<List<ReceiptLog>> _logsStream =
       widget.service.watchAllLogs();
+  late final Stream<List<ReceiptModel>> _receiptsStream =
+      widget.service.watchAllReceipts();
 
   String _fmtDateTime(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}  '
@@ -922,10 +1006,25 @@ class _LogsTabState extends State<_LogsTab> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<ReceiptLog>>(
-      stream: _logsStream,
-      builder: (context, snap) {
-        final logs = snap.data ?? [];
+    // Logs carry no college of their own, so resolve it through the
+    // receipt (matched on receipt number + student). This keeps old logs
+    // working with no migration.
+    return StreamBuilder<List<ReceiptModel>>(
+      stream: _receiptsStream,
+      builder: (context, receiptsSnap) {
+        final collegeOf = <String, String>{};
+        for (final r in receiptsSnap.data ?? []) {
+          collegeOf['${r.receiptNumber}|${r.studentName}'] = r.college;
+        }
+        return StreamBuilder<List<ReceiptLog>>(
+          stream: _logsStream,
+          builder: (context, snap) {
+            final logs = (snap.data ?? [])
+                .where((log) =>
+                    collegeOf[
+                        '${log.receiptNumber}|${log.studentName}'] ==
+                    widget.group.label)
+                .toList();
         if (snap.connectionState == ConnectionState.waiting && logs.isEmpty) {
           return const Center(child: CircularProgressIndicator());
         }
@@ -989,6 +1088,8 @@ class _LogsTabState extends State<_LogsTab> {
                 ],
               ),
             );
+          },
+        );
           },
         );
       },
