@@ -52,6 +52,13 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
   bool _reimbursementRequired = false;
   bool _saving = false;
 
+  /// 'stock' or 'service'. Locked after creation: flipping a stock bill to
+  /// service could not unsync its already-added stock, and the reverse
+  /// would silently bulk-add old items.
+  late String _billType;
+
+  bool get _isService => _billType == 'service';
+
   final List<_ItemEditData> _items = [];
   List<CatalogItem> _catalogSummaries = [];
 
@@ -66,6 +73,7 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
     super.initState();
     final bill = widget.existingBill;
     _billDate = bill?.billDate ?? DateTime.now();
+    _billType = bill?.billType ?? 'stock';
     _paymentDate = bill?.paymentDate;
     _reimbursementDate = bill?.reimbursementDate;
     _reimbursementRequired = bill?.reimbursementRequired ?? false;
@@ -191,11 +199,35 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
   double get _liveTotal {
     var total = 0.0;
     for (final d in _items) {
-      final qty = int.tryParse(d.qtyCtrl.text) ?? 0;
+      final qty = _isService ? 1 : int.tryParse(d.qtyCtrl.text) ?? 0;
       final price = double.tryParse(d.priceCtrl.text) ?? 0;
       total += qty * price;
     }
     return total;
+  }
+
+  void _setBillType(String type) {
+    if (_isEdit || type == _billType) return;
+    setState(() {
+      _billType = type;
+      // Service items must never carry catalog links or item photos into
+      // the stock sync: drop any picked while in stock mode. Also fold any
+      // autocomplete-typed name into the plain name field the service row
+      // reads.
+      for (final d in _items) {
+        if (d.nameCtrl != null && d.nameCtrl!.text.trim().isNotEmpty) {
+          d.name = d.nameCtrl!.text.trim();
+        }
+        d.selected = null;
+        d.photoBytes = null;
+        d.photoName = null;
+        if (_isService) {
+          d.qtyCtrl.text = '1';
+        } else if (d.nameCtrl != null && d.nameCtrl!.text.isEmpty) {
+          d.nameCtrl!.text = d.name;
+        }
+      }
+    });
   }
 
   Future<void> _save() async {
@@ -205,7 +237,9 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
     final items = <BillItem>[];
     for (final d in _items) {
       final name = (d.nameCtrl?.text ?? d.name).trim();
-      final qty = int.tryParse(d.qtyCtrl.text) ?? 0;
+      // Service lines are lump sums: quantity is always 1, no unit, and
+      // never linked to the catalog.
+      final qty = _isService ? 1 : int.tryParse(d.qtyCtrl.text) ?? 0;
       final price = double.tryParse(d.priceCtrl.text) ?? 0;
       if (name.isEmpty || qty <= 0 || price <= 0) continue;
       items.add(
@@ -213,10 +247,12 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
           name: name,
           quantity: qty,
           pricePerUnit: price,
-          unit: d.unit,
-          catalogItemId: d.selected?.id,
-          photoBytes: d.selected != null ? null : d.photoBytes,
-          photoName: d.selected != null ? null : d.photoName,
+          unit: _isService ? 'Service' : d.unit,
+          catalogItemId: _isService ? null : d.selected?.id,
+          photoBytes:
+              _isService || d.selected != null ? null : d.photoBytes,
+          photoName:
+              _isService || d.selected != null ? null : d.photoName,
         ),
       );
     }
@@ -224,8 +260,10 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
     if (items.isEmpty) {
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Add at least one item with name, quantity and price.'),
+        SnackBar(
+          content: Text(_isService
+              ? 'Add at least one service with its amount.'
+              : 'Add at least one item with name, quantity and price.'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -274,6 +312,7 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
       id: widget.existingBill?.id,
       billNumber: _billNumberCtrl.text.trim(),
       storeName: _storeNameCtrl.text.trim(),
+      billType: _billType,
       billDate: _billDate,
       paymentDate: paymentDate,
       paymentBy: paymentBy,
@@ -337,12 +376,75 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
           padding: const EdgeInsets.all(16),
           children: [
             _sectionCard([
+              Text(
+                'Bill Type',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(
+                    value: 'stock',
+                    icon: Icon(Icons.inventory_2_outlined, size: 18),
+                    label: Text('Stock'),
+                  ),
+                  ButtonSegment(
+                    value: 'service',
+                    icon: Icon(Icons.miscellaneous_services_outlined,
+                        size: 18),
+                    label: Text('Service'),
+                  ),
+                ],
+                selected: {_billType},
+                onSelectionChanged: _isEdit ? null : (s) => _setBillType(s.first),
+                showSelectedIcon: false,
+              ),
+              if (_isService)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    'Service bills are never added to stock — just an amount to be paid.',
+                    style: TextStyle(
+                        fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    'Stock bill items are added to the pending room stock on save.',
+                    style: TextStyle(
+                        fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                ),
+              if (_isEdit)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Bill type cannot be changed after creation.',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade500,
+                        fontStyle: FontStyle.italic),
+                  ),
+                ),
+              const SizedBox(height: 12),
               _buildField(
                 _billNumberCtrl,
                 'Bill Number *',
                 hint: 'e.g. INV-2026-014',
               ),
-              _buildField(_storeNameCtrl, 'Store Name *'),
+              _buildField(
+                _storeNameCtrl,
+                _isService ? 'Service Provider *' : 'Store Name *',
+                hint: _isService
+                    ? 'e.g. Sharma Plumbing Works'
+                    : null,
+              ),
               _buildDateTile(
                 'Bill Date *',
                 _fmtDate(_billDate),
@@ -422,9 +524,9 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
             _sectionCard([
               Row(
                 children: [
-                  const Text(
-                    'Items',
-                    style: TextStyle(
+                  Text(
+                    _isService ? 'Services' : 'Items',
+                    style: const TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 15,
                       color: Color(0xFF1A3C6E),
@@ -435,7 +537,8 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
                     onPressed: () =>
                         setState(() => _items.add(_ItemEditData())),
                     icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Add Item'),
+                    label:
+                        Text(_isService ? 'Add Service' : 'Add Item'),
                   ),
                 ],
               ),
@@ -467,6 +570,7 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
                   index: i,
                   data: _items[i],
                   catalogSummaries: _catalogSummaries,
+                  isService: _isService,
                   canRemove: _items.length > 1,
                   onChanged: () => setState(() {}),
                   onRemove: () => setState(() {
@@ -657,6 +761,10 @@ class _BillItemRow extends ConsumerStatefulWidget {
   final int index;
   final _ItemEditData data;
   final List<CatalogItem> catalogSummaries;
+
+  /// Service lines are lump sums: plain name + amount, no catalog lookup,
+  /// photo, quantity or unit.
+  final bool isService;
   final bool canRemove;
   final VoidCallback onChanged;
   final VoidCallback onRemove;
@@ -665,6 +773,7 @@ class _BillItemRow extends ConsumerStatefulWidget {
     required this.index,
     required this.data,
     required this.catalogSummaries,
+    this.isService = false,
     required this.canRemove,
     required this.onChanged,
     required this.onRemove,
@@ -705,6 +814,7 @@ class _BillItemRowState extends ConsumerState<_BillItemRow> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.isService) return _buildServiceRow(context);
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -908,6 +1018,77 @@ class _BillItemRowState extends ConsumerState<_BillItemRow> {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Lump-sum service line: name + amount only.
+  Widget _buildServiceRow(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Service ${widget.index + 1}',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+              const Spacer(),
+              if (widget.canRemove)
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  color: Colors.redAccent,
+                  visualDensity: VisualDensity.compact,
+                  onPressed: widget.onRemove,
+                ),
+            ],
+          ),
+          TextFormField(
+            initialValue: widget.data.name,
+            decoration: InputDecoration(
+              labelText: 'Service Description *',
+              hintText: 'e.g. Plumbing repair work',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onChanged: (text) {
+              widget.data.name = text;
+              widget.onChanged();
+            },
+            validator: (v) =>
+                v == null || v.trim().isEmpty ? 'Required' : null,
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: widget.data.priceCtrl,
+            keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: 'Amount *',
+              prefixText: '₹ ',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            validator: (v) {
+              final p = double.tryParse(v ?? '');
+              return (p == null || p <= 0) ? 'Invalid' : null;
+            },
+            onChanged: (_) => widget.onChanged(),
           ),
         ],
       ),

@@ -64,6 +64,11 @@ class BillModel {
   String? id;
   String billNumber;
   String storeName;
+
+  /// 'stock' (items synced into stock) or 'service' (no physical product —
+  /// items stay on the bill only, never touch stock). Old docs lack the key
+  /// and read as 'stock', which matches how they were created.
+  String billType;
   DateTime billDate;
   DateTime? paymentDate;
   String paymentBy;
@@ -82,6 +87,7 @@ class BillModel {
     this.id,
     this.billNumber = '',
     this.storeName = '',
+    this.billType = 'stock',
     DateTime? billDate,
     this.paymentDate,
     this.paymentBy = '',
@@ -102,6 +108,8 @@ class BillModel {
   double get totalAmount =>
       items.fold(0, (sum, i) => sum + i.total);
 
+  bool get isService => billType == 'service';
+
   bool get isPaymentPending => reimbursementRequired && !paid;
 
   factory BillModel.fromFirestore(String id, Map<String, dynamic> d) =>
@@ -109,6 +117,7 @@ class BillModel {
         id: id,
         billNumber: d['billNumber'] ?? '',
         storeName: d['storeName'] ?? '',
+        billType: d['billType'] ?? 'stock',
         billDate: d['billDate'] != null
             ? DateTime.tryParse(d['billDate']) ?? DateTime.now()
             : DateTime.now(),
@@ -139,6 +148,7 @@ class BillModel {
   Map<String, dynamic> toFirestore() => {
     'billNumber': billNumber,
     'storeName': storeName,
+    'billType': billType,
     'billDate': billDate.toIso8601String(),
     'paymentDate': paymentDate?.toIso8601String(),
     'paymentBy': paymentBy,

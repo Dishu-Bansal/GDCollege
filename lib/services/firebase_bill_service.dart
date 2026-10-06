@@ -60,7 +60,11 @@ class FirebaseBillRepository implements BillRepository {
     }
 
     await docRef.set(bill.toFirestore());
-    await _syncBillItemsToPending(bill, updateMode: false);
+    // Service bills have no physical product: their items stay on the bill
+    // only and are never added to stock.
+    if (!bill.isService) {
+      await _syncBillItemsToPending(bill, updateMode: false);
+    }
     await _writeLog(docRef.id, bill.billNumber, 'create',
         'Bill created. ${bill.items.length} item(s), total '
             '₹${bill.totalAmount.toStringAsFixed(2)}.');
@@ -88,14 +92,20 @@ class FirebaseBillRepository implements BillRepository {
     }
 
     // Snapshot the old bill so the stock sync can diff against it.
-    final oldSnap = await _bills.doc(id).get();
-    final previousItems = oldSnap.exists
+    // Skipped for service bills (the form locks bill type after creation,
+    // so a service bill was never synced and has nothing to diff).
+    final oldSnap = bill.isService
+        ? null
+        : await _bills.doc(id).get();
+    final previousItems = (oldSnap != null && oldSnap.exists)
         ? BillModel.fromFirestore(id, oldSnap.data()!).items
         : const <BillItem>[];
 
     await _bills.doc(id).set(bill.toFirestore());
-    await _syncBillItemsToPending(bill,
-        updateMode: true, previousItems: previousItems);
+    if (!bill.isService) {
+      await _syncBillItemsToPending(bill,
+          updateMode: true, previousItems: previousItems);
+    }
     await _writeLog(id, bill.billNumber, 'update',
         'Bill updated. ${bill.items.length} item(s), total '
             '₹${bill.totalAmount.toStringAsFixed(2)}.');
