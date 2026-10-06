@@ -47,6 +47,7 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
   final _reimbursedByCtrl = TextEditingController();
 
   late DateTime _billDate;
+  DateTime? _receivedDate;
   DateTime? _paymentDate;
   DateTime? _reimbursementDate;
   bool _reimbursementRequired = false;
@@ -73,6 +74,7 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
     super.initState();
     final bill = widget.existingBill;
     _billDate = bill?.billDate ?? DateTime.now();
+    _receivedDate = bill?.receivedDate;
     _billType = bill?.billType ?? 'stock';
     _paymentDate = bill?.paymentDate;
     _reimbursementDate = bill?.reimbursementDate;
@@ -133,6 +135,16 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
       lastDate: DateTime.now(),
     );
     if (picked != null) setState(() => _billDate = picked);
+  }
+
+  Future<void> _pickReceivedDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _receivedDate ?? _billDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked != null) setState(() => _receivedDate = picked);
   }
 
   Future<void> _pickPaymentDate() async {
@@ -199,7 +211,7 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
   double get _liveTotal {
     var total = 0.0;
     for (final d in _items) {
-      final qty = _isService ? 1 : int.tryParse(d.qtyCtrl.text) ?? 0;
+      final qty = int.tryParse(d.qtyCtrl.text) ?? 0;
       final price = double.tryParse(d.priceCtrl.text) ?? 0;
       total += qty * price;
     }
@@ -221,9 +233,9 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
         d.selected = null;
         d.photoBytes = null;
         d.photoName = null;
-        if (_isService) {
-          d.qtyCtrl.text = '1';
-        } else if (d.nameCtrl != null && d.nameCtrl!.text.isEmpty) {
+        if (!_isService &&
+            d.nameCtrl != null &&
+            d.nameCtrl!.text.isEmpty) {
           d.nameCtrl!.text = d.name;
         }
       }
@@ -236,10 +248,14 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
 
     final items = <BillItem>[];
     for (final d in _items) {
-      final name = (d.nameCtrl?.text ?? d.name).trim();
-      // Service lines are lump sums: quantity is always 1, no unit, and
-      // never linked to the catalog.
-      final qty = _isService ? 1 : int.tryParse(d.qtyCtrl.text) ?? 0;
+      // Service names come from the free-text field; stock names from the
+      // autocomplete controller. Service lines are never linked to the
+      // catalog and carry no item photo — but keep quantity, unit price
+      // and unit like stock lines.
+      final name = _isService
+          ? d.name.trim()
+          : (d.nameCtrl?.text ?? d.name).trim();
+      final qty = int.tryParse(d.qtyCtrl.text) ?? 0;
       final price = double.tryParse(d.priceCtrl.text) ?? 0;
       if (name.isEmpty || qty <= 0 || price <= 0) continue;
       items.add(
@@ -247,7 +263,7 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
           name: name,
           quantity: qty,
           pricePerUnit: price,
-          unit: _isService ? 'Service' : d.unit,
+          unit: d.unit,
           catalogItemId: _isService ? null : d.selected?.id,
           photoBytes:
               _isService || d.selected != null ? null : d.photoBytes,
@@ -260,10 +276,9 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
     if (items.isEmpty) {
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_isService
-              ? 'Add at least one service with its amount.'
-              : 'Add at least one item with name, quantity and price.'),
+        const SnackBar(
+          content:
+              Text('Add at least one item with name, quantity and price.'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -314,6 +329,7 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
       storeName: _storeNameCtrl.text.trim(),
       billType: _billType,
       billDate: _billDate,
+      receivedDate: _receivedDate,
       paymentDate: paymentDate,
       paymentBy: paymentBy,
       reimbursementDate: _reimbursementDate,
@@ -452,6 +468,14 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
                 Icons.event,
               ),
               _buildDateTile(
+                'Bill Received On',
+                _receivedDate == null
+                    ? 'Not set'
+                    : _fmtDate(_receivedDate!),
+                _pickReceivedDate,
+                Icons.inbox_outlined,
+              ),
+              _buildDateTile(
                 _reimbursementRequired ? 'Payment Date *' : 'Payment Date',
                 _paymentDate == null ? 'Not set' : _fmtDate(_paymentDate!),
                 _pickPaymentDate,
@@ -525,7 +549,7 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
               Row(
                 children: [
                   Text(
-                    _isService ? 'Services' : 'Items',
+                    'Items',
                     style: const TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 15,
@@ -538,7 +562,7 @@ class _BillFormScreenState extends ConsumerState<BillFormScreen> {
                         setState(() => _items.add(_ItemEditData())),
                     icon: const Icon(Icons.add, size: 18),
                     label:
-                        Text(_isService ? 'Add Service' : 'Add Item'),
+                        const Text('Add Item'),
                   ),
                 ],
               ),
@@ -1024,7 +1048,8 @@ class _BillItemRowState extends ConsumerState<_BillItemRow> {
     );
   }
 
-  /// Lump-sum service line: name + amount only.
+  /// Service line: same quantity / unit-price / unit layout as stock, but
+  /// the name is a free-style entry with no catalog lookup and no photo.
   Widget _buildServiceRow(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(10),
@@ -1059,7 +1084,7 @@ class _BillItemRowState extends ConsumerState<_BillItemRow> {
           TextFormField(
             initialValue: widget.data.name,
             decoration: InputDecoration(
-              labelText: 'Service Description *',
+              labelText: 'Service Name *',
               hintText: 'e.g. Plumbing repair work',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -1073,22 +1098,68 @@ class _BillItemRowState extends ConsumerState<_BillItemRow> {
                 v == null || v.trim().isEmpty ? 'Required' : null,
           ),
           const SizedBox(height: 10),
-          TextFormField(
-            controller: widget.data.priceCtrl,
-            keyboardType:
-                const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              labelText: 'Amount *',
-              prefixText: '₹ ',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: widget.data.qtyCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Qty *',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  validator: (v) {
+                    final q = int.tryParse(v ?? '');
+                    return (q == null || q <= 0) ? 'Invalid' : null;
+                  },
+                  onChanged: (_) => widget.onChanged(),
+                ),
               ),
-            ),
-            validator: (v) {
-              final p = double.tryParse(v ?? '');
-              return (p == null || p <= 0) ? 'Invalid' : null;
-            },
-            onChanged: (_) => widget.onChanged(),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextFormField(
+                  controller: widget.data.priceCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Price/unit *',
+                    prefixText: '₹ ',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  validator: (v) {
+                    final p = double.tryParse(v ?? '');
+                    return (p == null || p <= 0) ? 'Invalid' : null;
+                  },
+                  onChanged: (_) => widget.onChanged(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  initialValue: widget.data.unit,
+                  decoration: InputDecoration(
+                    labelText: 'Unit',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  items: stockUnits
+                      .map((u) => DropdownMenuItem(value: u, child: Text(u)))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) {
+                      setState(() => widget.data.unit = v);
+                      widget.onChanged();
+                    }
+                  },
+                ),
+              ),
+            ],
           ),
         ],
       ),
