@@ -136,13 +136,17 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
 
     // ── Stock ────────────────────────────────────────────────────────────
     // The stockLogs of a day carry every item increase/decrease (each log
-    // records the acting account). Inspection completions and consumable
-    // assignments also write a dedicated stock log entry, which lets us
-    // attribute those activities to an account too.
+    // records the acting account). Inspection completions, consumable
+    // assignments and item deletions also write a dedicated stock log
+    // entry, which lets us attribute those activities to an account too.
+    //
+    // Items Added / Items Removed count events (log entries), not units:
+    // adding 50 notebooks in one action contributes 1, not 50.
     final itemsAddedBy = <String, int>{};
     final itemsRemovedBy = <String, int>{};
     final inspectionsLoggedBy = <String, int>{};
     final assignmentsLoggedBy = <String, int>{};
+    final itemsDeletedBy = <String, int>{};
     for (final d in stockLogs) {
       final data = d.data();
       final actor = _actorOf(d);
@@ -150,14 +154,20 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
       final qty = (data['quantity'] as num?)?.toInt() ?? 0;
       final note = (data['note'] as String?) ?? '';
       if (type == 'increase' && qty > 0) {
-        _add(itemsAddedBy, actor, qty);
+        _add(itemsAddedBy, actor, 1);
       } else if (type == 'decrease' && qty > 0) {
-        _add(itemsRemovedBy, actor, qty);
+        _add(itemsRemovedBy, actor, 1);
       }
       if (type == 'inspection' && note.startsWith('Inspection completed')) {
         _add(inspectionsLoggedBy, actor, 1);
       } else if (type == 'decrease' && note.startsWith('Assigned to ')) {
         _add(assignmentsLoggedBy, actor, 1);
+      } else if (type == 'decrease' &&
+          note.startsWith('Item removed from room')) {
+        // Item deletions write a 'decrease' log with this note (quantity
+        // is whatever the item held, possibly 0), so they are detected by
+        // note rather than by quantity.
+        _add(itemsDeletedBy, actor, 1);
       }
     }
 
@@ -180,6 +190,7 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
       inspectionsDone: inspectionsDone,
       itemsAdded: _sum(itemsAddedBy),
       itemsRemoved: _sum(itemsRemovedBy),
+      itemsDeleted: _sum(itemsDeletedBy),
       assignmentsDone: assignments.length,
       studentsCreatedAccounts: accountSharesFromTally(studentsCreatedBy),
       studentsUpdatedAccounts: accountSharesFromTally(studentsUpdatedBy),
@@ -190,6 +201,7 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
       inspectionsAccounts: accountSharesFromTally(inspectionsBy),
       itemsAddedAccounts: accountSharesFromTally(itemsAddedBy),
       itemsRemovedAccounts: accountSharesFromTally(itemsRemovedBy),
+      itemsDeletedAccounts: accountSharesFromTally(itemsDeletedBy),
       assignmentsAccounts: accountSharesFromTally(assignmentsBy),
     );
   }

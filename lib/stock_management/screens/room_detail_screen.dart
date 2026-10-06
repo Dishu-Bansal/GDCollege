@@ -11,6 +11,8 @@ import '../../providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../widgets/stock_widgets.dart';
 import 'rooms_screen.dart' show MediaUploadSheet;
+import '../../models/user_session.dart';
+import '../../access/access_service.dart';
 
 class RoomDetailScreen extends ConsumerStatefulWidget {
   @override
@@ -300,6 +302,10 @@ class _ItemCardState extends State<_ItemCard> {
   RoomModel get room => widget.room;
   StockRepository get service => widget.service;
 
+  /// Item deletion is admin-only.
+  bool get _canDelete =>
+      AccessService.isAdminEmail(UserSession().currentUser?.email);
+
   @override
   void initState() {
     super.initState();
@@ -546,15 +552,16 @@ class _ItemCardState extends State<_ItemCard> {
                         SizedBox(width: 8),
                         Text('View Assignments'),
                       ])),
-                  const PopupMenuItem(
-                      value: 'delete',
-                      child: Row(children: [
-                        Icon(Icons.delete_outline,
-                            size: 16, color: Colors.red),
-                        SizedBox(width: 8),
-                        Text('Delete',
-                            style: TextStyle(color: Colors.red)),
-                      ])),
+                  if (_canDelete)
+                    const PopupMenuItem(
+                        value: 'delete',
+                        child: Row(children: [
+                          Icon(Icons.delete_outline,
+                              size: 16, color: Colors.red),
+                          SizedBox(width: 8),
+                          Text('Delete',
+                              style: TextStyle(color: Colors.red)),
+                        ])),
                 ],
               ),
             ]),

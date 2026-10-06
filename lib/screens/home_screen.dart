@@ -278,6 +278,11 @@ class _AnalyticsCard extends ConsumerWidget {
                         accounts: data.itemsRemovedAccounts,
                       ),
                       (
+                        label: 'Items Deleted',
+                        value: data.itemsDeleted,
+                        accounts: data.itemsDeletedAccounts,
+                      ),
+                      (
                         label: 'Assignments',
                         value: data.assignmentsDone,
                         accounts: data.assignmentsAccounts,

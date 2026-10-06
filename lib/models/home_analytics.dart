@@ -43,6 +43,7 @@ class HomeAnalytics {
   final int inspectionsDone;
   final int itemsAdded;
   final int itemsRemoved;
+  final int itemsDeleted;
   final int assignmentsDone;
 
   // Account-wise breakdowns (per-account share of each total above).
@@ -55,6 +56,7 @@ class HomeAnalytics {
   final List<AccountAmount> inspectionsAccounts;
   final List<AccountAmount> itemsAddedAccounts;
   final List<AccountAmount> itemsRemovedAccounts;
+  final List<AccountAmount> itemsDeletedAccounts;
   final List<AccountAmount> assignmentsAccounts;
 
   const HomeAnalytics({
@@ -68,6 +70,7 @@ class HomeAnalytics {
     this.inspectionsDone = 0,
     this.itemsAdded = 0,
     this.itemsRemoved = 0,
+    this.itemsDeleted = 0,
     this.assignmentsDone = 0,
     this.studentsCreatedAccounts = const [],
     this.studentsUpdatedAccounts = const [],
@@ -78,6 +81,7 @@ class HomeAnalytics {
     this.inspectionsAccounts = const [],
     this.itemsAddedAccounts = const [],
     this.itemsRemovedAccounts = const [],
+    this.itemsDeletedAccounts = const [],
     this.assignmentsAccounts = const [],
   });
 
@@ -91,5 +95,6 @@ class HomeAnalytics {
       inspectionsDone > 0 ||
       itemsAdded > 0 ||
       itemsRemoved > 0 ||
+      itemsDeleted > 0 ||
       assignmentsDone > 0;
 }
