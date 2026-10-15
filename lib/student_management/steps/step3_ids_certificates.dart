@@ -121,6 +121,8 @@ class _Step3IdsAndCertificatesState extends State<Step3IdsAndCertificates> {
             filePath: widget.student.aadharData,
             filename: widget.student.aadharName,
             existingUrl: widget.student.aadharUrl,
+            onExistingRemoved: () =>
+                setState(() {widget.student.aadharData = null; widget.student.aadharName = null; widget.student.aadharUrl = null;}),
             onFilePicked: (data, name) =>
                 setState(() {widget.student.aadharData = data; widget.student.aadharName = name;}),
             onFileRemoved: () =>
@@ -131,6 +133,8 @@ class _Step3IdsAndCertificatesState extends State<Step3IdsAndCertificates> {
             filePath: widget.student.panData,
             filename: widget.student.panName,
             existingUrl: widget.student.panUrl,
+            onExistingRemoved: () =>
+                setState(() {widget.student.panData = null; widget.student.panName = null; widget.student.panUrl = null;}),
             onFilePicked: (data, name) =>
                 setState(() {widget.student.panData = data; widget.student.panName = name;}),
             onFileRemoved: () =>
@@ -142,6 +146,8 @@ class _Step3IdsAndCertificatesState extends State<Step3IdsAndCertificates> {
             filePath: widget.student.familyIdDocData,
             filename: widget.student.familyIdDocName,
             existingUrl: widget.student.familyIdDocUrl,
+            onExistingRemoved: () =>
+                setState(() {widget.student.familyIdDocData = null; widget.student.familyIdDocName = null; widget.student.familyIdDocUrl = null;}),
             onFilePicked: (data, name) =>
                 setState(() {widget.student.familyIdDocData = data; widget.student.familyIdDocName = name;}),
             onFileRemoved: () =>
@@ -152,6 +158,8 @@ class _Step3IdsAndCertificatesState extends State<Step3IdsAndCertificates> {
             filePath: widget.student.haryanaResidenceData,
             filename: widget.student.haryanaResidenceName,
             existingUrl: widget.student.haryanaResidenceUrl,
+            onExistingRemoved: () =>
+                setState(() {widget.student.haryanaResidenceData = null; widget.student.haryanaResidenceName = null; widget.student.haryanaResidenceUrl = null;}),
             onFilePicked: (data, name) =>
                 setState(() {widget.student.haryanaResidenceData = data; widget.student.haryanaResidenceName = name;}),
             onFileRemoved: () =>
@@ -162,6 +170,8 @@ class _Step3IdsAndCertificatesState extends State<Step3IdsAndCertificates> {
             filePath: widget.student.abcIdData,
             filename: widget.student.abcIdName,
             existingUrl: widget.student.abcIdUrl,
+            onExistingRemoved: () =>
+                setState(() {widget.student.abcIdData = null; widget.student.abcIdName = null; widget.student.abcIdUrl = null;}),
             onFilePicked: (data, name) =>
                 setState(() {widget.student.abcIdData = data; widget.student.abcIdName = name;}),
             onFileRemoved: () =>
@@ -173,6 +183,8 @@ class _Step3IdsAndCertificatesState extends State<Step3IdsAndCertificates> {
             filePath: widget.student.scCertificateData,
             filename: widget.student.scCertificateName,
             existingUrl: widget.student.scCertificateUrl,
+            onExistingRemoved: () =>
+                setState(() {widget.student.scCertificateData = null; widget.student.scCertificateName = null; widget.student.scCertificateUrl = null;}),
             onFilePicked: (data, name) =>
                 setState(() {widget.student.scCertificateData = data; widget.student.scCertificateName = name;}),
             onFileRemoved: () =>
@@ -184,6 +196,8 @@ class _Step3IdsAndCertificatesState extends State<Step3IdsAndCertificates> {
             filePath: widget.student.bcCertificateData,
             filename: widget.student.bcCertificateName,
             existingUrl: widget.student.bcCertificateUrl,
+            onExistingRemoved: () =>
+                setState(() {widget.student.bcCertificateData = null; widget.student.bcCertificateName = null; widget.student.bcCertificateUrl = null;}),
             onFilePicked: (data, name) =>
                 setState(() { widget.student.bcCertificateData = data; widget.student.bcCertificateName = name;}),
             onFileRemoved: () =>
@@ -195,6 +209,8 @@ class _Step3IdsAndCertificatesState extends State<Step3IdsAndCertificates> {
             filePath: widget.student.sportsCertificateData,
             filename: widget.student.sportsCertificateName,
             existingUrl: widget.student.sportsCertificateUrl,
+            onExistingRemoved: () =>
+                setState(() {widget.student.sportsCertificateData = null; widget.student.sportsCertificateName = null; widget.student.sportsCertificateUrl = null;}),
             onFilePicked: (data, name) =>
                 setState(() {widget.student.sportsCertificateData = data; widget.student.sportsCertificateName = name;}),
             onFileRemoved: () =>
