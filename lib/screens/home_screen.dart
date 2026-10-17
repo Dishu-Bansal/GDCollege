@@ -5,6 +5,7 @@ import '../access/access_service.dart';
 import '../access/app_session.dart';
 import '../access/screens/access_management_screen.dart';
 import '../bill_management/screens/bill_management_screen.dart';
+import '../lead_management/screens/lead_management_screen.dart';
 import '../models/home_analytics.dart';
 import '../providers.dart';
 import '../student_management/screens/student_list_screen.dart';
@@ -690,6 +691,19 @@ class _ModuleCards extends StatelessWidget {
               context,
               MaterialPageRoute(
                 builder: (_) => const VisitorManagementScreen(),
+              ),
+            ),
+          ));
+        }
+        if (show((s) => s.canAccessLeads)) {
+          add(_NavCard(
+            icon: Icons.person_search_outlined,
+            label: 'Lead Management',
+            color: const Color(0xFF00695C),
+            onTap: () => Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const LeadManagementScreen(),
               ),
             ),
           ));

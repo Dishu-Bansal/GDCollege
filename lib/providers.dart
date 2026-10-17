@@ -7,6 +7,9 @@ import 'repositories/stock_repository.dart';
 import 'repositories/analytics_repository.dart';
 import 'repositories/bill_repository.dart';
 import 'visitor_management/repositories/visitor_repository.dart';
+import 'lead_management/models/lead_model.dart';
+import 'lead_management/repositories/lead_repository.dart';
+import 'lead_management/services/firebase_lead_service.dart';
 import 'services/firebase_student_service.dart';
 import 'services/firebase_staff_service.dart';
 import 'services/stock_service.dart';
@@ -74,3 +77,13 @@ final billLogsStreamProvider = StreamProvider<List<BillLog>>(
 final visitorRepositoryProvider = Provider<VisitorRepository>((ref) {
   return FirebaseVisitorRepository();
 });
+
+final leadRepositoryProvider = Provider<LeadRepository>((ref) {
+  return FirebaseLeadRepository();
+});
+
+final leadsStreamProvider = StreamProvider<List<LeadModel>>(
+    (ref) => ref.watch(leadRepositoryProvider).watchLeads());
+
+final leadLogsStreamProvider = StreamProvider<List<LeadLog>>(
+    (ref) => ref.watch(leadRepositoryProvider).watchAllLeadLogs());
