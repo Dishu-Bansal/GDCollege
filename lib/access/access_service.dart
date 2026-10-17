@@ -79,6 +79,10 @@ class AccessService {
   static const bool _defaultBills = true;
   static const bool _defaultVisitors = true;
 
+  /// Leads are admin-only by default: only dishubansal@lklms.com sees them
+  /// unless the admin explicitly grants access.
+  static const bool _defaultLeads = false;
+
   /// Live access state for the signed-in user (null when signed out).
   Stream<AppSession?> watchAccess() {
     return FirebaseAuth.instance.authStateChanges().asyncExpand((user) {
@@ -94,6 +98,7 @@ class AccessService {
           canAccessStock: true,
           canAccessBills: true,
           canAccessVisitors: true,
+          canAccessLeads: true,
         ));
       }
       return _db
@@ -110,6 +115,7 @@ class AccessService {
           var stock = _defaultStock;
           var bills = _defaultBills;
           var visitors = _defaultVisitors;
+          var leads = _defaultLeads;
           String? seedDocId;
           final seed = await _db
               .collection(_collection)
@@ -123,6 +129,7 @@ class AccessService {
             stock = s['canAccessStock'] as bool? ?? stock;
             bills = s['canAccessBills'] as bool? ?? bills;
             visitors = s['canAccessVisitors'] as bool? ?? visitors;
+            leads = s['canAccessLeads'] as bool? ?? leads;
             seedDocId = seed.docs.first.id;
           }
           final now = DateTime.now().toIso8601String();
@@ -133,6 +140,7 @@ class AccessService {
             'canAccessStock': stock,
             'canAccessBills': bills,
             'canAccessVisitors': visitors,
+            'canAccessLeads': leads,
             'createdAt': now,
             'updatedAt': now,
             'updatedBy': email,
@@ -151,6 +159,7 @@ class AccessService {
             canAccessStock: stock,
             canAccessBills: bills,
             canAccessVisitors: visitors,
+            canAccessLeads: leads,
           );
         }
         final d = doc.data()!;
@@ -163,6 +172,7 @@ class AccessService {
           canAccessStock: d['canAccessStock'] ?? _defaultStock,
           canAccessBills: d['canAccessBills'] ?? _defaultBills,
           canAccessVisitors: d['canAccessVisitors'] ?? _defaultVisitors,
+          canAccessLeads: d['canAccessLeads'] ?? _defaultLeads,
         );
       });
     });
@@ -186,6 +196,7 @@ class AccessService {
     required bool stock,
     required bool bills,
     required bool visitors,
+    required bool leads,
   }) {
     final by = FirebaseAuth.instance.currentUser?.email ?? '';
     return _db.collection(_collection).doc(uid).update({
@@ -194,6 +205,7 @@ class AccessService {
       'canAccessStock': stock,
       'canAccessBills': bills,
       'canAccessVisitors': visitors,
+      'canAccessLeads': leads,
       'updatedAt': DateTime.now().toIso8601String(),
       'updatedBy': by,
     });
@@ -230,6 +242,7 @@ class AccessService {
       var stock = _defaultStock;
       var bills = _defaultBills;
       var visitors = _defaultVisitors;
+      var leads = _defaultLeads;
       String? seedDocId;
       final seed = await _db
           .collection(_collection)
@@ -243,6 +256,7 @@ class AccessService {
         stock = s['canAccessStock'] as bool? ?? stock;
         bills = s['canAccessBills'] as bool? ?? bills;
         visitors = s['canAccessVisitors'] as bool? ?? visitors;
+        leads = s['canAccessLeads'] as bool? ?? leads;
         seedDocId = seed.docs.first.id;
       }
       final now = DateTime.now().toIso8601String();
@@ -253,6 +267,7 @@ class AccessService {
         'canAccessStock': stock,
         'canAccessBills': bills,
         'canAccessVisitors': visitors,
+        'canAccessLeads': leads,
         'createdAt': now,
         'updatedAt': now,
         'updatedBy': FirebaseAuth.instance.currentUser?.email ?? '',
@@ -268,6 +283,7 @@ class AccessService {
         canAccessStock: stock,
         canAccessBills: bills,
         canAccessVisitors: visitors,
+        canAccessLeads: leads,
       );
     } finally {
       await secondaryAuth.signOut();
