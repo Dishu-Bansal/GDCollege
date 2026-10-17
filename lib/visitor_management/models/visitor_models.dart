@@ -23,6 +23,11 @@ class VisitorModel {
   /// Added after launch: old docs lack the key and read as ''.
   String phone;
 
+  /// Set when the visitor is captured as an admission lead (admin-only
+  /// "Add as Lead" on the detail screen). Old docs lack the key and read
+  /// as false.
+  bool addedAsLead;
+
   VisitorModel({
     this.id,
     this.name = '',
@@ -33,6 +38,7 @@ class VisitorModel {
     this.vehicleNumber = '',
     this.fromPlace = '',
     this.phone = '',
+    this.addedAsLead = false,
   });
 
   factory VisitorModel.fromFirestore(String id, Map<String, dynamic> d) =>
@@ -52,6 +58,7 @@ class VisitorModel {
         vehicleNumber: d['vehicleNumber'] ?? '',
         fromPlace: d['fromPlace'] ?? '',
         phone: d['phone'] ?? '',
+        addedAsLead: d['addedAsLead'] ?? false,
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -66,6 +73,7 @@ class VisitorModel {
     'vehicleNumber': vehicleNumber,
     'fromPlace': fromPlace,
     'phone': phone,
+    'addedAsLead': addedAsLead,
   };
 }
 

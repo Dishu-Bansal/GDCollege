@@ -287,6 +287,14 @@ class FirebaseVisitorRepository implements VisitorRepository {
   }
 
   @override
+  Future<void> markVisitorAddedAsLead(String visitorId) async {
+    await _visitors.doc(visitorId).set(
+      {'addedAsLead': true},
+      SetOptions(merge: true),
+    );
+  }
+
+  @override
   Future<int> backfillVisitEvents() async {
     // Deterministic doc ids make this safe to re-run. It also repairs
     // events stamped with the wrong time (e.g. from the first backfill run
