@@ -11,7 +11,7 @@ import '../repositories/visitor_repository.dart';
 
 /// Detail screen for a unique visitor: their profile summary plus every one
 /// of their visits.
-class VisitorDetailScreen extends ConsumerWidget {
+class VisitorDetailScreen extends ConsumerStatefulWidget {
   final VisitorModel visitor;
   final VisitorRepository service;
 
@@ -21,18 +21,38 @@ class VisitorDetailScreen extends ConsumerWidget {
     required this.service,
   });
 
+  @override
+  ConsumerState<VisitorDetailScreen> createState() =>
+      _VisitorDetailScreenState();
+}
+
+class _VisitorDetailScreenState
+    extends ConsumerState<VisitorDetailScreen> {
+  VisitorModel get visitor => widget.visitor;
+  VisitorRepository get service => widget.service;
+
+  /// Local mirror of the visitor's added-as-lead flag: set from the doc on
+  /// open, flipped (and persisted) the moment a lead is created here.
+  late bool _addedAsLead;
+
+  @override
+  void initState() {
+    super.initState();
+    _addedAsLead = widget.visitor.addedAsLead;
+  }
+
   String _initial(String name) =>
       name.isEmpty ? '?' : name.trim().characters.first.toUpperCase();
 
-  bool _isAdmin(BuildContext context) => AccessService.isAdminEmail(
-      UserSession().currentUser?.email);
+  bool get _isAdmin =>
+      AccessService.isAdminEmail(UserSession().currentUser?.email);
 
   String _fmtDateTime(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}  '
       '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
       appBar: AppBar(
@@ -90,24 +110,28 @@ class VisitorDetailScreen extends ConsumerWidget {
                         style: TextStyle(
                             fontSize: 11, color: Colors.grey.shade500),
                       ),
-                    if (_isAdmin(context))
+                    if (_isAdmin)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
-                        child: OutlinedButton.icon(
-                          onPressed: () => _openAddAsLead(context, ref),
-                          icon: const Icon(
-                              Icons.person_add_alt_outlined,
-                              size: 16),
-                          label: const Text('Add as Lead',
-                              style: TextStyle(fontSize: 12)),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor:
-                                const Color(0xFF00695C),
-                            side: const BorderSide(
-                                color: Color(0xFF00695C)),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        ),
+                        child: _addedAsLead
+                            ? const _AddedAsLeadBadge()
+                            : OutlinedButton.icon(
+                                onPressed: () => _openAddAsLead(context),
+                                icon: const Icon(
+                                    Icons.person_add_alt_outlined,
+                                    size: 16),
+                                label: const Text('Add as Lead',
+                                    style:
+                                        TextStyle(fontSize: 12)),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor:
+                                      const Color(0xFF00695C),
+                                  side: const BorderSide(
+                                      color: Color(0xFF00695C)),
+                                  visualDensity:
+                                      VisualDensity.compact,
+                                ),
+                              ),
                       ),
                   ]),
             ),
@@ -148,8 +172,9 @@ class VisitorDetailScreen extends ConsumerWidget {
 
   /// Admin-only one-click lead capture: name, phone, source (Walk-in) and
   /// location (the visitor's "from" place) come prefilled; the rest is the
-  /// same lead detail set as the form.
-  Future<void> _openAddAsLead(BuildContext context, WidgetRef ref) async {
+  /// same lead detail set as the form. On success the visitor is flagged
+  /// so the button flips to "Added as Lead".
+  Future<void> _openAddAsLead(BuildContext context) async {
     final lead = await showDialog<LeadModel>(
       context: context,
       builder: (_) => _AddLeadDialog(visitor: visitor),
@@ -157,6 +182,11 @@ class VisitorDetailScreen extends ConsumerWidget {
     if (lead == null || !context.mounted) return;
     try {
       await ref.read(leadRepositoryProvider).createLead(lead);
+      final id = visitor.id;
+      if (id != null) {
+        await service.markVisitorAddedAsLead(id);
+      }
+      if (mounted) setState(() => _addedAsLead = true);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -172,6 +202,39 @@ class VisitorDetailScreen extends ConsumerWidget {
         );
       }
     }
+  }
+}
+
+/// Non-interactive badge shown once the visitor has been captured as a lead.
+class _AddedAsLeadBadge extends StatelessWidget {
+  const _AddedAsLeadBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2E7D32).withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+            color: const Color(0xFF2E7D32).withValues(alpha: 0.4)),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.check_circle_outline,
+              size: 14, color: Color(0xFF2E7D32)),
+          SizedBox(width: 4),
+          Text(
+            'Added as Lead',
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF2E7D32)),
+          ),
+        ],
+      ),
+    );
   }
 }
 
