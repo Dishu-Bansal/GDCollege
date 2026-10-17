@@ -16,14 +16,54 @@ const List<String> leadSources = [
   'Other',
 ];
 
+/// Interested-course options for the multi-select picker.
+const List<String> leadCourseOptions = [
+  'B.ed',
+  'M.ed',
+  'D.P.ed',
+  'D.El.Ed',
+  'ANM',
+  'GNM',
+  'Skill India',
+  'Other',
+];
+
+/// One follow-up reminder on a lead: a note plus the date it is due.
+class FollowUpNote {
+  String note;
+  DateTime date;
+
+  FollowUpNote({this.note = '', DateTime? date})
+      : date = date ?? DateTime.now();
+
+  factory FollowUpNote.fromMap(Map<String, dynamic> m) => FollowUpNote(
+        note: m['note'] ?? '',
+        date: m['date'] != null
+            ? DateTime.tryParse(m['date']) ?? DateTime.now()
+            : DateTime.now(),
+      );
+
+  Map<String, dynamic> toMap() => {
+        'note': note,
+        'date': date.toIso8601String(),
+      };
+}
+
 class LeadModel {
   String? id;
   String name;
   String phone;
-  String course;
+  String location;
+
+  /// Interested courses (multi-select). Old docs carry a single `course`
+  /// string, which reads as a one-item list.
+  List<String> courses;
   String source;
   String status;
   String notes;
+
+  /// Follow-up reminders, each a note plus a due date.
+  List<FollowUpNote> followUps;
   DateTime? followUpAt;
   DateTime createdAt;
   DateTime updatedAt;
@@ -34,10 +74,12 @@ class LeadModel {
     this.id,
     this.name = '',
     this.phone = '',
-    this.course = '',
+    this.location = '',
+    this.courses = const [],
     this.source = 'Walk-in',
     this.status = 'New',
     this.notes = '',
+    this.followUps = const [],
     this.followUpAt,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -46,38 +88,68 @@ class LeadModel {
   })  : createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now();
 
-  bool get needsFollowUp =>
-      followUpAt != null && status != 'Admitted' && status != 'Lost';
+  /// The next pending follow-up (earliest dated entry), if any.
+  FollowUpNote? get nextFollowUp {
+    if (followUps.isEmpty) return null;
+    final sorted = List<FollowUpNote>.of(followUps)
+      ..sort((a, b) => a.date.compareTo(b.date));
+    return sorted.first;
+  }
 
-  factory LeadModel.fromFirestore(String id, Map<String, dynamic> d) =>
-      LeadModel(
-        id: id,
-        name: d['name'] ?? '',
-        phone: d['phone'] ?? '',
-        course: d['course'] ?? '',
-        source: d['source'] ?? 'Walk-in',
-        status: d['status'] ?? 'New',
-        notes: d['notes'] ?? '',
-        followUpAt: d['followUpAt'] != null
-            ? DateTime.tryParse(d['followUpAt'])
-            : null,
-        createdAt: d['createdAt'] != null
-            ? DateTime.tryParse(d['createdAt']) ?? DateTime.now()
-            : DateTime.now(),
-        updatedAt: d['updatedAt'] != null
-            ? DateTime.tryParse(d['updatedAt']) ?? DateTime.now()
-            : DateTime.now(),
-        createdBy: d['createdBy'] ?? '',
-        updatedBy: d['updatedBy'] ?? '',
-      );
+  bool get needsFollowUp =>
+      nextFollowUp != null && status != 'Admitted' && status != 'Lost';
+
+  factory LeadModel.fromFirestore(String id, Map<String, dynamic> d) {
+    final rawCourses = d['courses'];
+    final courses = rawCourses is List
+        ? rawCourses.map((e) => e.toString()).toList()
+        : (d['course'] is String && (d['course'] as String).isNotEmpty
+            ? [(d['course'] as String)]
+            : <String>[]);
+    final rawFollowUps = d['followUps'];
+    var followUps = rawFollowUps is List
+        ? rawFollowUps
+            .map((e) => FollowUpNote.fromMap((e as Map).cast<String, dynamic>()))
+            .toList()
+        : <FollowUpNote>[];
+    // Legacy single follow-up date reads as one undated entry.
+    if (followUps.isEmpty && d['followUpAt'] != null) {
+      final legacy = DateTime.tryParse(d['followUpAt']);
+      if (legacy != null) followUps = [FollowUpNote(date: legacy)];
+    }
+    return LeadModel(
+      id: id,
+      name: d['name'] ?? '',
+      phone: d['phone'] ?? '',
+      location: d['location'] ?? '',
+      courses: courses,
+      source: d['source'] ?? 'Walk-in',
+      status: d['status'] ?? 'New',
+      notes: d['notes'] ?? '',
+      followUps: followUps,
+      followUpAt: d['followUpAt'] != null
+          ? DateTime.tryParse(d['followUpAt'])
+          : null,
+      createdAt: d['createdAt'] != null
+          ? DateTime.tryParse(d['createdAt']) ?? DateTime.now()
+          : DateTime.now(),
+      updatedAt: d['updatedAt'] != null
+          ? DateTime.tryParse(d['updatedAt']) ?? DateTime.now()
+          : DateTime.now(),
+      createdBy: d['createdBy'] ?? '',
+      updatedBy: d['updatedBy'] ?? '',
+    );
+  }
 
   Map<String, dynamic> toFirestore() => {
         'name': name,
         'phone': phone,
-        'course': course,
+        'location': location,
+        'courses': courses,
         'source': source,
         'status': status,
         'notes': notes,
+        'followUps': followUps.map((f) => f.toMap()).toList(),
         'followUpAt': followUpAt?.toIso8601String(),
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),

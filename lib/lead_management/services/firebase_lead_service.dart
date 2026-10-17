@@ -43,7 +43,7 @@ class FirebaseLeadRepository implements LeadRepository {
     lead.updatedBy = _currentUser;
     await docRef.set(lead.toFirestore());
     await _writeLog(docRef.id, lead.name, 'create',
-        'Lead created (${lead.source}${lead.course.isNotEmpty ? ', ${lead.course}' : ''}).');
+        'Lead created (${lead.source}${lead.courses.isNotEmpty ? ', ${lead.courses.join(', ')}' : ''}).');
     return docRef.id;
   }
 

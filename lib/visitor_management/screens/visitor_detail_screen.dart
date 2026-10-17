@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../access/access_service.dart';
+import '../../lead_management/models/lead_model.dart';
+import '../../models/user_session.dart';
+import '../../providers.dart';
 import '../../constants.dart';
 import '../../widgets/stock_widgets.dart';
 import '../models/visitor_models.dart';
@@ -6,7 +11,7 @@ import '../repositories/visitor_repository.dart';
 
 /// Detail screen for a unique visitor: their profile summary plus every one
 /// of their visits.
-class VisitorDetailScreen extends StatelessWidget {
+class VisitorDetailScreen extends ConsumerWidget {
   final VisitorModel visitor;
   final VisitorRepository service;
 
@@ -19,12 +24,15 @@ class VisitorDetailScreen extends StatelessWidget {
   String _initial(String name) =>
       name.isEmpty ? '?' : name.trim().characters.first.toUpperCase();
 
+  bool _isAdmin(BuildContext context) => AccessService.isAdminEmail(
+      UserSession().currentUser?.email);
+
   String _fmtDateTime(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}  '
       '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
       appBar: AppBar(
@@ -82,6 +90,25 @@ class VisitorDetailScreen extends StatelessWidget {
                         style: TextStyle(
                             fontSize: 11, color: Colors.grey.shade500),
                       ),
+                    if (_isAdmin(context))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: OutlinedButton.icon(
+                          onPressed: () => _openAddAsLead(context, ref),
+                          icon: const Icon(
+                              Icons.person_add_alt_outlined,
+                              size: 16),
+                          label: const Text('Add as Lead',
+                              style: TextStyle(fontSize: 12)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor:
+                                const Color(0xFF00695C),
+                            side: const BorderSide(
+                                color: Color(0xFF00695C)),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                      ),
                   ]),
             ),
           ]),
@@ -117,6 +144,34 @@ class VisitorDetailScreen extends StatelessWidget {
         ),
       ]),
     );
+  }
+
+  /// Admin-only one-click lead capture: name, phone, source (Walk-in) and
+  /// location (the visitor's "from" place) come prefilled; the rest is the
+  /// same lead detail set as the form.
+  Future<void> _openAddAsLead(BuildContext context, WidgetRef ref) async {
+    final lead = await showDialog<LeadModel>(
+      context: context,
+      builder: (_) => _AddLeadDialog(visitor: visitor),
+    );
+    if (lead == null || !context.mounted) return;
+    try {
+      await ref.read(leadRepositoryProvider).createLead(lead);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lead added for ${lead.name}.'),
+            backgroundColor: const Color(0xFF2E7D32),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 }
 
@@ -213,5 +268,268 @@ class _InfoItem extends StatelessWidget {
       Text(text,
           style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
     ]);
+  }
+}
+
+/// Lead-capture popup opened from a visitor: name, phone, source (Walk-in)
+/// and location (visitor's "from" place) come prefilled but stay editable;
+/// courses, notes and an optional first follow-up match the lead form.
+class _AddLeadDialog extends StatefulWidget {
+  final VisitorModel visitor;
+
+  const _AddLeadDialog({required this.visitor});
+
+  @override
+  State<_AddLeadDialog> createState() => _AddLeadDialogState();
+}
+
+class _AddLeadDialogState extends State<_AddLeadDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _phoneCtrl;
+  late final TextEditingController _locationCtrl;
+  final _notesCtrl = TextEditingController();
+  final _followUpNoteCtrl = TextEditingController();
+
+  String _source = 'Walk-in';
+  final Set<String> _courses = {};
+  DateTime? _followUpDate;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController(text: widget.visitor.name);
+    _phoneCtrl = TextEditingController(text: widget.visitor.phone);
+    _locationCtrl = TextEditingController(text: widget.visitor.fromPlace);
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _phoneCtrl.dispose();
+    _locationCtrl.dispose();
+    _notesCtrl.dispose();
+    _followUpNoteCtrl.dispose();
+    super.dispose();
+  }
+
+  String _fmtDate(DateTime d) => '${d.day}/${d.month}/${d.year}';
+
+  void _save() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    Navigator.pop(
+      context,
+      LeadModel(
+        name: _nameCtrl.text.trim(),
+        phone: _phoneCtrl.text.trim(),
+        location: _locationCtrl.text.trim(),
+        courses: _courses.toList(),
+        source: _source,
+        notes: _notesCtrl.text.trim(),
+        followUps: _followUpNoteCtrl.text.trim().isEmpty || _followUpDate == null
+            ? []
+            : [
+                FollowUpNote(
+                    note: _followUpNoteCtrl.text.trim(),
+                    date: _followUpDate!)
+              ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      title: const Text('Add as Lead'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Name *'),
+                  validator: (v) => v == null || v.trim().isEmpty
+                      ? 'Required'
+                      : null,
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(labelText: 'Phone'),
+                  validator: (v) {
+                    final t = v?.trim() ?? '';
+                    if (t.isEmpty) return null;
+                    return RegExp(r'^[0-9]{10}$').hasMatch(t)
+                        ? null
+                        : 'Enter a 10-digit number';
+                  },
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _locationCtrl,
+                  decoration:
+                      const InputDecoration(labelText: 'Location'),
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  initialValue: _source,
+                  decoration:
+                      const InputDecoration(labelText: 'Source'),
+                  items: leadSources
+                      .map((s) =>
+                          DropdownMenuItem(value: s, child: Text(s)))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setState(() => _source = v);
+                  },
+                ),
+                const SizedBox(height: 10),
+                InkWell(
+                  onTap: () async {
+                    final picked =
+                        await _pickCourses(context, _courses);
+                    if (picked != null) {
+                      setState(() => _courses
+                        ..clear()
+                        ..addAll(picked));
+                    }
+                  },
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Interested Courses',
+                      suffixIcon: Icon(Icons.arrow_drop_down),
+                    ),
+                    child: Text(
+                      _courses.isEmpty
+                          ? 'Select courses'
+                          : _courses.join(', '),
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: _courses.isEmpty
+                            ? Colors.grey.shade600
+                            : null,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _notesCtrl,
+                  maxLines: 2,
+                  decoration:
+                      const InputDecoration(labelText: 'Notes'),
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _followUpNoteCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'First follow-up note (optional)',
+                  ),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  leading: const Icon(Icons.event_outlined, size: 20),
+                  title: Text(
+                    _followUpDate == null
+                        ? 'Follow-up date (optional)'
+                        : _fmtDate(_followUpDate!),
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  trailing: _followUpDate == null
+                      ? TextButton(
+                          onPressed: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: DateTime.now(),
+                              firstDate: DateTime.now().subtract(
+                                  const Duration(days: 30)),
+                              lastDate: DateTime.now()
+                                  .add(const Duration(days: 730)),
+                            );
+                            if (picked != null) {
+                              setState(() => _followUpDate = picked);
+                            }
+                          },
+                          child: const Text('Set'),
+                        )
+                      : IconButton(
+                          icon:
+                              const Icon(Icons.clear, size: 18),
+                          onPressed: () => setState(
+                              () => _followUpDate = null),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel')),
+        ElevatedButton(onPressed: _save, child: const Text('Add Lead')),
+      ],
+    );
+  }
+
+  /// Shared course multi-picker (mirrors the lead form's).
+  Future<Set<String>?> _pickCourses(
+      BuildContext context, Set<String> current) {
+    return showDialog<Set<String>>(
+      context: context,
+      builder: (ctx) {
+        final temp = Set<String>.of(current);
+        return StatefulBuilder(
+          builder: (ctx, setDialog) => AlertDialog(
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14)),
+            title: const Text('Interested Courses'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final option in leadCourseOptions)
+                    CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity:
+                          ListTileControlAffinity.leading,
+                      title: Text(option,
+                          style:
+                              const TextStyle(fontSize: 14)),
+                      value: temp.contains(option),
+                      onChanged: (v) => setDialog(() {
+                        if (v == true) {
+                          temp.add(option);
+                        } else {
+                          temp.remove(option);
+                        }
+                      }),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel')),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, temp),
+                child: const Text('Done'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }

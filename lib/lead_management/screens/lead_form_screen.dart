@@ -18,12 +18,13 @@ class _LeadFormScreenState extends ConsumerState<LeadFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
-  final _courseCtrl = TextEditingController();
+  final _locationCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
 
   late String _source;
   late String _status;
-  DateTime? _followUpAt;
+  final Set<String> _courses = {};
+  final List<FollowUpNote> _followUps = [];
   bool _saving = false;
 
   bool get _isEdit => widget.existingLead != null;
@@ -34,12 +35,14 @@ class _LeadFormScreenState extends ConsumerState<LeadFormScreen> {
     final lead = widget.existingLead;
     _source = lead?.source ?? leadSources.first;
     _status = lead?.status ?? leadStatuses.first;
-    _followUpAt = lead?.followUpAt;
     if (lead != null) {
       _nameCtrl.text = lead.name;
       _phoneCtrl.text = lead.phone;
-      _courseCtrl.text = lead.course;
+      _locationCtrl.text = lead.location;
       _notesCtrl.text = lead.notes;
+      _courses.addAll(lead.courses);
+      _followUps.addAll(lead.followUps.map(
+          (f) => FollowUpNote(note: f.note, date: f.date)));
     }
   }
 
@@ -47,21 +50,75 @@ class _LeadFormScreenState extends ConsumerState<LeadFormScreen> {
   void dispose() {
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
-    _courseCtrl.dispose();
+    _locationCtrl.dispose();
     _notesCtrl.dispose();
     super.dispose();
   }
 
   String _fmtDate(DateTime d) => '${d.day}/${d.month}/${d.year}';
 
-  Future<void> _pickFollowUp() async {
-    final picked = await showDatePicker(
+  Future<void> _addFollowUp() async {
+    final noteCtrl = TextEditingController();
+    var date = DateTime.now();
+    final result = await showDialog<FollowUpNote>(
       context: context,
-      initialDate: _followUpAt ?? DateTime.now(),
-      firstDate: DateTime.now().subtract(const Duration(days: 30)),
-      lastDate: DateTime.now().add(const Duration(days: 730)),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          title: const Text('Add Follow-up'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: noteCtrl,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Follow-up note *',
+                  hintText: 'e.g. Call about fee structure',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.event_outlined),
+                title: const Text('Date', style: TextStyle(fontSize: 14)),
+                subtitle: Text(_fmtDate(date),
+                    style: const TextStyle(fontSize: 13)),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: ctx,
+                    initialDate: date,
+                    firstDate:
+                        DateTime.now().subtract(const Duration(days: 30)),
+                    lastDate:
+                        DateTime.now().add(const Duration(days: 730)),
+                  );
+                  if (picked != null) setDialog(() => date = picked);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                if (noteCtrl.text.trim().isEmpty) return;
+                Navigator.pop(
+                    ctx,
+                    FollowUpNote(
+                        note: noteCtrl.text.trim(), date: date));
+              },
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      ),
     );
-    if (picked != null) setState(() => _followUpAt = picked);
+    if (result != null) setState(() => _followUps.add(result));
   }
 
   Future<void> _save() async {
@@ -72,11 +129,12 @@ class _LeadFormScreenState extends ConsumerState<LeadFormScreen> {
       id: widget.existingLead?.id,
       name: _nameCtrl.text.trim(),
       phone: phone,
-      course: _courseCtrl.text.trim(),
+      location: _locationCtrl.text.trim(),
+      courses: _courses.toList(),
       source: _source,
       status: _status,
       notes: _notesCtrl.text.trim(),
-      followUpAt: _followUpAt,
+      followUps: List.of(_followUps),
       createdAt: widget.existingLead?.createdAt,
       createdBy: widget.existingLead?.createdBy ?? '',
     );
@@ -136,16 +194,21 @@ class _LeadFormScreenState extends ConsumerState<LeadFormScreen> {
                 },
               ),
               _buildField(
-                _courseCtrl,
-                'Interested Course',
-                hint: 'e.g. B.ED, GNM',
+                _locationCtrl,
+                'Location',
+                hint: 'e.g. Gohana, Sonipat',
+              ),
+              _CourseMultiPicker(
+                selected: _courses,
+                onChanged: () => setState(() {}),
               ),
               Row(
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<String>(
                       initialValue: _source,
-                      decoration: const InputDecoration(labelText: 'Source'),
+                      decoration:
+                          const InputDecoration(labelText: 'Source'),
                       items: leadSources
                           .map((s) =>
                               DropdownMenuItem(value: s, child: Text(s)))
@@ -159,7 +222,8 @@ class _LeadFormScreenState extends ConsumerState<LeadFormScreen> {
                   Expanded(
                     child: DropdownButtonFormField<String>(
                       initialValue: _status,
-                      decoration: const InputDecoration(labelText: 'Status'),
+                      decoration:
+                          const InputDecoration(labelText: 'Status'),
                       items: leadStatuses
                           .map((s) =>
                               DropdownMenuItem(value: s, child: Text(s)))
@@ -171,37 +235,86 @@ class _LeadFormScreenState extends ConsumerState<LeadFormScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.event_outlined),
-                title: const Text('Follow-up Date',
-                    style: TextStyle(fontSize: 14)),
-                subtitle: Text(
-                  _followUpAt == null
-                      ? 'Not set'
-                      : _fmtDate(_followUpAt!),
-                  style: const TextStyle(fontSize: 13),
-                ),
-                trailing: _followUpAt == null
-                    ? TextButton(
-                        onPressed: _pickFollowUp,
-                        child: const Text('Set'),
-                      )
-                    : IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
-                        tooltip: 'Clear',
-                        onPressed: () =>
-                            setState(() => _followUpAt = null),
-                      ),
-                onTap: _pickFollowUp,
-              ),
               _buildField(
                 _notesCtrl,
                 'Notes',
                 hint: 'Anything worth remembering',
                 maxLines: 3,
               ),
+            ]),
+            const SizedBox(height: 16),
+            _sectionCard([
+              Row(
+                children: [
+                  const Text(
+                    'Follow-ups',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                  ),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: _addFollowUp,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add Follow-up'),
+                  ),
+                ],
+              ),
+              if (_followUps.isEmpty)
+                Text(
+                  'No follow-ups yet.',
+                  style:
+                      TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                )
+              else
+                for (var i = 0; i < _followUps.length; i++)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A3C6E)
+                          .withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: const Color(0xFF1A3C6E)
+                              .withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.event_note_outlined,
+                            size: 18, color: Color(0xFF1A3C6E)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _followUps[i].note,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _fmtDate(_followUps[i].date),
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey.shade600),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline,
+                              size: 18, color: Colors.redAccent),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          onPressed: () =>
+                              setState(() => _followUps.removeAt(i)),
+                        ),
+                      ],
+                    ),
+                  ),
             ]),
           ],
         ),
@@ -251,6 +364,94 @@ class _LeadFormScreenState extends ConsumerState<LeadFormScreen> {
               ? (v) =>
                   v == null || v.trim().isEmpty ? 'Required' : null
               : null),
+    );
+  }
+}
+
+/// Multi-select dropdown for interested courses: a read-only field showing
+/// the picks, opening a checkbox dialog.
+class _CourseMultiPicker extends StatelessWidget {
+  final Set<String> selected;
+  final VoidCallback onChanged;
+
+  const _CourseMultiPicker({required this.selected, required this.onChanged});
+
+  Future<void> _open(BuildContext context) async {
+    final picked = await showDialog<Set<String>>(
+      context: context,
+      builder: (ctx) {
+        final temp = Set<String>.of(selected);
+        return StatefulBuilder(
+          builder: (ctx, setDialog) => AlertDialog(
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14)),
+            title: const Text('Interested Courses'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final option in leadCourseOptions)
+                    CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      title: Text(option,
+                          style: const TextStyle(fontSize: 14)),
+                      value: temp.contains(option),
+                      onChanged: (v) => setDialog(() {
+                        if (v == true) {
+                          temp.add(option);
+                        } else {
+                          temp.remove(option);
+                        }
+                      }),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel')),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, temp),
+                child: const Text('Done'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (picked != null) {
+      selected
+        ..clear()
+        ..addAll(picked);
+      onChanged();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => _open(context),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: 'Interested Courses',
+          border:
+              OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          suffixIcon: const Icon(Icons.arrow_drop_down),
+        ),
+        child: Text(
+          selected.isEmpty
+              ? 'Select courses'
+              : selected.join(', '),
+          style: TextStyle(
+            fontSize: 14,
+            color: selected.isEmpty ? Colors.grey.shade600 : null,
+          ),
+        ),
+      ),
     );
   }
 }

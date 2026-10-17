@@ -145,17 +145,18 @@ class _LeadsTabState extends ConsumerState<_LeadsTab> {
       final match = query.isEmpty ||
           l.name.toLowerCase().contains(query) ||
           l.phone.contains(query) ||
-          l.course.toLowerCase().contains(query);
+          l.location.toLowerCase().contains(query) ||
+          l.courses.any((c) => c.toLowerCase().contains(query));
       final statusMatch = _selectedStatuses.isEmpty ||
           _selectedStatuses.contains(l.status);
       return match && statusMatch;
     }).toList();
-    // Follow-up first (earliest date on top, unset last), then newest.
+    // Next follow-up first (earliest date on top, none last), then newest.
     filtered.sort((a, b) {
-      final fa = a.followUpAt;
-      final fb = b.followUpAt;
+      final fa = a.nextFollowUp;
+      final fb = b.nextFollowUp;
       if (fa != null && fb != null) {
-        final byDate = fa.compareTo(fb);
+        final byDate = fa.date.compareTo(fb.date);
         if (byDate != 0) return byDate;
       } else if (fa != null) {
         return -1;
@@ -301,7 +302,7 @@ class _LeadFilterBar extends StatelessWidget {
                   controller: searchCtrl,
                   onChanged: onSearchChanged,
                   decoration: InputDecoration(
-                    hintText: 'Search by name, phone or course',
+                    hintText: 'Search by name, phone, course, location',
                     hintStyle:
                         TextStyle(fontSize: 13, color: Colors.grey.shade500),
                     prefixIcon: const Icon(Icons.search,
@@ -445,8 +446,9 @@ class _LeadCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _statusColor(lead.status);
-    final overdue = lead.followUpAt != null &&
-        lead.followUpAt!
+    final next = lead.nextFollowUp;
+    final overdue = next != null &&
+        next.date
             .isBefore(DateTime.now().subtract(const Duration(days: 1))) &&
         lead.status != 'Admitted' &&
         lead.status != 'Lost';
@@ -493,14 +495,18 @@ class _LeadCard extends StatelessWidget {
           const SizedBox(height: 8),
           if (lead.phone.isNotEmpty)
             _infoRow(Icons.phone_outlined, lead.phone),
-          if (lead.course.isNotEmpty)
-            _infoRow(Icons.school_outlined, lead.course),
+          if (lead.location.isNotEmpty)
+            _infoRow(Icons.place_outlined, lead.location),
+          if (lead.courses.isNotEmpty)
+            _infoRow(Icons.school_outlined, lead.courses.join(', ')),
           _infoRow(Icons.source_outlined, 'Source: ${lead.source}'),
-          if (lead.followUpAt != null)
+          if (next != null)
             _infoRow(
               Icons.event_outlined,
-              'Follow up: ${_fmtDate(lead.followUpAt!)}'
-              '${overdue ? ' — overdue' : ''}',
+              'Follow up: ${_fmtDate(next.date)}'
+              '${next.note.isNotEmpty ? ' — ${next.note}' : ''}'
+              '${overdue ? ' (overdue)' : ''}'
+              '${lead.followUps.length > 1 ? ' (+${lead.followUps.length - 1} more)' : ''}',
               color: overdue ? Colors.red.shade700 : null,
             ),
           if (lead.notes.isNotEmpty) ...[
