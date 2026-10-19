@@ -453,37 +453,52 @@ class _StudentRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  RichText(
-                    text: TextSpan(
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                          color: Colors.black87),
-                      children: [
-                        TextSpan(text: entry.name),
-                        if (entry.fatherName.isNotEmpty)
-                          TextSpan(
-                            text: '  S/o ${entry.fatherName}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w400,
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
-                            ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (entry.studentId.isNotEmpty)
+                        Container(
+                          margin:
+                              const EdgeInsets.only(right: 8, top: 1),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1A3C6E),
+                            borderRadius: BorderRadius.circular(6),
                           ),
-                      ],
-                    ),
-                  ),
-                  if (entry.studentId.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        'ID: ${entry.studentId}',
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey.shade700),
+                          child: Text(
+                            entry.studentId,
+                            style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white),
+                          ),
+                        ),
+                      Expanded(
+                        child: RichText(
+                          text: TextSpan(
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                                color: Colors.black87),
+                            children: [
+                              TextSpan(text: entry.name),
+                              if (entry.fatherName.isNotEmpty)
+                                TextSpan(
+                                  text:
+                                      '  S/o ${entry.fatherName}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w400,
+                                    fontSize: 12,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
+                  ),
                   const SizedBox(height: 6),
                   Wrap(
                     spacing: 6,
