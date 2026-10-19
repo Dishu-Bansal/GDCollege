@@ -453,44 +453,47 @@ class _StudentRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    entry.name,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 14),
-                  ),
-                  if (entry.fatherName.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 1),
-                      child: Text(
-                        'S/o ${entry.fatherName}',
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600),
-                      ),
+                  RichText(
+                    text: TextSpan(
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          color: Colors.black87),
+                      children: [
+                        TextSpan(text: entry.name),
+                        if (entry.fatherName.isNotEmpty)
+                          TextSpan(
+                            text: '  S/o ${entry.fatherName}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w400,
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                      ],
                     ),
+                  ),
                   if (entry.studentId.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.only(top: 1),
+                      padding: const EdgeInsets.only(top: 2),
                       child: Text(
-                        'Student ID: ${entry.studentId}',
+                        'ID: ${entry.studentId}',
                         style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey.shade700),
                       ),
                     ),
-                  const SizedBox(height: 2),
-                  Text(
-                    entry.course.isEmpty
-                        ? 'Course not set'
-                        : entry.course,
-                    style: TextStyle(
-                        fontSize: 12, color: Colors.grey.shade600),
-                  ),
                   const SizedBox(height: 6),
                   Wrap(
                     spacing: 6,
                     runSpacing: 4,
                     children: [
+                      _CourseChip(
+                        entry.course.isEmpty
+                            ? 'Course not set'
+                            : entry.course,
+                      ),
                       _Chip(
                         'DMC $dmcDone/$dmcTotal',
                         done: dmcDone == dmcTotal,
@@ -508,6 +511,30 @@ class _StudentRow extends StatelessWidget {
                 color: Colors.grey),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _CourseChip extends StatelessWidget {
+  final String text;
+
+  const _CourseChip(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    const color = Color(0xFF1A3C6E);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+            fontSize: 11, fontWeight: FontWeight.w700, color: color),
       ),
     );
   }
