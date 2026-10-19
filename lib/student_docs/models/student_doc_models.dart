@@ -228,6 +228,8 @@ class StudentDocRecord {
 class DocBatchEntry {
   final String id;
   final String name;
+  final String fatherName;
+  final String rollNo;
   final String course;
   final int? yearOfAdmission;
   final Map<String, StudentDocRecord> records;
@@ -235,6 +237,8 @@ class DocBatchEntry {
   const DocBatchEntry({
     required this.id,
     required this.name,
+    this.fatherName = '',
+    this.rollNo = '',
     required this.course,
     required this.yearOfAdmission,
     required this.records,

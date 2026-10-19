@@ -458,6 +458,26 @@ class _StudentRow extends StatelessWidget {
                     style: const TextStyle(
                         fontWeight: FontWeight.w700, fontSize: 14),
                   ),
+                  if (entry.fatherName.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 1),
+                      child: Text(
+                        'S/o ${entry.fatherName}',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600),
+                      ),
+                    ),
+                  if (entry.rollNo.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 1),
+                      child: Text(
+                        'Roll No: ${entry.rollNo}',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600),
+                      ),
+                    ),
                   const SizedBox(height: 2),
                   Text(
                     entry.course.isEmpty
