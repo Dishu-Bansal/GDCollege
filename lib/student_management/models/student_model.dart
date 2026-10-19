@@ -12,9 +12,6 @@ class StudentModel {
   String name;
   String fatherName;
   String motherName;
-  // College roll number. Added after launch: old docs lack the key and
-  // read as '' (fromFirestore defaults), so nothing breaks.
-  String rollNo;
   DateTime? dob;
   String gender;
   String caste;
@@ -133,7 +130,6 @@ class StudentModel {
     this.name = '',
     this.fatherName = '',
     this.motherName = '',
-    this.rollNo = '',
     this.dob,
     this.gender = '',
     this.caste = '',
@@ -220,7 +216,6 @@ class StudentModel {
       'name': name,
       'fatherName': fatherName,
       'motherName': motherName,
-      'rollNo': rollNo,
       'dob': dob?.toIso8601String(),
       'gender': gender,
       'caste': caste,
@@ -277,7 +272,6 @@ class StudentModel {
     return StudentModel(
       docId: docId,
       name: name, fatherName: fatherName, motherName: motherName,
-      rollNo: rollNo,
       dob: dob, gender: gender, caste: caste,
       address: address, village: village, district: district,
       state: state, pin: pin, mobileNo1: mobileNo1, mobileNo2: mobileNo2,
@@ -345,7 +339,6 @@ class StudentModel {
       name: data['name'] ?? '',
       fatherName: data['fatherName'] ?? '',
       motherName: data['motherName'] ?? '',
-      rollNo: data['rollNo'] ?? '',
       dob: data['dob'] != null ? DateTime.tryParse(data['dob']) : null,
       gender: data['gender'] ?? '',
       caste: data['caste'] ?? '',

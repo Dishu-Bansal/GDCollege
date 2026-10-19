@@ -468,11 +468,11 @@ class _StudentRow extends StatelessWidget {
                             color: Colors.grey.shade600),
                       ),
                     ),
-                  if (entry.rollNo.isNotEmpty)
+                  if (entry.studentId.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 1),
                       child: Text(
-                        'Roll No: ${entry.rollNo}',
+                        'Student ID: ${entry.studentId}',
                         style: TextStyle(
                             fontSize: 12,
                             color: Colors.grey.shade600),

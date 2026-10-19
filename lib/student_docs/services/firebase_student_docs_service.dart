@@ -49,7 +49,7 @@ class FirebaseStudentDocsService {
         id: d.id,
         name: (data['name'] ?? '').toString(),
         fatherName: (data['fatherName'] ?? '').toString(),
-        rollNo: (data['rollNo'] ?? '').toString(),
+        studentId: (data['studentId'] ?? '').toString(),
         course: (data['nameOfCourse'] ?? '').toString(),
         yearOfAdmission: (data['yearOfAdmission'] as num?)?.toInt(),
         records: StudentDocRecord.recordsOf(data),

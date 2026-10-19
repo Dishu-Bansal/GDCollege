@@ -229,7 +229,7 @@ class DocBatchEntry {
   final String id;
   final String name;
   final String fatherName;
-  final String rollNo;
+  final String studentId;
   final String course;
   final int? yearOfAdmission;
   final Map<String, StudentDocRecord> records;
@@ -238,7 +238,7 @@ class DocBatchEntry {
     required this.id,
     required this.name,
     this.fatherName = '',
-    this.rollNo = '',
+    this.studentId = '',
     required this.course,
     required this.yearOfAdmission,
     required this.records,

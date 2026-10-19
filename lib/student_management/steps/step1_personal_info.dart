@@ -21,7 +21,6 @@ class _Step1PersonalInfoState extends State<Step1PersonalInfo> {
   late TextEditingController _nameCtrl;
   late TextEditingController _fatherCtrl;
   late TextEditingController _motherCtrl;
-  late TextEditingController _rollNoCtrl;
   late TextEditingController _dobCtrl;
 
   @override
@@ -30,7 +29,6 @@ class _Step1PersonalInfoState extends State<Step1PersonalInfo> {
     _nameCtrl = TextEditingController(text: widget.student.name);
     _fatherCtrl = TextEditingController(text: widget.student.fatherName);
     _motherCtrl = TextEditingController(text: widget.student.motherName);
-    _rollNoCtrl = TextEditingController(text: widget.student.rollNo);
     _dobCtrl = TextEditingController(
       text: widget.student.dob != null
           ? '${widget.student.dob!.day}/${widget.student.dob!.month}/${widget.student.dob!.year}'
@@ -43,7 +41,6 @@ class _Step1PersonalInfoState extends State<Step1PersonalInfo> {
     _nameCtrl.dispose();
     _fatherCtrl.dispose();
     _motherCtrl.dispose();
-    _rollNoCtrl.dispose();
     _dobCtrl.dispose();
     super.dispose();
   }
@@ -101,12 +98,6 @@ class _Step1PersonalInfoState extends State<Step1PersonalInfo> {
             validator: (v) =>
                 v == null || v.isEmpty ? "Mother's name is required" : null,
             onChanged: (v) => widget.student.motherName = v,
-          ),
-
-          TextFormField(
-            decoration: InputDecoration(label: Text('Roll No')),
-            controller: _rollNoCtrl,
-            onChanged: (v) => widget.student.rollNo = v,
           ),
 
           TextFormField(
