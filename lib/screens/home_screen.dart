@@ -8,6 +8,7 @@ import '../bill_management/screens/bill_management_screen.dart';
 import '../lead_management/screens/lead_management_screen.dart';
 import '../models/home_analytics.dart';
 import '../providers.dart';
+import '../student_docs/screens/student_docs_screen.dart';
 import '../student_management/screens/student_list_screen.dart';
 import '../staff_management/screens/staff_list_screen.dart';
 import '../stock_management/screens/buildings_screen.dart';
@@ -643,6 +644,17 @@ class _ModuleCards extends StatelessWidget {
               context,
               MaterialPageRoute(
                 builder: (_) => const StudentListScreen(),
+              ),
+            ),
+          ));
+          add(_NavCard(
+            icon: Icons.folder_shared_outlined,
+            label: 'Student Docs',
+            color: const Color(0xFF4E342E),
+            onTap: () => Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const StudentDocsScreen(),
               ),
             ),
           ));

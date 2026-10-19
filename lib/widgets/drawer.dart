@@ -12,6 +12,7 @@ import '../bill_management/screens/bill_management_screen.dart';
 import '../lead_management/screens/lead_management_screen.dart';
 import '../staff_management/screens/staff_list_screen.dart';
 import '../stock_management/screens/buildings_screen.dart';
+import '../student_docs/screens/student_docs_screen.dart';
 import '../student_management/screens/student_list_screen.dart';
 import '../visitor_management/screens/visitor_management_screen.dart';
 import 'Helper.dart';
@@ -69,6 +70,14 @@ getSideDrawer(BuildContext context) {
                 title: const Text('Student Management'),
                 onTap: () {
                   Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => StudentListScreen()));
+                },
+              ),
+            if (showStudents)
+              ListTile(
+                leading: const Icon(Icons.folder_shared_outlined),
+                title: const Text('Student Docs'),
+                onTap: () {
+                  Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const StudentDocsScreen()));
                 },
               ),
             if (showStaff)
