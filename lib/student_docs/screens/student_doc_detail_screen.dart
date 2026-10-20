@@ -120,6 +120,8 @@ class _StudentDocDetailScreenState extends State<StudentDocDetailScreen> {
                         key: ValueKey(
                             '${widget.studentId}_${slot.key}'),
                         studentId: widget.studentId,
+                        studentName: widget.studentName,
+                        course: widget.course,
                         slot: slot,
                         initial:
                             _records[slot.key] ?? StudentDocRecord(),
@@ -212,6 +214,8 @@ class _HeaderCard extends StatelessWidget {
 
 class _SlotCard extends StatefulWidget {
   final String studentId;
+  final String studentName;
+  final String course;
   final DocSlot slot;
   final StudentDocRecord initial;
   final FirebaseStudentDocsService service;
@@ -220,6 +224,8 @@ class _SlotCard extends StatefulWidget {
   const _SlotCard({
     super.key,
     required this.studentId,
+    required this.studentName,
+    required this.course,
     required this.slot,
     required this.initial,
     required this.service,
@@ -255,6 +261,7 @@ class _SlotCardState extends State<_SlotCard> {
     _record = StudentDocRecord(
       fileUrl: widget.initial.fileUrl,
       fileName: widget.initial.fileName,
+      fileUploadedAt: widget.initial.fileUploadedAt,
       subjects: widget.initial.subjects
           .map((s) => SubjectMark(
               subject: s.subject, obtained: s.obtained, max: s.max))
@@ -438,6 +445,11 @@ class _SlotCardState extends State<_SlotCard> {
       return;
     }
     setState(() => _saving = true);
+    // Pre-save state drives event logging: a scan arriving where there
+    // was none is 'stocked'; the collector identity completing is 'issued'.
+    final hadFile = _record.hasFile;
+    final wasIssued =
+        _record.issued(isDmc: widget.slot.isDmc);
     try {
       // Upload anything newly picked, replacing previous files.
       if (_pendingFile != null) {
@@ -449,6 +461,7 @@ class _SlotCardState extends State<_SlotCard> {
           bytes: _pendingFile!,
         );
         _record.fileName = _pendingFileName;
+        _record.fileUploadedAt = DateTime.now();
         _pendingFile = null;
         _pendingFileName = null;
       }
@@ -491,6 +504,32 @@ class _SlotCardState extends State<_SlotCard> {
         slotKey: widget.slot.key,
         record: _record,
       );
+      final nowIssued =
+          _record.issued(isDmc: widget.slot.isDmc);
+      if (!hadFile && _record.hasFile) {
+        await widget.service.writeDocLog(
+          studentId: widget.studentId,
+          studentName: widget.studentName,
+          course: widget.course,
+          slotKey: widget.slot.key,
+          slotLabel: widget.slot.label,
+          isDmc: widget.slot.isDmc,
+          action: 'stocked',
+          at: _record.fileUploadedAt,
+        );
+      }
+      if (!wasIssued && nowIssued) {
+        await widget.service.writeDocLog(
+          studentId: widget.studentId,
+          studentName: widget.studentName,
+          course: widget.course,
+          slotKey: widget.slot.key,
+          slotLabel: widget.slot.label,
+          isDmc: widget.slot.isDmc,
+          action: 'issued',
+          at: _record.collectedAt,
+        );
+      }
       widget.onSaved(_record);
       _snack('${widget.slot.label} saved.');
     } catch (e) {

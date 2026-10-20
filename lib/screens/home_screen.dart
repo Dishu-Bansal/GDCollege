@@ -291,6 +291,24 @@ class _AnalyticsCard extends ConsumerWidget {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 10),
+                  _AnalyticsGroup(
+                    title: 'Student Docs',
+                    icon: Icons.folder_shared_outlined,
+                    color: const Color(0xFF4E342E),
+                    stats: [
+                      (
+                        label: 'Docs Stocked',
+                        value: data.docsStocked,
+                        accounts: data.docsStockedAccounts,
+                      ),
+                      (
+                        label: 'Docs Issued',
+                        value: data.docsIssued,
+                        accounts: data.docsIssuedAccounts,
+                      ),
+                    ],
+                  ),
                 ],
               ],
             ),

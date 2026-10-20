@@ -64,7 +64,9 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
     final inspectionsFuture = _countCompletedInspections(startIso, endIso);
     // The range filters order by the same field, descending, so the queries
     // reuse the existing COLLECTION_GROUP DESCENDING indexes on `timestamp`
-    // (the ones the app's global-log screens already rely on).
+    // (the ones the app's global-log screens already rely on). docLogs is
+    // a top-level collection: range + orderBy on the single `timestamp`
+    // field needs no composite index.
     final results = await Future.wait([
       _db
           .collectionGroup('studentLogs')
@@ -90,6 +92,12 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
           .where('assignedAt', isLessThan: endIso)
           .orderBy('assignedAt', descending: true)
           .get(),
+      _db
+          .collection('docLogs')
+          .where('timestamp', isGreaterThanOrEqualTo: startIso)
+          .where('timestamp', isLessThan: endIso)
+          .orderBy('timestamp', descending: true)
+          .get(),
     ]);
     final inspectionsDone = await inspectionsFuture;
 
@@ -97,6 +105,7 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
     final staffLogs = results[1].docs;
     final stockLogs = results[2].docs;
     final assignments = results[3].docs;
+    final docLogs = results[4].docs;
 
     // ── Students: tally each create/update/delete by the acting account ──
     final studentsCreatedBy = <String, int>{};
@@ -179,6 +188,23 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
     final assignmentsBy = Map<String, int>.of(assignmentsLoggedBy);
     _foldUnattributed(assignmentsBy, assignments.length);
 
+    // ── Student Docs: DMC/Degree scans arriving (stocked) vs handed
+    // over to collectors (issued), each attributed to the acting account ──
+    final docsStockedBy = <String, int>{};
+    final docsIssuedBy = <String, int>{};
+    for (final d in docLogs) {
+      final data = d.data();
+      final actor = (data['changedBy'] as String?) ?? '';
+      switch (data['action']) {
+        case 'stocked':
+          _add(docsStockedBy, actor, 1);
+        case 'issued':
+          _add(docsIssuedBy, actor, 1);
+        default:
+          break;
+      }
+    }
+
     return HomeAnalytics(
       day: start,
       studentsCreated: _sum(studentsCreatedBy),
@@ -192,6 +218,8 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
       itemsRemoved: _sum(itemsRemovedBy),
       itemsDeleted: _sum(itemsDeletedBy),
       assignmentsDone: assignments.length,
+      docsStocked: _sum(docsStockedBy),
+      docsIssued: _sum(docsIssuedBy),
       studentsCreatedAccounts: accountSharesFromTally(studentsCreatedBy),
       studentsUpdatedAccounts: accountSharesFromTally(studentsUpdatedBy),
       studentsDeletedAccounts: accountSharesFromTally(studentsDeletedBy),
@@ -203,6 +231,8 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
       itemsRemovedAccounts: accountSharesFromTally(itemsRemovedBy),
       itemsDeletedAccounts: accountSharesFromTally(itemsDeletedBy),
       assignmentsAccounts: accountSharesFromTally(assignmentsBy),
+      docsStockedAccounts: accountSharesFromTally(docsStockedBy),
+      docsIssuedAccounts: accountSharesFromTally(docsIssuedBy),
     );
   }
 

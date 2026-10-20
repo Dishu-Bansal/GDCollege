@@ -148,6 +148,10 @@ class CollectorInfo {
 class StudentDocRecord {
   String? fileUrl;
   String? fileName;
+
+  /// When the current scan was uploaded (office receipt = stock date).
+  /// Older records predate the field and read null.
+  DateTime? fileUploadedAt;
   List<SubjectMark> subjects;
   CollectorInfo collector;
   DateTime? collectedAt;
@@ -156,6 +160,7 @@ class StudentDocRecord {
   StudentDocRecord({
     this.fileUrl,
     this.fileName,
+    this.fileUploadedAt,
     this.subjects = const [],
     CollectorInfo? collector,
     this.collectedAt,
@@ -163,6 +168,12 @@ class StudentDocRecord {
   }) : collector = collector ?? CollectorInfo();
 
   bool get hasFile => (fileUrl ?? '').isNotEmpty;
+
+  /// In stock = the scan sits with the office (physical doc received).
+  bool get inStock => hasFile;
+
+  /// Issued = a collector with full identity took the document.
+  bool issued({required bool isDmc}) => complete(isDmc: isDmc);
 
   double get totalObtained => subjects.fold(
       0, (sum, s) => sum + (s.obtained ?? 0));
@@ -192,6 +203,9 @@ class StudentDocRecord {
       StudentDocRecord(
         fileUrl: m['fileUrl'] as String?,
         fileName: m['fileName'] as String?,
+        fileUploadedAt: m['fileUploadedAt'] != null
+            ? DateTime.tryParse(m['fileUploadedAt'])
+            : null,
         subjects: (m['subjects'] as List? ?? [])
             .map((e) =>
                 SubjectMark.fromMap((e as Map).cast<String, dynamic>()))
@@ -207,6 +221,7 @@ class StudentDocRecord {
   Map<String, dynamic> toMap() => {
         'fileUrl': fileUrl,
         'fileName': fileName,
+        'fileUploadedAt': fileUploadedAt?.toIso8601String(),
         'subjects': subjects.map((s) => s.toMap()).toList(),
         'collector': collector.toMap(),
         'collectedAt': collectedAt?.toIso8601String(),

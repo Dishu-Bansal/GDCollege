@@ -19,6 +19,104 @@ class FirebaseStudentDocsService {
 
   String get _by => UserSession().currentUser?.email ?? '';
 
+  // ── Event logs ───────────────────────────────────────────────────────────
+  /// One row per stock/issue event in the top-level `docLogs` collection.
+  /// Powers the date-wise "Docs Stocked / Issued" daily-activity stats
+  /// (range query on `timestamp`, no composite index needed).
+  Future<void> writeDocLog({
+    required String studentId,
+    required String studentName,
+    required String course,
+    required String slotKey,
+    required String slotLabel,
+    required bool isDmc,
+    required String action,
+    DateTime? at,
+  }) async {
+    await _db.collection('docLogs').add({
+      'studentId': studentId,
+      'studentName': studentName,
+      'course': course,
+      'slotKey': slotKey,
+      'slotLabel': slotLabel,
+      'isDmc': isDmc,
+      'action': action, // 'stocked' | 'issued'
+      'timestamp': (at ?? DateTime.now()).toIso8601String(),
+      'changedBy': _by,
+    });
+  }
+
+  /// One-time backfill: synthesizes `docLogs` rows for records that predate
+  /// event logging. A record with a scan gets a 'stocked' row; a complete
+  /// one additionally gets an 'issued' row. Dates fall back through
+  /// fileUploadedAt → collectedAt → the student doc's updatedAt, so old
+  /// rows land on the best-known date instead of today. Deterministic doc
+  /// ids make re-runs skip already-written rows. Returns rows written.
+  Future<int> backfillDocLogs() async {
+    final snap = await _db.collection(_students).get();
+    var written = 0;
+    var batch = _db.batch();
+    var pending = 0;
+
+    Future<void> flush() async {
+      if (pending == 0) return;
+      await batch.commit();
+      batch = _db.batch();
+      pending = 0;
+    }
+
+    for (final doc in snap.docs) {
+      final data = doc.data();
+      final records = StudentDocRecord.recordsOf(data);
+      if (records.isEmpty) continue;
+      final course = (data['nameOfCourse'] ?? '').toString();
+      final slots = docSlotsForCourse(course);
+      final fallback = data['updatedAt']?.toString();
+      for (final entry in records.entries) {
+        final rec = entry.value;
+        if (!rec.hasFile) continue;
+        final slot = slots.where((s) => s.key == entry.key).toList();
+        final label =
+            slot.isEmpty ? entry.key : slot.first.label;
+        final isDmc = slot.isEmpty ? true : slot.first.isDmc;
+        final stockedAt = rec.fileUploadedAt ??
+            rec.collectedAt ??
+            (fallback != null ? DateTime.tryParse(fallback) : null) ??
+            DateTime.now();
+
+        Future<void> addRow(String action, DateTime at) async {
+          final id = '${doc.id}_${entry.key}_$action';
+          final existing = await _db
+              .collection('docLogs')
+              .doc(id)
+              .get();
+          if (existing.exists) return;
+          batch.set(_db.collection('docLogs').doc(id), {
+            'studentId': doc.id,
+            'studentName': (data['name'] ?? '').toString(),
+            'course': course,
+            'slotKey': entry.key,
+            'slotLabel': label,
+            'isDmc': isDmc,
+            'action': action,
+            'timestamp': at.toIso8601String(),
+            'changedBy': (rec.updatedBy).toString(),
+          });
+          pending++;
+          written++;
+          if (pending == 450) await flush();
+        }
+
+        await addRow('stocked', stockedAt);
+        if (rec.complete(isDmc: isDmc)) {
+          await addRow('issued', rec.collectedAt ?? stockedAt);
+        }
+      }
+    }
+    await flush();
+    return written;
+  }
+
   // ── Batch reads ──────────────────────────────────────────────────────────
   /// One batch: students of [group] + [course] + [year]. Any of
   /// [course]/[year] may be null to skip that filter. Sorted by name

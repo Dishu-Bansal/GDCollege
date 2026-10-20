@@ -184,9 +184,34 @@ class _BatchTabState extends State<_BatchTab>
                       e.dmcProgress().$1 == e.dmcProgress().$2 &&
                       e.terminalDone())
                   .length;
+              // Stock vs issued across the batch: a slot is "in stock"
+              // once its scan sits with the office, "issued" once a
+              // collector with full identity takes it.
+              var dmcStock = 0, dmcIssued = 0;
+              var termStock = 0, termIssued = 0;
+              for (final e in all) {
+                for (final s in docSlotsForCourse(e.course)) {
+                  final rec = e.records[s.key];
+                  if (rec == null || !rec.inStock) continue;
+                  if (s.isDmc) {
+                    dmcStock++;
+                    if (rec.issued(isDmc: true)) dmcIssued++;
+                  } else {
+                    termStock++;
+                    if (rec.issued(isDmc: false)) termIssued++;
+                  }
+                }
+              }
               return Column(
                 children: [
-                  _summaryBar(all.length, fullyDone),
+                  _summaryBar(
+                    all.length,
+                    fullyDone,
+                    dmcStock: dmcStock,
+                    dmcIssued: dmcIssued,
+                    termStock: termStock,
+                    termIssued: termIssued,
+                  ),
                   Expanded(
                     child: RefreshIndicator(
                       onRefresh: () async => _reload(),
@@ -322,7 +347,14 @@ class _BatchTabState extends State<_BatchTab>
     );
   }
 
-  Widget _summaryBar(int total, int done) {
+  Widget _summaryBar(
+    int total,
+    int done, {
+    required int dmcStock,
+    required int dmcIssued,
+    required int termStock,
+    required int termIssued,
+  }) {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
@@ -331,12 +363,26 @@ class _BatchTabState extends State<_BatchTab>
         color: const Color(0xFF1A3C6E).withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(
-        '$total student${total == 1 ? '' : 's'}  •  $done fully complete',
-        style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF1A3C6E)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$total student${total == 1 ? '' : 's'}  •  $done fully complete',
+            style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF1A3C6E)),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'DMC — in stock: $dmcStock  •  issued: $dmcIssued'
+            '      Degree/Cert — in stock: $termStock  •  issued: $termIssued',
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey.shade700),
+          ),
+        ],
       ),
     );
   }
