@@ -224,28 +224,19 @@ class SessionService with WidgetsBindingObserver {
     );
   }
 
-  /// Manual logout: closes the segment, signs out, and wipes all on-device
-  /// state (in-memory access session + Firestore local persistence) so the
-  /// next login on this device resolves everything fresh — the equivalent
-  /// of a hard reset. Firestore restarts transparently on next use.
+  /// Manual logout: closes the segment, signs out, and drops the cached
+  /// access session so the next login on this device resolves everything
+  /// fresh.
+  ///
+  /// Note: Firestore's own on-device cache is keyed per document, so a
+  /// `users/{uid}` read can never leak one account's flags into another —
+  /// no SDK wipe is needed (and `terminate()` must NOT be used here: it
+  /// permanently kills the client for the rest of the run). Fresh
+  /// listeners established at the next login re-resolve from the server.
   Future<void> logout({String reason = SessionEndReason.logout}) async {
     await endSession(reason);
     await UserSession().logOut();
     AccessService.clearCachedAccess();
-    await clearLocalData();
-  }
-
-  /// Drops everything Firestore keeps on this device: terminates the
-  /// client (cancelling all listeners, including any serving stale cached
-  /// snapshots) and clears local persistence. Best effort — a failed wipe
-  /// is logged but never blocks logout.
-  Future<void> clearLocalData() async {
-    try {
-      await db.terminate();
-      await db.clearPersistence();
-    } catch (e) {
-      debugPrint('Local Firestore wipe failed: $e');
-    }
   }
 
   // ── Verification reads ─────────────────────────────────────────────

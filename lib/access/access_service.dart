@@ -90,7 +90,9 @@ class AccessService {
   final FirebaseFirestore _db = db;
   static const _collection = 'users';
 
-  /// Defaults for brand-new accounts: every module allowed.
+  /// Fallbacks when an existing account doc is missing a flag (legacy
+  /// docs predate newer modules). New, unprovisioned logins do NOT get
+  /// these — they start locked down (see the first-login branch below).
   static const bool _defaultStudents = true;
   static const bool _defaultStudentDocs = true;
   static const bool _defaultStaff = true;
@@ -128,15 +130,17 @@ class AccessService {
           .asyncMap((doc) async {
         if (!doc.exists) {
           // First login: inherit flags from a pre-provisioned doc for this
-          // email (created by the admin's one-time helper) when one exists,
-          // otherwise fall back to the defaults.
-          var students = _defaultStudents;
-          var studentDocs = _defaultStudentDocs;
-          var staff = _defaultStaff;
-          var stock = _defaultStock;
-          var bills = _defaultBills;
-          var visitors = _defaultVisitors;
-          var leads = _defaultLeads;
+          // email (created by the admin's one-time helper) when one exists.
+          // Otherwise the account starts fully locked down — the admin
+          // grants modules from Access Control (fail closed: an
+          // unprovisioned login must never see every screen).
+          var students = false;
+          var studentDocs = false;
+          var staff = false;
+          var stock = false;
+          var bills = false;
+          var visitors = false;
+          var leads = false;
           String? seedDocId;
           final seed = await _db
               .collection(_collection)
@@ -244,7 +248,7 @@ class AccessService {
   /// policy) and returns its access row. The account is created through a
   /// secondary Firebase app so the admin stays signed in. Flags pre-set
   /// for this email via the seed helper are inherited, otherwise the
-  /// defaults apply.
+  /// account starts locked down until the admin grants access.
   Future<AppUser> createAccount({
     required String email,
     required String password,
@@ -266,13 +270,13 @@ class AccessService {
         password: password,
       );
       final uid = cred.user!.uid;
-      var students = _defaultStudents;
-      var studentDocs = _defaultStudentDocs;
-      var staff = _defaultStaff;
-      var stock = _defaultStock;
-      var bills = _defaultBills;
-      var visitors = _defaultVisitors;
-      var leads = _defaultLeads;
+      var students = false;
+      var studentDocs = false;
+      var staff = false;
+      var stock = false;
+      var bills = false;
+      var visitors = false;
+      var leads = false;
       String? seedDocId;
       final seed = await _db
           .collection(_collection)
