@@ -94,12 +94,6 @@ class _Step3CourseIdentityFeesState extends State<Step3CourseIdentityFees> {
     super.dispose();
   }
 
-  /// Aadhar is mandatory from 2016 admissions onwards.
-  static bool _aadharNeeded(int? year) => year != null && year >= 2016;
-
-  /// ABC (APAAR) ID is mandatory from 2024 admissions onwards.
-  static bool _abcNeeded(int? year) => year != null && year >= 2024;
-
   // ── Fee rows ─────────────────────────────────────────────────────────────
 
   /// Writes the "other fees" rows back onto the student model. Completely
@@ -237,7 +231,6 @@ class _Step3CourseIdentityFeesState extends State<Step3CourseIdentityFees> {
 
   @override
   Widget build(BuildContext context) {
-    final year = widget.student.yearOfAdmission;
     return Form(
       key: widget.formKey,
       child: ListView(
@@ -305,22 +298,17 @@ class _Step3CourseIdentityFeesState extends State<Step3CourseIdentityFees> {
               title: 'Identity Numbers', icon: Icons.badge_outlined),
 
           Text(
-            'Aadhar is required for 2016 and later admissions. '
-            'ABC (APAAR) ID is required for 2024 and later admissions. '
-            'PAN is required for every student.',
+            'Identity numbers are optional: any that are missing (Aadhar for '
+            '2016+ admissions, PAN for every student, ABC ID for 2024+ '
+            'admissions) are listed as missing-document warnings to fix later.',
             style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
           ),
           const SizedBox(height: 8),
 
           TextFormField(
             decoration: InputDecoration(
-              label: Text(_aadharNeeded(year)
-                  ? 'Aadhar Number *'
-                  : 'Aadhar Number'),
+              label: Text('Aadhar Number'),
               hint: Text('XXXX XXXX XXXX'),
-              helperText: _aadharNeeded(year)
-                  ? 'Required for 2016+ admissions'
-                  : null,
             ),
             controller: _aadharCtrl,
             keyboardType: TextInputType.number,
@@ -329,23 +317,13 @@ class _Step3CourseIdentityFeesState extends State<Step3CourseIdentityFees> {
               LengthLimitingTextInputFormatter(12),
               _AadharFormatter(),
             ],
-            validator: (v) {
-              final clean = v?.replaceAll(' ', '') ?? '';
-              if (clean.isEmpty) {
-                return _aadharNeeded(year)
-                    ? 'Aadhar number is required for 2016+ admissions'
-                    : null;
-              }
-              if (clean.length != 12) return 'Enter valid 12-digit Aadhar';
-              return null;
-            },
             onChanged: (v) =>
                 widget.student.aadharNumber = v.replaceAll(' ', ''),
           ),
 
           TextFormField(
             decoration: InputDecoration(
-              label: Text('PAN Card Number *'),
+              label: Text('PAN Card Number'),
               hint: Text('ABCDE1234F'),
             ),
             controller: _panCtrl,
@@ -353,15 +331,6 @@ class _Step3CourseIdentityFeesState extends State<Step3CourseIdentityFees> {
               UpperCaseTextFormatter(),
               LengthLimitingTextInputFormatter(10),
             ],
-            validator: (v) {
-              final clean = v?.trim() ?? '';
-              if (clean.isEmpty) return 'PAN number is required';
-              final regex = RegExp(r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$');
-              if (!regex.hasMatch(clean)) {
-                return 'Enter valid PAN (ABCDE1234F)';
-              }
-              return null;
-            },
             onChanged: (v) => widget.student.panCard = v,
           ),
 
@@ -376,13 +345,8 @@ class _Step3CourseIdentityFeesState extends State<Step3CourseIdentityFees> {
 
           TextFormField(
             decoration: InputDecoration(
-              label: Text(_abcNeeded(year)
-                  ? 'ABC ID Number *'
-                  : 'ABC ID Number'),
+              label: Text('ABC ID Number'),
               hint: Text('12-digit APAAR ID'),
-              helperText: _abcNeeded(year)
-                  ? 'Required for 2024+ admissions'
-                  : null,
             ),
             controller: _abcIdCtrl,
             keyboardType: TextInputType.number,
@@ -390,16 +354,6 @@ class _Step3CourseIdentityFeesState extends State<Step3CourseIdentityFees> {
               FilteringTextInputFormatter.digitsOnly,
               LengthLimitingTextInputFormatter(12),
             ],
-            validator: (v) {
-              final clean = v?.replaceAll(' ', '') ?? '';
-              if (clean.isEmpty) {
-                return _abcNeeded(year)
-                    ? 'ABC ID is required for 2024+ admissions'
-                    : null;
-              }
-              if (clean.length != 12) return 'Enter valid 12-digit ABC ID';
-              return null;
-            },
             onChanged: (v) =>
                 widget.student.abcIdNumber = v.replaceAll(' ', ''),
           ),

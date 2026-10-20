@@ -377,11 +377,9 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
           '• Fields marked with * are required.\n'
           '• Upload photo in JPG or PNG format.\n'
           '• Certificates can be PDF, JPG or PNG.\n'
-          '• Aadhar number is required for 2016+ admissions; the card scan '
-          'is optional and shows as a missing-document warning.\n'
-          '• PAN number is required for every student; the card scan is '
-          'optional and shows as a missing-document warning.\n'
-          '• ABC (APAAR) ID number is required for 2024+ admissions.\n'
+          '• Identity numbers and scans (Aadhar for 2016+ admissions, PAN '
+          'for every student, ABC ID for 2024+ admissions) are optional and '
+          'show up as missing-document warnings to fix later.\n'
           '• Family ID and Haryana Residence are for Haryana students.\n'
           '• Data is saved securely to Firebase.',
         ),
