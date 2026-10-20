@@ -37,6 +37,13 @@ class AccessService {
   /// ever attaches twice to the same instance (drawer open/close cycles,
   /// route transitions), it degrades to live-only for the second
   /// attachment instead of throwing "Stream has already been listened to".
+  ///
+  /// The replay is bound to the account signed in at subscribe time: a
+  /// session cached from a previous login on this device is only replayed
+  /// when its uid still matches the current user. Otherwise the caller
+  /// goes straight to the live stream, so a newly signed-in account can
+  /// never briefly (or permanently, if its own read stalls) see the
+  /// previous account's screens.
   static final StreamController<AppSession?> _sharedController =
       StreamController<AppSession?>.broadcast();
   static AppSession? _latestAccess;
@@ -57,15 +64,18 @@ class AccessService {
         },
       );
     }
-    return _replayThenLive().asBroadcastStream(
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    return _replayThenLive(uid).asBroadcastStream(
       // Tear down the per-caller generator when its last listener leaves
       // so rebuilt screens don't accumulate dead subscriptions.
       onCancel: (sub) => sub.cancel(),
     );
   }
 
-  static Stream<AppSession?> _replayThenLive() async* {
-    if (_hasLatestAccess) yield _latestAccess;
+  static Stream<AppSession?> _replayThenLive(String? uid) async* {
+    if (_hasLatestAccess && uid != null && _latestAccess?.uid == uid) {
+      yield _latestAccess;
+    }
     yield* _sharedController.stream;
   }
 
