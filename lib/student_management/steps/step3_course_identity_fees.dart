@@ -317,6 +317,14 @@ class _Step3CourseIdentityFeesState extends State<Step3CourseIdentityFees> {
               LengthLimitingTextInputFormatter(12),
               _AadharFormatter(),
             ],
+            // Optional field: blank is fine, but a typed value must be a
+            // complete 12-digit Aadhar.
+            validator: (v) {
+              final clean = v?.replaceAll(' ', '') ?? '';
+              if (clean.isEmpty) return null;
+              if (clean.length != 12) return 'Enter valid 12-digit Aadhar';
+              return null;
+            },
             onChanged: (v) =>
                 widget.student.aadharNumber = v.replaceAll(' ', ''),
           ),
@@ -331,6 +339,17 @@ class _Step3CourseIdentityFeesState extends State<Step3CourseIdentityFees> {
               UpperCaseTextFormatter(),
               LengthLimitingTextInputFormatter(10),
             ],
+            // Optional field: blank is fine, but a typed value must be a
+            // valid PAN.
+            validator: (v) {
+              final clean = v?.trim() ?? '';
+              if (clean.isEmpty) return null;
+              final regex = RegExp(r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$');
+              if (!regex.hasMatch(clean)) {
+                return 'Enter valid PAN (ABCDE1234F)';
+              }
+              return null;
+            },
             onChanged: (v) => widget.student.panCard = v,
           ),
 
@@ -354,6 +373,14 @@ class _Step3CourseIdentityFeesState extends State<Step3CourseIdentityFees> {
               FilteringTextInputFormatter.digitsOnly,
               LengthLimitingTextInputFormatter(12),
             ],
+            // Optional field: blank is fine, but a typed value must be a
+            // complete 12-digit ABC ID.
+            validator: (v) {
+              final clean = v?.replaceAll(' ', '') ?? '';
+              if (clean.isEmpty) return null;
+              if (clean.length != 12) return 'Enter valid 12-digit ABC ID';
+              return null;
+            },
             onChanged: (v) =>
                 widget.student.abcIdNumber = v.replaceAll(' ', ''),
           ),
