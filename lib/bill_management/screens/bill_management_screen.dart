@@ -96,7 +96,7 @@ class _BillManagementScreenState extends ConsumerState<BillManagementScreen>
   @override
   Widget build(BuildContext context) {
     return AccessGate(
-      module: 'Bill Management',
+      module: 'Bills',
       canAccess: (s) => s.canAccessBills,
       drawer: getSideDrawer(context),
       child: _buildContent(context),
@@ -109,7 +109,7 @@ class _BillManagementScreenState extends ConsumerState<BillManagementScreen>
       drawer: getSideDrawer(context),
       appBar: AppBar(
         title: const Text(
-          'Bill Management',
+          'Bills',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
         bottom: TabBar(

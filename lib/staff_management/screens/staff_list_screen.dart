@@ -153,7 +153,7 @@ class _StaffListScreenState extends ConsumerState<StaffListScreen>
   @override
   Widget build(BuildContext context) {
     return AccessGate(
-      module: 'Staff Management',
+      module: 'Staff',
       canAccess: (s) => s.canAccessStaff,
       drawer: getSideDrawer(context),
       child: _buildContent(context),

@@ -23,7 +23,7 @@ class _HelperState extends ConsumerState<Helper> {
     return Scaffold(
       drawer: getSideDrawer(context),
       appBar: AppBar(
-        title: const Text('Helper',
+        title: const Text('Tools',
             style: TextStyle(fontWeight: FontWeight.w700)),
       ),
       body: Center(
