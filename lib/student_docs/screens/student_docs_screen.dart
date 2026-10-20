@@ -779,14 +779,6 @@ class _DocLogsTab extends StatelessWidget {
                               crossAxisAlignment:
                                   CrossAxisAlignment.start,
                               children: [
-                                Expanded(
-                                  child: Text(
-                                    change.field,
-                                    style: const TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600),
-                                  ),
-                                ),
                                 MiniThumb(
                                     label: 'Old',
                                     url: change.oldUrl),
@@ -794,6 +786,20 @@ class _DocLogsTab extends StatelessWidget {
                                 MiniThumb(
                                     label: 'New',
                                     url: change.newUrl),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Padding(
+                                    padding:
+                                        const EdgeInsets.only(top: 4),
+                                    child: Text(
+                                      change.field,
+                                      style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight:
+                                              FontWeight.w600),
+                                    ),
+                                  ),
+                                ),
                               ],
                             )
                           else
