@@ -79,6 +79,14 @@ class AccessService {
     yield* _sharedController.stream;
   }
 
+  /// Drops the cached session at logout so the next login on this device
+  /// resolves fresh — the equivalent of a hard reset for access state.
+  /// Called together with the Firestore wipe in [SessionService.logout].
+  static void clearCachedAccess() {
+    _latestAccess = null;
+    _hasLatestAccess = false;
+  }
+
   final FirebaseFirestore _db = db;
   static const _collection = 'users';
 

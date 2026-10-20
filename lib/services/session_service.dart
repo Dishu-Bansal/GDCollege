@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user_session.dart';
 import '../providers.dart';
 import '../screens/login_screen.dart';
+import '../access/access_service.dart';
 
 /// Global navigator key so the inactivity timeout can send the user back to
 /// the login screen from anywhere (no BuildContext needed).
@@ -212,8 +213,7 @@ class SessionService with WidgetsBindingObserver {
 
   Future<void> _onTimeout() async {
     if (_sessionId == null || UserSession().currentUser == null) return;
-    await endSession(SessionEndReason.timeout);
-    await UserSession().logOut();
+    await logout(reason: SessionEndReason.timeout);
     appNavigatorKey.currentState?.pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (_) => const LoginPage(
@@ -224,10 +224,28 @@ class SessionService with WidgetsBindingObserver {
     );
   }
 
-  /// Manual logout: closes the segment, then signs out.
-  Future<void> logout() async {
-    await endSession(SessionEndReason.logout);
+  /// Manual logout: closes the segment, signs out, and wipes all on-device
+  /// state (in-memory access session + Firestore local persistence) so the
+  /// next login on this device resolves everything fresh — the equivalent
+  /// of a hard reset. Firestore restarts transparently on next use.
+  Future<void> logout({String reason = SessionEndReason.logout}) async {
+    await endSession(reason);
     await UserSession().logOut();
+    AccessService.clearCachedAccess();
+    await clearLocalData();
+  }
+
+  /// Drops everything Firestore keeps on this device: terminates the
+  /// client (cancelling all listeners, including any serving stale cached
+  /// snapshots) and clears local persistence. Best effort — a failed wipe
+  /// is logged but never blocks logout.
+  Future<void> clearLocalData() async {
+    try {
+      await db.terminate();
+      await db.clearPersistence();
+    } catch (e) {
+      debugPrint('Local Firestore wipe failed: $e');
+    }
   }
 
   // ── Verification reads ─────────────────────────────────────────────
