@@ -74,6 +74,7 @@ class AccessService {
 
   /// Defaults for brand-new accounts: every module allowed.
   static const bool _defaultStudents = true;
+  static const bool _defaultStudentDocs = true;
   static const bool _defaultStaff = true;
   static const bool _defaultStock = true;
   static const bool _defaultBills = true;
@@ -94,6 +95,7 @@ class AccessService {
           email: email,
           isAdmin: true,
           canAccessStudents: true,
+          canAccessStudentDocs: true,
           canAccessStaff: true,
           canAccessStock: true,
           canAccessBills: true,
@@ -111,6 +113,7 @@ class AccessService {
           // email (created by the admin's one-time helper) when one exists,
           // otherwise fall back to the defaults.
           var students = _defaultStudents;
+          var studentDocs = _defaultStudentDocs;
           var staff = _defaultStaff;
           var stock = _defaultStock;
           var bills = _defaultBills;
@@ -125,6 +128,8 @@ class AccessService {
           if (seed.docs.isNotEmpty) {
             final s = seed.docs.first.data();
             students = s['canAccessStudents'] as bool? ?? students;
+            studentDocs =
+                s['canAccessStudentDocs'] as bool? ?? studentDocs;
             staff = s['canAccessStaff'] as bool? ?? staff;
             stock = s['canAccessStock'] as bool? ?? stock;
             bills = s['canAccessBills'] as bool? ?? bills;
@@ -136,6 +141,7 @@ class AccessService {
           await _db.collection(_collection).doc(user.uid).set({
             'email': email,
             'canAccessStudents': students,
+            'canAccessStudentDocs': studentDocs,
             'canAccessStaff': staff,
             'canAccessStock': stock,
             'canAccessBills': bills,
@@ -155,6 +161,7 @@ class AccessService {
             email: email,
             isAdmin: false,
             canAccessStudents: students,
+            canAccessStudentDocs: studentDocs,
             canAccessStaff: staff,
             canAccessStock: stock,
             canAccessBills: bills,
@@ -168,6 +175,8 @@ class AccessService {
           email: email,
           isAdmin: false,
           canAccessStudents: d['canAccessStudents'] ?? _defaultStudents,
+          canAccessStudentDocs:
+              d['canAccessStudentDocs'] ?? _defaultStudentDocs,
           canAccessStaff: d['canAccessStaff'] ?? _defaultStaff,
           canAccessStock: d['canAccessStock'] ?? _defaultStock,
           canAccessBills: d['canAccessBills'] ?? _defaultBills,
@@ -192,6 +201,7 @@ class AccessService {
   Future<void> updatePermissions({
     required String uid,
     required bool students,
+    required bool studentDocs,
     required bool staff,
     required bool stock,
     required bool bills,
@@ -201,6 +211,7 @@ class AccessService {
     final by = FirebaseAuth.instance.currentUser?.email ?? '';
     return _db.collection(_collection).doc(uid).update({
       'canAccessStudents': students,
+      'canAccessStudentDocs': studentDocs,
       'canAccessStaff': staff,
       'canAccessStock': stock,
       'canAccessBills': bills,
@@ -238,6 +249,7 @@ class AccessService {
       );
       final uid = cred.user!.uid;
       var students = _defaultStudents;
+      var studentDocs = _defaultStudentDocs;
       var staff = _defaultStaff;
       var stock = _defaultStock;
       var bills = _defaultBills;
@@ -252,6 +264,7 @@ class AccessService {
       if (seed.docs.isNotEmpty && seed.docs.first.id != uid) {
         final s = seed.docs.first.data();
         students = s['canAccessStudents'] as bool? ?? students;
+        studentDocs = s['canAccessStudentDocs'] as bool? ?? studentDocs;
         staff = s['canAccessStaff'] as bool? ?? staff;
         stock = s['canAccessStock'] as bool? ?? stock;
         bills = s['canAccessBills'] as bool? ?? bills;
@@ -263,6 +276,7 @@ class AccessService {
       await _db.collection(_collection).doc(uid).set({
         'email': normalized,
         'canAccessStudents': students,
+        'canAccessStudentDocs': studentDocs,
         'canAccessStaff': staff,
         'canAccessStock': stock,
         'canAccessBills': bills,
@@ -279,6 +293,7 @@ class AccessService {
         uid: uid,
         email: normalized,
         canAccessStudents: students,
+        canAccessStudentDocs: studentDocs,
         canAccessStaff: staff,
         canAccessStock: stock,
         canAccessBills: bills,

@@ -5,6 +5,7 @@ class AppSession {
   final String email;
   final bool isAdmin;
   final bool canAccessStudents;
+  final bool canAccessStudentDocs;
   final bool canAccessStaff;
   final bool canAccessStock;
   final bool canAccessBills;
@@ -16,6 +17,7 @@ class AppSession {
     required this.email,
     required this.isAdmin,
     required this.canAccessStudents,
+    required this.canAccessStudentDocs,
     required this.canAccessStaff,
     required this.canAccessStock,
     required this.canAccessBills,
@@ -29,6 +31,7 @@ class AppUser {
   final String uid;
   final String email;
   final bool canAccessStudents;
+  final bool canAccessStudentDocs;
   final bool canAccessStaff;
   final bool canAccessStock;
   final bool canAccessBills;
@@ -39,6 +42,7 @@ class AppUser {
     required this.uid,
     required this.email,
     required this.canAccessStudents,
+    required this.canAccessStudentDocs,
     required this.canAccessStaff,
     required this.canAccessStock,
     required this.canAccessBills,
@@ -50,6 +54,7 @@ class AppUser {
         uid: uid,
         email: (d['email'] ?? '').toString(),
         canAccessStudents: d['canAccessStudents'] ?? true,
+        canAccessStudentDocs: d['canAccessStudentDocs'] ?? true,
         canAccessStaff: d['canAccessStaff'] ?? true,
         canAccessStock: d['canAccessStock'] ?? true,
         canAccessBills: d['canAccessBills'] ?? true,

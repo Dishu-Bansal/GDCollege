@@ -32,6 +32,8 @@ getSideDrawer(BuildContext context) {
             AccessService.isAdminEmail(
                 FirebaseAuth.instance.currentUser?.email);
         final showStudents = session == null || session.canAccessStudents;
+        final showStudentDocs =
+            session == null || session.canAccessStudentDocs;
         final showStaff = session == null || session.canAccessStaff;
         final showStock = session == null || session.canAccessStock;
         final showBills = session == null || session.canAccessBills;
@@ -72,7 +74,7 @@ getSideDrawer(BuildContext context) {
                   Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => StudentListScreen()));
                 },
               ),
-            if (showStudents)
+            if (showStudentDocs)
               ListTile(
                 leading: const Icon(Icons.folder_shared_outlined),
                 title: const Text('Student Docs'),

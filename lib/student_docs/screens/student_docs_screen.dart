@@ -39,8 +39,8 @@ class _StudentDocsScreenState extends State<StudentDocsScreen>
   @override
   Widget build(BuildContext context) {
     return AccessGate(
-      module: 'Student Management',
-      canAccess: (s) => s.canAccessStudents,
+      module: 'Student Docs',
+      canAccess: (s) => s.canAccessStudentDocs,
       drawer: getSideDrawer(context),
       child: _content(),
     );

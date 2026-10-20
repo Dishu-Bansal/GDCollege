@@ -665,6 +665,8 @@ class _ModuleCards extends StatelessWidget {
               ),
             ),
           ));
+        }
+        if (show((s) => s.canAccessStudentDocs)) {
           add(_NavCard(
             icon: Icons.folder_shared_outlined,
             label: 'Student Docs',
