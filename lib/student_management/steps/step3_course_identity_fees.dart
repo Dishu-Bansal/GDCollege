@@ -3,23 +3,26 @@ import 'package:flutter/services.dart';
 import 'package:gd_college/constants.dart';
 import '../models/student_model.dart';
 import '../../widgets/form_widgets.dart';
-import '../../widgets/file_picker_widget.dart';
 
-class Step5CourseAndFees extends StatefulWidget {
+/// Step 3: course details, identity numbers and fees.
+///
+/// The admission year is captured here (and is required) so the following
+/// step can enforce which identity documents apply to the student.
+class Step3CourseIdentityFees extends StatefulWidget {
   final StudentModel student;
   final GlobalKey<FormState> formKey;
 
-  const Step5CourseAndFees({
+  const Step3CourseIdentityFees({
     super.key,
     required this.student,
     required this.formKey,
   });
 
   @override
-  State<Step5CourseAndFees> createState() => _Step5CourseAndFeesState();
+  State<Step3CourseIdentityFees> createState() =>
+      _Step3CourseIdentityFeesState();
 }
 
-/// One editable row of the "other fees" section: fee type, amount, comment.
 class _FeeRow {
   final TextEditingController typeCtrl;
   final TextEditingController amountCtrl;
@@ -31,28 +34,36 @@ class _FeeRow {
       commentCtrl = TextEditingController(text: comment);
 }
 
-class _Step5CourseAndFeesState extends State<Step5CourseAndFees> {
+class _Step3CourseIdentityFeesState extends State<Step3CourseIdentityFees> {
   late final TextEditingController _studentIdCtrl;
+  late final TextEditingController _yearCtrl;
   late final TextEditingController _placementCtrl;
+  late final TextEditingController _aadharCtrl;
+  late final TextEditingController _panCtrl;
+  late final TextEditingController _familyIdCtrl;
+  late final TextEditingController _abcIdCtrl;
   late final TextEditingController _fee1Ctrl;
   late final TextEditingController _fee2Ctrl;
   late final TextEditingController _fee3Ctrl;
-  late final TextEditingController _yearCtrl;
   late final List<_FeeRow> _feeRows;
 
   @override
   void initState() {
     super.initState();
     _studentIdCtrl = TextEditingController(text: widget.student.studentId);
-    _placementCtrl = TextEditingController(
-      text: widget.student.placementDetails,
-    );
-    _fee1Ctrl = TextEditingController(text: widget.student.feeDetails1stYear);
-    _fee2Ctrl = TextEditingController(text: widget.student.feeDetails2ndYear);
-    _fee3Ctrl = TextEditingController(text: widget.student.feeDetails3rdYear);
     _yearCtrl = TextEditingController(
       text: widget.student.yearOfAdmission?.toString() ?? '',
     );
+    _placementCtrl = TextEditingController(
+      text: widget.student.placementDetails,
+    );
+    _aadharCtrl = TextEditingController(text: widget.student.aadharNumber);
+    _panCtrl = TextEditingController(text: widget.student.panCard);
+    _familyIdCtrl = TextEditingController(text: widget.student.familyId);
+    _abcIdCtrl = TextEditingController(text: widget.student.abcIdNumber);
+    _fee1Ctrl = TextEditingController(text: widget.student.feeDetails1stYear);
+    _fee2Ctrl = TextEditingController(text: widget.student.feeDetails2ndYear);
+    _fee3Ctrl = TextEditingController(text: widget.student.feeDetails3rdYear);
     _feeRows = [
       for (final f in widget.student.otherFees)
         _FeeRow(
@@ -66,7 +77,12 @@ class _Step5CourseAndFeesState extends State<Step5CourseAndFees> {
   @override
   void dispose() {
     _studentIdCtrl.dispose();
+    _yearCtrl.dispose();
     _placementCtrl.dispose();
+    _aadharCtrl.dispose();
+    _panCtrl.dispose();
+    _familyIdCtrl.dispose();
+    _abcIdCtrl.dispose();
     _fee1Ctrl.dispose();
     _fee2Ctrl.dispose();
     _fee3Ctrl.dispose();
@@ -75,9 +91,16 @@ class _Step5CourseAndFeesState extends State<Step5CourseAndFees> {
       r.amountCtrl.dispose();
       r.commentCtrl.dispose();
     }
-    _yearCtrl.dispose();
     super.dispose();
   }
+
+  /// Aadhar is mandatory from 2016 admissions onwards.
+  static bool _aadharNeeded(int? year) => year != null && year >= 2016;
+
+  /// ABC (APAAR) ID is mandatory from 2024 admissions onwards.
+  static bool _abcNeeded(int? year) => year != null && year >= 2024;
+
+  // ── Fee rows ─────────────────────────────────────────────────────────────
 
   /// Writes the "other fees" rows back onto the student model. Completely
   /// empty rows are dropped so Firestore stays clean.
@@ -214,6 +237,7 @@ class _Step5CourseAndFeesState extends State<Step5CourseAndFees> {
 
   @override
   Widget build(BuildContext context) {
+    final year = widget.student.yearOfAdmission;
     return Form(
       key: widget.formKey,
       child: ListView(
@@ -241,7 +265,10 @@ class _Step5CourseAndFeesState extends State<Step5CourseAndFees> {
           ),
 
           TextFormField(
-            decoration: InputDecoration(label: Text('Year of Admission')),
+            decoration: InputDecoration(
+              label: Text('Year of Admission'),
+              hintText: 'Determines which identity documents apply',
+            ),
             controller: _yearCtrl,
             keyboardType: TextInputType.number,
             inputFormatters: [
@@ -249,17 +276,19 @@ class _Step5CourseAndFeesState extends State<Step5CourseAndFees> {
               LengthLimitingTextInputFormatter(4),
             ],
             validator: (v) {
-              if (v != null && v.isNotEmpty) {
-                final year = int.tryParse(v);
-                if (year == null ||
-                    year < 1990 ||
-                    year > DateTime.now().year + 1) {
-                  return 'Enter valid admission year';
-                }
+              if (v == null || v.isEmpty) {
+                return 'Year of admission is required';
+              }
+              final year = int.tryParse(v);
+              if (year == null ||
+                  year < 1990 ||
+                  year > DateTime.now().year + 1) {
+                return 'Enter valid admission year';
               }
               return null;
             },
-            onChanged: (v) => widget.student.yearOfAdmission = int.tryParse(v),
+            onChanged: (v) =>
+                setState(() => widget.student.yearOfAdmission = int.tryParse(v)),
           ),
 
           TextFormField(
@@ -270,6 +299,109 @@ class _Step5CourseAndFeesState extends State<Step5CourseAndFees> {
             controller: _placementCtrl,
             maxLines: 2,
             onChanged: (v) => widget.student.placementDetails = v,
+          ),
+
+          const SectionHeader(
+              title: 'Identity Numbers', icon: Icons.badge_outlined),
+
+          Text(
+            'Aadhar is required for 2016 and later admissions. '
+            'ABC (APAAR) ID is required for 2024 and later admissions. '
+            'PAN is required for every student.',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+          ),
+          const SizedBox(height: 8),
+
+          TextFormField(
+            decoration: InputDecoration(
+              label: Text(_aadharNeeded(year)
+                  ? 'Aadhar Number *'
+                  : 'Aadhar Number'),
+              hint: Text('XXXX XXXX XXXX'),
+              helperText: _aadharNeeded(year)
+                  ? 'Required for 2016+ admissions'
+                  : null,
+            ),
+            controller: _aadharCtrl,
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(12),
+              _AadharFormatter(),
+            ],
+            validator: (v) {
+              final clean = v?.replaceAll(' ', '') ?? '';
+              if (clean.isEmpty) {
+                return _aadharNeeded(year)
+                    ? 'Aadhar number is required for 2016+ admissions'
+                    : null;
+              }
+              if (clean.length != 12) return 'Enter valid 12-digit Aadhar';
+              return null;
+            },
+            onChanged: (v) =>
+                widget.student.aadharNumber = v.replaceAll(' ', ''),
+          ),
+
+          TextFormField(
+            decoration: InputDecoration(
+              label: Text('PAN Card Number *'),
+              hint: Text('ABCDE1234F'),
+            ),
+            controller: _panCtrl,
+            inputFormatters: [
+              UpperCaseTextFormatter(),
+              LengthLimitingTextInputFormatter(10),
+            ],
+            validator: (v) {
+              final clean = v?.trim() ?? '';
+              if (clean.isEmpty) return 'PAN number is required';
+              final regex = RegExp(r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$');
+              if (!regex.hasMatch(clean)) {
+                return 'Enter valid PAN (ABCDE1234F)';
+              }
+              return null;
+            },
+            onChanged: (v) => widget.student.panCard = v,
+          ),
+
+          TextFormField(
+            decoration: InputDecoration(
+              label: Text('Family ID'),
+              hint: Text('Required for Haryana students'),
+            ),
+            controller: _familyIdCtrl,
+            onChanged: (v) => widget.student.familyId = v,
+          ),
+
+          TextFormField(
+            decoration: InputDecoration(
+              label: Text(_abcNeeded(year)
+                  ? 'ABC ID Number *'
+                  : 'ABC ID Number'),
+              hint: Text('12-digit APAAR ID'),
+              helperText: _abcNeeded(year)
+                  ? 'Required for 2024+ admissions'
+                  : null,
+            ),
+            controller: _abcIdCtrl,
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(12),
+            ],
+            validator: (v) {
+              final clean = v?.replaceAll(' ', '') ?? '';
+              if (clean.isEmpty) {
+                return _abcNeeded(year)
+                    ? 'ABC ID is required for 2024+ admissions'
+                    : null;
+              }
+              if (clean.length != 12) return 'Enter valid 12-digit ABC ID';
+              return null;
+            },
+            onChanged: (v) =>
+                widget.student.abcIdNumber = v.replaceAll(' ', ''),
           ),
 
           const SectionHeader(title: 'Fee Details', icon: Icons.currency_rupee),
@@ -328,40 +460,34 @@ class _Step5CourseAndFeesState extends State<Step5CourseAndFees> {
             ),
           ),
 
-          const SizedBox(height: 12),
-          const SectionHeader(
-            title: 'Additional Files',
-            icon: Icons.folder_open,
-          ),
-
-          MultiFilePicker(
-            label: 'Supporting Files',
-            filePaths: widget.student.otherFileNames,
-            onFileAdded: (data, name) {
-              setState(() {
-                widget.student.otherFileData = [
-                  ...widget.student.otherFileData,
-                  data,
-                ];
-                widget.student.otherFileNames = [
-                  ...widget.student.otherFileNames,
-                  name,
-                ];
-              });
-            },
-            onFileRemoved: (i) => setState(() {
-              final list = [...widget.student.otherFileData];
-              final list2 = [...widget.student.otherFileNames];
-              list.removeAt(i);
-              list2.removeAt(i);
-              widget.student.otherFileData = list;
-              widget.student.otherFileNames = list2;
-            }),
-          ),
-
           const SizedBox(height: 20),
         ],
       ),
     );
+  }
+}
+
+class _AadharFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    final digits = newValue.text.replaceAll(' ', '');
+    final buffer = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      if (i == 4 || i == 8) buffer.write(' ');
+      buffer.write(digits[i]);
+    }
+    return newValue.copyWith(
+      text: buffer.toString(),
+      selection: TextSelection.collapsed(offset: buffer.length),
+    );
+  }
+}
+
+class UpperCaseTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    return newValue.copyWith(text: newValue.text.toUpperCase());
   }
 }
