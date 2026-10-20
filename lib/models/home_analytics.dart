@@ -46,6 +46,10 @@ class HomeAnalytics {
   final int itemsDeleted;
   final int assignmentsDone;
 
+  // Student Docs
+  final int docsStocked;
+  final int docsIssued;
+
   // Account-wise breakdowns (per-account share of each total above).
   final List<AccountAmount> studentsCreatedAccounts;
   final List<AccountAmount> studentsUpdatedAccounts;
@@ -58,6 +62,8 @@ class HomeAnalytics {
   final List<AccountAmount> itemsRemovedAccounts;
   final List<AccountAmount> itemsDeletedAccounts;
   final List<AccountAmount> assignmentsAccounts;
+  final List<AccountAmount> docsStockedAccounts;
+  final List<AccountAmount> docsIssuedAccounts;
 
   const HomeAnalytics({
     required this.day,
@@ -72,6 +78,8 @@ class HomeAnalytics {
     this.itemsRemoved = 0,
     this.itemsDeleted = 0,
     this.assignmentsDone = 0,
+    this.docsStocked = 0,
+    this.docsIssued = 0,
     this.studentsCreatedAccounts = const [],
     this.studentsUpdatedAccounts = const [],
     this.studentsDeletedAccounts = const [],
@@ -83,6 +91,8 @@ class HomeAnalytics {
     this.itemsRemovedAccounts = const [],
     this.itemsDeletedAccounts = const [],
     this.assignmentsAccounts = const [],
+    this.docsStockedAccounts = const [],
+    this.docsIssuedAccounts = const [],
   });
 
   int get studentEvents => studentsCreated + studentsUpdated + studentsDeleted;
@@ -96,5 +106,7 @@ class HomeAnalytics {
       itemsAdded > 0 ||
       itemsRemoved > 0 ||
       itemsDeleted > 0 ||
-      assignmentsDone > 0;
+      assignmentsDone > 0 ||
+      docsStocked > 0 ||
+      docsIssued > 0;
 }

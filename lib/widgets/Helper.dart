@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers.dart';
+import '../student_docs/services/firebase_student_docs_service.dart';
 import '../student_management/models/student_model.dart';
 import 'drawer.dart';
 
@@ -19,6 +20,7 @@ class _HelperState extends ConsumerState<Helper> {
   String _backfillMsg = 'Backfill Document Flags';
   String _verifyBackfillMsg = 'Backfill Verification Flags';
   String _visitorEventsMsg = 'Backfill Visitor Events';
+  String _docLogsMsg = 'Backfill Doc Stock/Issue Logs';
   bool _running = false;
 
   @override
@@ -76,6 +78,13 @@ class _HelperState extends ConsumerState<Helper> {
                 'Visitor events',
                 (s) => _visitorEventsMsg = s,
                 unit: 'event(s)',
+              )),
+              const SizedBox(height: 16),
+              _buildButton(_docLogsMsg, () => _runMigration(
+                FirebaseStudentDocsService().backfillDocLogs(),
+                'Doc logs',
+                (s) => _docLogsMsg = s,
+                unit: 'row(s)',
               )),
               const SizedBox(height: 12),
               Text(
