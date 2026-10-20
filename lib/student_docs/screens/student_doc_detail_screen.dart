@@ -248,13 +248,22 @@ class _SlotCardState extends State<_SlotCard> {
   String? _pendingFileName;
   Uint8List? _pendingAadhar;
   Uint8List? _pendingLive;
+
+  /// Destructive actions stay local until Save: nothing reaches the
+  /// backend (Storage or Firestore) before the save batch commits.
+  bool _deleteFileOnSave = false;
+  bool _deleteAadharOnSave = false;
+  bool _deleteLiveOnSave = false;
   bool _saving = false;
 
   bool get _complete =>
       _record.complete(isDmc: widget.slot.isDmc) &&
       _pendingFile == null &&
       _pendingAadhar == null &&
-      _pendingLive == null;
+      _pendingLive == null &&
+      !_deleteFileOnSave &&
+      !_deleteAadharOnSave &&
+      !_deleteLiveOnSave;
 
   @override
   void initState() {
@@ -326,6 +335,7 @@ class _SlotCardState extends State<_SlotCard> {
     setState(() {
       _pendingFile = bytes;
       _pendingFileName = file.name;
+      _deleteFileOnSave = false;
     });
   }
 
@@ -345,95 +355,47 @@ class _SlotCardState extends State<_SlotCard> {
       _snack('File must be under 5 MB.', error: true);
       return;
     }
-    setState(() => _pendingAadhar = bytes);
+    setState(() {
+      _pendingAadhar = bytes;
+      _deleteAadharOnSave = false;
+    });
   }
 
   Future<void> _captureLive() async {
     final bytes = await CameraCaptureDialog.show(context);
     if (bytes == null) return;
-    setState(() => _pendingLive = bytes);
+    setState(() {
+      _pendingLive = bytes;
+      _deleteLiveOnSave = false;
+    });
   }
 
   Future<void> _deleteFile() async {
-    final ok = await _confirm('Delete this document scan?');
-    if (!ok || _record.fileUrl == null) return;
-    setState(() => _saving = true);
-    try {
-      final oldUrl = _record.fileUrl;
-      final oldName = _record.fileName ?? 'scan';
-      await widget.service.deleteUrl(oldUrl ?? '');
-      _record.fileUrl = null;
-      _record.fileName = null;
-      await widget.service.commitSlotSave(
-        studentId: widget.studentId,
-        slotKey: widget.slot.key,
-        record: _record,
-        logs: [
-          _baseLog(
-            action: 'updated',
-            changes: [
-              DocChange(
-                field: 'Document scan',
-                oldValue: oldName,
-                newValue: 'deleted',
-                oldUrl: oldUrl,
-              ),
-            ],
-          ),
-        ],
-      );
-      widget.onSaved(_record);
-      _snack('Document deleted.');
-    } catch (e) {
-      _snack('Error: $e', error: true);
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+    final ok = await _confirm(
+        'Delete this document scan on Save? Nothing is removed until '
+        'you press Save.');
+    if (!ok) return;
+    setState(() {
+      _deleteFileOnSave = true;
+      _pendingFile = null;
+      _pendingFileName = null;
+    });
   }
 
   Future<void> _deletePhoto(bool aadhar) async {
     final ok = await _confirm(
-        'Delete this ${aadhar ? 'Aadhaar' : 'live'} photo?');
+        'Delete this ${aadhar ? 'Aadhaar' : 'live'} photo on Save? '
+        'Nothing is removed until you press Save.');
     if (!ok) return;
-    setState(() => _saving = true);
-    try {
-      final oldUrl = aadhar
-          ? _record.collector.aadharUrl
-          : _record.collector.livePhotoUrl;
+    setState(() {
       if (aadhar) {
-        await widget.service
-            .deleteUrl(_record.collector.aadharUrl ?? '');
-        _record.collector.aadharUrl = null;
+        _deleteAadharOnSave = true;
+        _pendingAadhar = null;
       } else {
-        await widget.service
-            .deleteUrl(_record.collector.livePhotoUrl ?? '');
-        _record.collector.livePhotoUrl = null;
+        _deleteLiveOnSave = true;
+        _pendingLive = null;
       }
-      await widget.service.commitSlotSave(
-        studentId: widget.studentId,
-        slotKey: widget.slot.key,
-        record: _record,
-        logs: [
-          _baseLog(
-            action: 'updated',
-            changes: [
-              DocChange(
-                field: aadhar ? 'Aadhaar photo' : 'Live photo',
-                oldValue: 'photo',
-                newValue: 'deleted',
-                oldUrl: oldUrl,
-              ),
-            ],
-          ),
-        ],
-      );
-      widget.onSaved(_record);
-      _snack('Photo deleted.');
-    } catch (e) {
-      _snack('Error: $e', error: true);
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+    });
   }
 
   Future<bool> _confirm(String msg) async {
@@ -469,14 +431,17 @@ class _SlotCardState extends State<_SlotCard> {
     final name = _nameCtrl.text.trim();
     final aadhar = _aadharCtrl.text.trim();
 
-    // Post-save collector picture (pending picks count as present).
-    final postAadharUrl = _pendingAadhar != null
-        ? 'pending'
-        : (_record.collector.aadharUrl ?? '');
-    final postLiveUrl = _pendingLive != null
-        ? 'pending'
-        : (_record.collector.livePhotoUrl ?? '');
-    final willHaveFile = _record.hasFile || _pendingFile != null;
+    // Post-save picture of the collector (pending picks count as
+    // present; pending deletes count as gone).
+    String? postUrl(String? saved, Uint8List? pending, bool delete) =>
+        delete ? null : (pending != null ? 'pending' : saved);
+    final postAadharUrl =
+        postUrl(_record.collector.aadharUrl, _pendingAadhar,
+            _deleteAadharOnSave);
+    final postLiveUrl = postUrl(_record.collector.livePhotoUrl,
+        _pendingLive, _deleteLiveOnSave);
+    final postHasFile = (_record.hasFile && !_deleteFileOnSave) ||
+        _pendingFile != null;
 
     // Post-save subject rows.
     final postSubjects = _subjectRows
@@ -493,27 +458,32 @@ class _SlotCardState extends State<_SlotCard> {
             s.max != null)
         .length;
 
-    // ── Gate 1: stocking needs the scan + (DMCs) at least 5 subjects ──
-    if (_pendingFile != null) {
-      if (widget.slot.isDmc && filledSubjects < 5) {
-        _snack(
-            'Stocking needs at least 5 fully-filled subjects '
-            '(have $filledSubjects).',
-            error: true);
-        return;
-      }
+    // ── Gate 1: a stocked DMC always carries 5+ subjects ──
+    // Evaluated on the post-save state, so trimming an already-stocked
+    // doc below 5 is blocked the same as a first-time short stocking.
+    if (widget.slot.isDmc &&
+        postHasFile &&
+        filledSubjects < 5) {
+      _snack(
+          'A stocked DMC needs at least 5 fully-filled subjects '
+          '(have $filledSubjects).',
+          error: true);
+      return;
     }
 
-    // ── Gate 2: collector entry needs all 5 identity fields ──
-    final wasIssued =
-        _record.issued(isDmc: widget.slot.isDmc);
-    final collectorTouched = name.isNotEmpty ||
-        phone.isNotEmpty ||
-        aadhar.isNotEmpty ||
-        postAadharUrl.isNotEmpty ||
-        postLiveUrl.isNotEmpty ||
-        wasIssued;
-    if (collectorTouched) {
+    // ── Gate 2: partial collector identity is rejected ──
+    final postCollectorFields = [
+      name,
+      phone,
+      aadhar,
+      postAadharUrl ?? '',
+      postLiveUrl ?? '',
+    ];
+    final postComplete =
+        postCollectorFields.every((f) => f.isNotEmpty);
+    final postPartial =
+        postCollectorFields.any((f) => f.isNotEmpty);
+    if (postPartial && !postComplete) {
       final missing = <String>[];
       if (name.isEmpty) missing.add('name');
       if (phone.isEmpty) {
@@ -528,28 +498,33 @@ class _SlotCardState extends State<_SlotCard> {
         _snack('Aadhaar number must be 12 digits.', error: true);
         return;
       }
-      if (postAadharUrl.isEmpty) missing.add('Aadhaar photo');
-      if (postLiveUrl.isEmpty) missing.add('live photo');
+      if ((postAadharUrl ?? '').isEmpty) {
+        missing.add('Aadhaar photo');
+      }
+      if ((postLiveUrl ?? '').isEmpty) missing.add('live photo');
       if (missing.isNotEmpty) {
         _snack(
             'Collector incomplete — missing: ${missing.join(', ')}.',
             error: true);
         return;
       }
-      // ── Gate 3: no issue before stock ──
-      if (!willHaveFile) {
-        _snack(
-            'Stock the document scan first — a document cannot be '
-            'issued before it is in stock.',
-            error: true);
-        return;
-      }
+    }
+
+    // ── Gate 3: no issue before stock ──
+    if (postComplete && !postHasFile) {
+      _snack(
+          'Stock the document scan first — a document cannot be '
+          'issued before it is in stock.',
+          error: true);
+      return;
     }
 
     // Snapshot pre-save values for the old-vs-new diff.
     final oldFileUrl = _record.fileUrl;
     final oldFileName = _record.fileName ?? 'scan';
     final oldSubjectsSummary = _subjectsSummary(_record.subjects);
+    final wasIssued =
+        _record.issued(isDmc: widget.slot.isDmc);
     final oldCollector = CollectorInfo(
       name: _record.collector.name,
       phone: _record.collector.phone,
@@ -560,7 +535,7 @@ class _SlotCardState extends State<_SlotCard> {
 
     setState(() => _saving = true);
     try {
-      // Upload anything newly picked, replacing previous files.
+      // Uploads first…
       if (_pendingFile != null) {
         await widget.service.deleteUrl(oldFileUrl ?? '');
         _record.fileUrl = await widget.service.uploadSlotFile(
@@ -573,6 +548,14 @@ class _SlotCardState extends State<_SlotCard> {
         _record.fileUploadedAt = DateTime.now();
         _pendingFile = null;
         _pendingFileName = null;
+        _deleteFileOnSave = false;
+      } else if (_deleteFileOnSave) {
+        // …then pending deletions. Storage removals happen here, inside
+        // Save — the record + logs commit in one batch right after.
+        await widget.service.deleteUrl(oldFileUrl ?? '');
+        _record.fileUrl = null;
+        _record.fileName = null;
+        _deleteFileOnSave = false;
       }
       if (_pendingAadhar != null) {
         await widget.service
@@ -585,6 +568,12 @@ class _SlotCardState extends State<_SlotCard> {
           bytes: _pendingAadhar!,
         );
         _pendingAadhar = null;
+        _deleteAadharOnSave = false;
+      } else if (_deleteAadharOnSave) {
+        await widget.service
+            .deleteUrl(_record.collector.aadharUrl ?? '');
+        _record.collector.aadharUrl = null;
+        _deleteAadharOnSave = false;
       }
       if (_pendingLive != null) {
         await widget.service
@@ -597,6 +586,12 @@ class _SlotCardState extends State<_SlotCard> {
           bytes: _pendingLive!,
         );
         _pendingLive = null;
+        _deleteLiveOnSave = false;
+      } else if (_deleteLiveOnSave) {
+        await widget.service
+            .deleteUrl(_record.collector.livePhotoUrl ?? '');
+        _record.collector.livePhotoUrl = null;
+        _deleteLiveOnSave = false;
       }
       _record.collector.name = name;
       _record.collector.phone = phone;
@@ -632,7 +627,9 @@ class _SlotCardState extends State<_SlotCard> {
         diffs.add(DocChange(
           field: 'Document scan',
           oldValue: oldFileName,
-          newValue: _record.fileName ?? 'scan',
+          newValue: _record.fileUrl == null
+              ? 'deleted'
+              : (_record.fileName ?? 'scan'),
           oldUrl: oldFileUrl,
           newUrl: _record.fileUrl,
         ));
@@ -865,6 +862,9 @@ class _SlotCardState extends State<_SlotCard> {
                   title: 'Aadhaar Photo',
                   bytes: _pendingAadhar,
                   url: _record.collector.aadharUrl,
+                  markedDeleted: _deleteAadharOnSave,
+                  onUndoDelete: () => setState(
+                      () => _deleteAadharOnSave = false),
                   onPick: _pickAadharPhoto,
                   onDelete: _record.collector.aadharUrl == null
                       ? null
@@ -877,6 +877,9 @@ class _SlotCardState extends State<_SlotCard> {
                   title: 'Live Photo',
                   bytes: _pendingLive,
                   url: _record.collector.livePhotoUrl,
+                  markedDeleted: _deleteLiveOnSave,
+                  onUndoDelete: () =>
+                      setState(() => _deleteLiveOnSave = false),
                   actionLabel: 'Webcam',
                   actionIcon: Icons.videocam_outlined,
                   onPick: _captureLive,
@@ -926,6 +929,21 @@ class _SlotCardState extends State<_SlotCard> {
       );
     }
     if (_record.hasFile) {
+      if (_deleteFileOnSave) {
+        return _rowBox(
+          Icons.delete_outline,
+          _record.fileName ?? 'Document',
+          'Will be deleted when you press Save',
+          trailing: TextButton(
+            onPressed: _saving
+                ? null
+                : () =>
+                    setState(() => _deleteFileOnSave = false),
+            child: const Text('Undo',
+                style: TextStyle(fontSize: 12)),
+          ),
+        );
+      }
       return _rowBox(
         Icons.insert_drive_file_outlined,
         _record.fileName ?? 'Document',
@@ -1134,6 +1152,11 @@ class _PhotoBox extends StatelessWidget {
   final VoidCallback onPick;
   final VoidCallback? onDelete;
 
+  /// When true the saved photo is only marked for deletion (applied on
+  /// Save) — the box shows a pending state with an undo affordance.
+  final bool markedDeleted;
+  final VoidCallback? onUndoDelete;
+
   const _PhotoBox({
     required this.title,
     required this.bytes,
@@ -1142,6 +1165,8 @@ class _PhotoBox extends StatelessWidget {
     this.actionLabel = 'Upload',
     this.actionIcon = Icons.upload_outlined,
     this.onDelete,
+    this.markedDeleted = false,
+    this.onUndoDelete,
   });
 
   @override
@@ -1150,7 +1175,9 @@ class _PhotoBox extends StatelessWidget {
     VoidCallback? onPreviewTap;
     final pendingBytes = bytes;
     final savedUrl = url;
-    if (pendingBytes != null) {
+    if (markedDeleted && pendingBytes == null) {
+      preview = null; // replaced by the pending-deletion notice below
+    } else if (pendingBytes != null) {
       preview = Image.memory(pendingBytes,
           height: 110, width: double.infinity, fit: BoxFit.contain);
       onPreviewTap = () =>
@@ -1188,7 +1215,39 @@ class _PhotoBox extends StatelessWidget {
             border: Border.all(color: Colors.grey.shade300),
           ),
           clipBehavior: Clip.antiAlias,
-          child: preview == null
+          child: markedDeleted && pendingBytes == null
+              ? Container(
+                  color: Colors.red.withValues(alpha: 0.06),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.delete_outline,
+                            size: 24, color: Colors.redAccent),
+                        const SizedBox(height: 2),
+                        const Text(
+                          'Deletes on Save',
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.redAccent),
+                        ),
+                        TextButton(
+                          onPressed: onUndoDelete,
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(0, 0),
+                            tapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: const Text('Undo',
+                              style: TextStyle(fontSize: 11)),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : preview == null
               ? InkWell(
                   onTap: onPick,
                   child: Center(
