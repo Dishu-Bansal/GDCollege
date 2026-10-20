@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 
 import '../firebase_options.dart';
 import '../providers.dart';
@@ -129,67 +130,7 @@ class AccessService {
           .snapshots()
           .asyncMap((doc) async {
         if (!doc.exists) {
-          // First login: inherit flags from a pre-provisioned doc for this
-          // email (created by the admin's one-time helper) when one exists.
-          // Otherwise the account starts fully locked down — the admin
-          // grants modules from Access Control (fail closed: an
-          // unprovisioned login must never see every screen).
-          var students = false;
-          var studentDocs = false;
-          var staff = false;
-          var stock = false;
-          var bills = false;
-          var visitors = false;
-          var leads = false;
-          String? seedDocId;
-          final seed = await _db
-              .collection(_collection)
-              .where('email', isEqualTo: email)
-              .limit(1)
-              .get();
-          if (seed.docs.isNotEmpty) {
-            final s = seed.docs.first.data();
-            students = s['canAccessStudents'] as bool? ?? students;
-            studentDocs =
-                s['canAccessStudentDocs'] as bool? ?? studentDocs;
-            staff = s['canAccessStaff'] as bool? ?? staff;
-            stock = s['canAccessStock'] as bool? ?? stock;
-            bills = s['canAccessBills'] as bool? ?? bills;
-            visitors = s['canAccessVisitors'] as bool? ?? visitors;
-            leads = s['canAccessLeads'] as bool? ?? leads;
-            seedDocId = seed.docs.first.id;
-          }
-          final now = DateTime.now().toIso8601String();
-          await _db.collection(_collection).doc(user.uid).set({
-            'email': email,
-            'canAccessStudents': students,
-            'canAccessStudentDocs': studentDocs,
-            'canAccessStaff': staff,
-            'canAccessStock': stock,
-            'canAccessBills': bills,
-            'canAccessVisitors': visitors,
-            'canAccessLeads': leads,
-            'createdAt': now,
-            'updatedAt': now,
-            'updatedBy': email,
-          });
-          // The uid doc is now the source of truth; drop the consumed
-          // pre-provisioned doc so each account appears once.
-          if (seedDocId != null && seedDocId != user.uid) {
-            await _db.collection(_collection).doc(seedDocId).delete();
-          }
-          return AppSession(
-            uid: user.uid,
-            email: email,
-            isAdmin: false,
-            canAccessStudents: students,
-            canAccessStudentDocs: studentDocs,
-            canAccessStaff: staff,
-            canAccessStock: stock,
-            canAccessBills: bills,
-            canAccessVisitors: visitors,
-            canAccessLeads: leads,
-          );
+          return _provisionFirstLogin(user.uid, email);
         }
         final d = doc.data()!;
         return AppSession(
@@ -207,6 +148,97 @@ class AccessService {
         );
       });
     });
+  }
+
+  /// First login for an account with no `users/{uid}` doc yet: inherit
+  /// flags from a pre-provisioned doc for this email (created by the
+  /// admin's one-time helper) when one exists, otherwise start fully
+  /// locked down — the admin grants modules from Access Control (fail
+  /// closed: an unprovisioned login must never see every screen).
+  ///
+  /// This MUST never throw: a failure here (e.g. security rules denying
+  /// the email seed query or the create) used to kill the whole access
+  /// stream, stranding the new login with no session at all — which the
+  /// UI renders as every screen. Instead we fail closed (no modules) and
+  /// stay alive, so a later snapshot event (reconnect, admin grant)
+  /// retries provisioning. The error is printed for diagnosis.
+  Future<AppSession> _provisionFirstLogin(
+      String uid, String email) async {
+    try {
+      // First login: inherit flags from a pre-provisioned doc for this
+      // email (created by the admin's one-time helper) when one exists,
+      // otherwise stay locked down.
+      var students = false;
+      var studentDocs = false;
+      var staff = false;
+      var stock = false;
+      var bills = false;
+      var visitors = false;
+      var leads = false;
+      String? seedDocId;
+      final seed = await _db
+          .collection(_collection)
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get();
+      if (seed.docs.isNotEmpty) {
+        final s = seed.docs.first.data();
+        students = s['canAccessStudents'] as bool? ?? students;
+        studentDocs =
+            s['canAccessStudentDocs'] as bool? ?? studentDocs;
+        staff = s['canAccessStaff'] as bool? ?? staff;
+        stock = s['canAccessStock'] as bool? ?? stock;
+        bills = s['canAccessBills'] as bool? ?? bills;
+        visitors = s['canAccessVisitors'] as bool? ?? visitors;
+        leads = s['canAccessLeads'] as bool? ?? leads;
+        seedDocId = seed.docs.first.id;
+      }
+      final now = DateTime.now().toIso8601String();
+      await _db.collection(_collection).doc(uid).set({
+        'email': email,
+        'canAccessStudents': students,
+        'canAccessStudentDocs': studentDocs,
+        'canAccessStaff': staff,
+        'canAccessStock': stock,
+        'canAccessBills': bills,
+        'canAccessVisitors': visitors,
+        'canAccessLeads': leads,
+        'createdAt': now,
+        'updatedAt': now,
+        'updatedBy': email,
+      });
+      // The uid doc is now the source of truth; drop the consumed
+      // pre-provisioned doc so each account appears once.
+      if (seedDocId != null && seedDocId != uid) {
+        await _db.collection(_collection).doc(seedDocId).delete();
+      }
+      return AppSession(
+        uid: uid,
+        email: email,
+        isAdmin: false,
+        canAccessStudents: students,
+        canAccessStudentDocs: studentDocs,
+        canAccessStaff: staff,
+        canAccessStock: stock,
+        canAccessBills: bills,
+        canAccessVisitors: visitors,
+        canAccessLeads: leads,
+      );
+    } catch (e) {
+      debugPrint('Access provisioning failed for $email: $e');
+      return AppSession(
+        uid: uid,
+        email: email,
+        isAdmin: false,
+        canAccessStudents: false,
+        canAccessStudentDocs: false,
+        canAccessStaff: false,
+        canAccessStock: false,
+        canAccessBills: false,
+        canAccessVisitors: false,
+        canAccessLeads: false,
+      );
+    }
   }
 
   /// All accounts for the admin dropdown, ordered by email.
