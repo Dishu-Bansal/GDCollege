@@ -24,6 +24,7 @@ class _AccessManagementScreenState extends State<AccessManagementScreen> {
 
   String? _selectedUid;
   bool _students = true;
+  bool _studentDocs = true;
   bool _staff = true;
   bool _stock = true;
   bool _bills = true;
@@ -35,6 +36,7 @@ class _AccessManagementScreenState extends State<AccessManagementScreen> {
     setState(() {
       _selectedUid = user?.uid;
       _students = user?.canAccessStudents ?? true;
+      _studentDocs = user?.canAccessStudentDocs ?? true;
       _staff = user?.canAccessStaff ?? true;
       _stock = user?.canAccessStock ?? true;
       _bills = user?.canAccessBills ?? true;
@@ -51,6 +53,7 @@ class _AccessManagementScreenState extends State<AccessManagementScreen> {
       await _service.updatePermissions(
         uid: uid,
         students: _students,
+        studentDocs: _studentDocs,
         staff: _staff,
         stock: _stock,
         bills: _bills,
@@ -184,6 +187,9 @@ class _AccessManagementScreenState extends State<AccessManagementScreen> {
                     const SizedBox(height: 6),
                     _accessRow('Students', _students,
                         (v) => setState(() => _students = v)),
+                    const SizedBox(height: 12),
+                    _accessRow('DMC & Degrees', _studentDocs,
+                        (v) => setState(() => _studentDocs = v)),
                     const SizedBox(height: 12),
                     _accessRow('Staff', _staff,
                         (v) => setState(() => _staff = v)),

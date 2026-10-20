@@ -40,7 +40,7 @@ class _StudentDocsScreenState extends State<StudentDocsScreen>
   Widget build(BuildContext context) {
     return AccessGate(
       module: 'DMC & Degrees',
-      canAccess: (s) => s.canAccessStudents,
+      canAccess: (s) => s.canAccessStudentDocs,
       drawer: getSideDrawer(context),
       child: _content(),
     );

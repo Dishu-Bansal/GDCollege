@@ -610,7 +610,7 @@ const _moduleTargets = [
     icon: Icons.folder_shared_outlined,
     label: 'DMC & Degrees',
     color: Color(0xFF4E342E),
-    visible: _showStudents,
+    visible: _showStudentDocs,
     open: StudentDocsScreen.new,
   ),
   _ModuleTarget(
@@ -651,6 +651,7 @@ const _moduleTargets = [
 ];
 
 bool _showStudents(AppSession s) => s.canAccessStudents;
+bool _showStudentDocs(AppSession s) => s.canAccessStudentDocs;
 bool _showStaff(AppSession s) => s.canAccessStaff;
 bool _showStock(AppSession s) => s.canAccessStock;
 bool _showBills(AppSession s) => s.canAccessBills;
@@ -763,7 +764,7 @@ class _TileGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
+return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < 520) {
           return Column(
