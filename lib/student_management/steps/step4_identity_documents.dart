@@ -41,19 +41,19 @@ class _Step4IdentityDocumentsState extends State<Step4IdentityDocuments> {
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
               aadharRequired
-                  ? 'Aadhar Card is required for 2016+ admissions. '
-                      'PAN Card is required for every student. '
-                      'The other documents are optional.'
-                  : 'Aadhar is not applicable for pre-2016 admissions. '
-                      'PAN Card is required for every student. '
-                      'The other documents are optional.',
+                  ? 'Aadhar Card applies to 2016+ admissions; PAN Card applies '
+                      'to every student. Missing scans are not blocking — they '
+                      'are listed as missing-document warnings to fix later.'
+                  : 'Aadhar is not applicable for pre-2016 admissions; PAN Card '
+                      'applies to every student. Missing scans are not '
+                      'blocking — they are listed as missing-document warnings '
+                      'to fix later.',
               style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
             ),
           ),
 
           FilePicker(
             label: 'Aadhar Card',
-            isRequired: aadharRequired,
             filePath: widget.student.aadharData,
             filename: widget.student.aadharName,
             existingUrl: widget.student.aadharUrl,
@@ -73,7 +73,6 @@ class _Step4IdentityDocumentsState extends State<Step4IdentityDocuments> {
           ),
           FilePicker(
             label: 'PAN Card',
-            isRequired: true,
             filePath: widget.student.panData,
             filename: widget.student.panName,
             existingUrl: widget.student.panUrl,

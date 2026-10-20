@@ -60,18 +60,6 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
   Future<void> _goNext() async {
     final key = _formKeys[_currentStep - 1];
     if (key.currentState?.validate() ?? true) {
-      if (_currentStep == 4) {
-        final missing = _missingRequiredIdentityDocs();
-        if (missing.isNotEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Please upload: ${missing.join(', ')}'),
-              backgroundColor: Colors.red,
-            ),
-          );
-          return;
-        }
-      }
       if (_currentStep < _totalSteps) {
         setState(() => _currentStep++);
         _pageController.nextPage(
@@ -94,34 +82,7 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
     }
   }
 
-  /// Aadhar card is required for 2016+ admissions; PAN card for every
-  /// student. Returns the labels of required documents that are still
-  /// missing (newly picked bytes or an already-uploaded URL both count).
-  List<String> _missingRequiredIdentityDocs() {
-    final s = _student;
-    final year = s.yearOfAdmission;
-    final missing = <String>[];
-    final aadharNeeded = year != null && year >= 2016;
-    final hasAadhar =
-        s.aadharData != null || (s.aadharUrl != null && s.aadharUrl!.isNotEmpty);
-    final hasPan =
-        s.panData != null || (s.panUrl != null && s.panUrl!.isNotEmpty);
-    if (aadharNeeded && !hasAadhar) missing.add('Aadhar Card');
-    if (!hasPan) missing.add('PAN Card');
-    return missing;
-  }
-
   Future<void> _submitForm() async {
-    final missing = _missingRequiredIdentityDocs();
-    if (missing.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Please upload: ${missing.join(', ')}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
     setState(() {
       _isSubmitting = true;
       _uploadStatus = 'Preparing upload...';
@@ -416,9 +377,11 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
           '• Fields marked with * are required.\n'
           '• Upload photo in JPG or PNG format.\n'
           '• Certificates can be PDF, JPG or PNG.\n'
-          '• Aadhar number + card are required for 2016+ admissions.\n'
-          '• PAN number + card are required for every student.\n'
-          '• ABC (APAAR) ID is required for 2024+ admissions.\n'
+          '• Aadhar number is required for 2016+ admissions; the card scan '
+          'is optional and shows as a missing-document warning.\n'
+          '• PAN number is required for every student; the card scan is '
+          'optional and shows as a missing-document warning.\n'
+          '• ABC (APAAR) ID number is required for 2024+ admissions.\n'
           '• Family ID and Haryana Residence are for Haryana students.\n'
           '• Data is saved securely to Firebase.',
         ),
