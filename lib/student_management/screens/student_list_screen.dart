@@ -564,7 +564,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen>
   @override
   Widget build(BuildContext context) {
     return AccessGate(
-      module: 'Student Management',
+      module: 'Students',
       canAccess: (s) => s.canAccessStudents,
       drawer: getSideDrawer(context),
       child: _buildContent(context),

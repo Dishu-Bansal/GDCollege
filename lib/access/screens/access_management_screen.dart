@@ -104,14 +104,14 @@ class _AccessManagementScreenState extends State<AccessManagementScreen> {
         }
         if (!session.isAdmin) {
           return noAccessScaffold(
-              module: 'Access Management',
+              module: 'Access Control',
               drawer: getSideDrawer(context));
         }
         return Scaffold(
           backgroundColor: const Color(0xFFF4F6FA),
           drawer: getSideDrawer(context),
           appBar: AppBar(
-            title: const Text('Access Management',
+            title: const Text('Access Control',
                 style: TextStyle(fontWeight: FontWeight.w700)),
           ),
           floatingActionButton: FloatingActionButton.extended(
@@ -182,22 +182,22 @@ class _AccessManagementScreenState extends State<AccessManagementScreen> {
                         style: TextStyle(
                             fontWeight: FontWeight.w700, fontSize: 13)),
                     const SizedBox(height: 6),
-                    _accessRow('Student Management', _students,
+                    _accessRow('Students', _students,
                         (v) => setState(() => _students = v)),
                     const SizedBox(height: 12),
-                    _accessRow('Staff Management', _staff,
+                    _accessRow('Staff', _staff,
                         (v) => setState(() => _staff = v)),
                     const SizedBox(height: 12),
-                    _accessRow('Stock Management', _stock,
+                    _accessRow('Stock', _stock,
                         (v) => setState(() => _stock = v)),
                     const SizedBox(height: 12),
-                    _accessRow('Bill Management', _bills,
+                    _accessRow('Bills', _bills,
                         (v) => setState(() => _bills = v)),
                     const SizedBox(height: 12),
-                    _accessRow('Visitor Management', _visitors,
+                    _accessRow('Visitors', _visitors,
                         (v) => setState(() => _visitors = v)),
                     const SizedBox(height: 12),
-                    _accessRow('Lead Management', _leads,
+                    _accessRow('Leads', _leads,
                         (v) => setState(() => _leads = v)),
                     const SizedBox(height: 24),
                     SizedBox(

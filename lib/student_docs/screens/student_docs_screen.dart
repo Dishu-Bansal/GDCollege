@@ -39,7 +39,7 @@ class _StudentDocsScreenState extends State<StudentDocsScreen>
   @override
   Widget build(BuildContext context) {
     return AccessGate(
-      module: 'Student Management',
+      module: 'DMC & Degrees',
       canAccess: (s) => s.canAccessStudents,
       drawer: getSideDrawer(context),
       child: _content(),
@@ -52,7 +52,7 @@ class _StudentDocsScreenState extends State<StudentDocsScreen>
       backgroundColor: const Color(0xFFF4F6FA),
       drawer: getSideDrawer(context),
       appBar: AppBar(
-        title: const Text('Student Docs',
+        title: const Text('DMC & Degrees',
             style: TextStyle(fontWeight: FontWeight.w700)),
         bottom: TabBar(
           controller: _tabs,

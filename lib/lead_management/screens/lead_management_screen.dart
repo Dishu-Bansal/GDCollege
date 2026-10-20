@@ -52,7 +52,7 @@ class _LeadManagementScreenState extends ConsumerState<LeadManagementScreen>
   @override
   Widget build(BuildContext context) {
     return AccessGate(
-      module: 'Lead Management',
+      module: 'Leads',
       canAccess: (s) => s.canAccessLeads,
       drawer: getSideDrawer(context),
       child: _content(),
@@ -66,7 +66,7 @@ class _LeadManagementScreenState extends ConsumerState<LeadManagementScreen>
       backgroundColor: const Color(0xFFF4F6FA),
       drawer: getSideDrawer(context),
       appBar: AppBar(
-        title: const Text('Lead Management',
+        title: const Text('Leads',
             style: TextStyle(fontWeight: FontWeight.w700)),
         actions: [
           if (isNarrow && _isAdmin)
