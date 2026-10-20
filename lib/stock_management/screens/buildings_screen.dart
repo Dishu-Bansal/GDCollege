@@ -39,7 +39,7 @@ class _BuildingsScreenState extends ConsumerState<BuildingsScreen>
   @override
   Widget build(BuildContext context) {
     return AccessGate(
-      module: 'Stock Management',
+      module: 'Stock',
       canAccess: (s) => s.canAccessStock,
       drawer: getSideDrawer(context),
       child: _buildContent(context),
@@ -51,7 +51,7 @@ class _BuildingsScreenState extends ConsumerState<BuildingsScreen>
       backgroundColor: const Color(0xFFF4F6FA),
       drawer: getSideDrawer(context),
       appBar: AppBar(
-        title: const Text('Stock Management',
+        title: const Text('Stock',
             style: TextStyle(fontWeight: FontWeight.w700)),
         actions: [
           if (_tabs.index == 0)

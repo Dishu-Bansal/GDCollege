@@ -67,7 +67,7 @@ getSideDrawer(BuildContext context) {
             if (showStudents)
               ListTile(
                 leading: const Icon(Icons.people_alt),
-                title: const Text('Student Management'),
+                title: const Text('Students'),
                 onTap: () {
                   Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => StudentListScreen()));
                 },
@@ -75,7 +75,7 @@ getSideDrawer(BuildContext context) {
             if (showStudents)
               ListTile(
                 leading: const Icon(Icons.folder_shared_outlined),
-                title: const Text('Student Docs'),
+                title: const Text('DMC & Degrees'),
                 onTap: () {
                   Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const StudentDocsScreen()));
                 },
@@ -83,7 +83,7 @@ getSideDrawer(BuildContext context) {
             if (showStaff)
               ListTile(
                 leading: const Icon(Icons.badge),
-                title: const Text('Staff Management'),
+                title: const Text('Staff'),
                 onTap: () {
                   Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => StaffListScreen()));
                 },
@@ -91,7 +91,7 @@ getSideDrawer(BuildContext context) {
             if (showStock)
               ListTile(
                 leading: const Icon(Icons.inventory_2),
-                title: const Text('Stock Management'),
+                title: const Text('Stock'),
                 onTap: () {
                   Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => BuildingsScreen()));
                 },
@@ -99,7 +99,7 @@ getSideDrawer(BuildContext context) {
             if (showBills)
               ListTile(
                 leading: const Icon(Icons.receipt_long),
-                title: const Text('Bill Management'),
+                title: const Text('Bills'),
                 onTap: () {
                   Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const BillManagementScreen()));
                 },
@@ -107,7 +107,7 @@ getSideDrawer(BuildContext context) {
             if (showVisitors)
               ListTile(
                 leading: const Icon(Icons.how_to_reg),
-                title: const Text('Visitor Management'),
+                title: const Text('Visitors'),
                 onTap: () {
                   Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const VisitorManagementScreen()));
                 },
@@ -115,7 +115,7 @@ getSideDrawer(BuildContext context) {
             if (showLeads)
               ListTile(
                 leading: const Icon(Icons.person_search_outlined),
-                title: const Text('Lead Management'),
+                title: const Text('Leads'),
                 onTap: () {
                   Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LeadManagementScreen()));
                 },
@@ -123,7 +123,7 @@ getSideDrawer(BuildContext context) {
             if (isAdmin)
               ListTile(
                 leading: const Icon(Icons.access_time),
-                title: const Text('User Sessions'),
+                title: const Text('Login Sessions'),
                 onTap: () {
                   Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserSessionsScreen()));
                 },
@@ -131,7 +131,7 @@ getSideDrawer(BuildContext context) {
             if (isAdmin)
               ListTile(
                 leading: const Icon(Icons.admin_panel_settings_outlined),
-                title: const Text('Access Management'),
+                title: const Text('Access Control'),
                 onTap: () {
                   Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AccessManagementScreen()));
                 },
@@ -139,7 +139,7 @@ getSideDrawer(BuildContext context) {
             const Divider(),
             ListTile(
               leading: const Icon(Icons.help_outline),
-              title: const Text('Helper'),
+              title: const Text('Tools'),
               onTap: () {
                 Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => Helper()));
               },
