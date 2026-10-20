@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../models/student_model.dart';
 import '../../../repositories/student_repository.dart';
 import '../../../providers.dart';
@@ -6,9 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../widgets/step_indicator.dart';
 import '../../../student_management/steps/step1_personal_info.dart';
 import '../../../student_management/steps/step2_address.dart';
-import '../../../student_management/steps/step3_ids_certificates.dart';
-import '../../../student_management/steps/step4_education.dart';
-import '../../../student_management/steps/step5_course_fees.dart';
+import '../../../student_management/steps/step3_course_identity_fees.dart';
+import '../../../student_management/steps/step4_identity_documents.dart';
+import '../../../student_management/steps/step5_education_files.dart';
 
 class StudentFormScreen extends ConsumerStatefulWidget {
   @override
@@ -38,9 +38,9 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
   static const List<String> _stepTitles = [
     'Personal Info',
     'Address & Contact',
-    'IDs & Certificates',
-    'Education',
-    'Course & Fees',
+    'Course, IDs & Fees',
+    'Identity Documents',
+    'Education & Files',
   ];
 
   @override
@@ -246,11 +246,11 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
                         student: _student, formKey: _formKeys[0]),
                     Step2Address(
                         student: _student, formKey: _formKeys[1]),
-                    Step3IdsAndCertificates(
+                    Step3CourseIdentityFees(
                         student: _student, formKey: _formKeys[2]),
-                    Step4Education(
+                    Step4IdentityDocuments(
                         student: _student, formKey: _formKeys[3]),
-                    Step5CourseAndFees(
+                    Step5EducationFiles(
                         student: _student, formKey: _formKeys[4]),
                   ],
                 ),
@@ -377,7 +377,10 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
           '• Fields marked with * are required.\n'
           '• Upload photo in JPG or PNG format.\n'
           '• Certificates can be PDF, JPG or PNG.\n'
-          '• Family ID is optional for students from other states.\n'
+          '• Identity numbers and scans (Aadhar for 2016+ admissions, PAN '
+          'for every student, ABC ID for 2024+ admissions) are optional and '
+          'show up as missing-document warnings to fix later.\n'
+          '• Family ID and Haryana Residence are for Haryana students.\n'
           '• Data is saved securely to Firebase.',
         ),
         actions: [
