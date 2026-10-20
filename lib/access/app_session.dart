@@ -1,3 +1,5 @@
+import 'package:firebase_auth/firebase_auth.dart';
+
 /// Access state for the signed-in user, resolved live from the `users`
 /// Firestore collection (plus the hardcoded admin list).
 class AppSession {
@@ -61,4 +63,14 @@ class AppUser {
         canAccessVisitors: d['canAccessVisitors'] ?? true,
         canAccessLeads: d['canAccessLeads'] ?? false,
       );
+}
+
+/// Returns [session] only when it belongs to the account that is currently
+/// signed in. A cached session from a previous login on this device (or a
+/// stream that has not resolved yet) yields null, so callers fail closed
+/// instead of granting the previous account's access.
+AppSession? currentAppSession(AppSession? session) {
+  if (session == null) return null;
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  return (uid != null && session.uid == uid) ? session : null;
 }

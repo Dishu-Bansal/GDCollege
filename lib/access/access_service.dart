@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 
 import '../firebase_options.dart';
 import '../providers.dart';
@@ -95,93 +96,35 @@ class AccessService {
   static const bool _defaultLeads = false;
 
   /// Live access state for the signed-in user (null when signed out).
+  ///
+  /// Implemented as a *switching* stream: every auth-state change cancels the
+  /// previous account's `users/{uid}` listener before starting the next one.
+  ///
+  /// NOTE: this must not be built with `Stream.asyncExpand` — that operator
+  /// pauses the auth stream until the converted stream completes, and a
+  /// Firestore `snapshots()` listener never completes. Doing so kept the app
+  /// pinned to the first account signed in on a device, so after logout +
+  /// login the new account never resolved its own flags (the UI then failed
+  /// open because no session was available).
   Stream<AppSession?> watchAccess() {
-    return FirebaseAuth.instance.authStateChanges().asyncExpand((user) {
-      if (user == null) return Stream<AppSession?>.value(null);
-      final email = (user.email ?? '').trim().toLowerCase();
-      if (isAdminEmail(email)) {
-        return Stream<AppSession?>.value(AppSession(
-          uid: user.uid,
-          email: email,
-          isAdmin: true,
-          canAccessStudents: true,
-          canAccessStudentDocs: true,
-          canAccessStaff: true,
-          canAccessStock: true,
-          canAccessBills: true,
-          canAccessVisitors: true,
-          canAccessLeads: true,
-        ));
-      }
-      return _db
-          .collection(_collection)
-          .doc(user.uid)
-          .snapshots()
-          .asyncMap((doc) async {
-        if (!doc.exists) {
-          // First login: inherit flags from a pre-provisioned doc for this
-          // email (created by the admin's one-time helper) when one exists,
-          // otherwise fall back to the defaults.
-          var students = _defaultStudents;
-          var studentDocs = _defaultStudentDocs;
-          var staff = _defaultStaff;
-          var stock = _defaultStock;
-          var bills = _defaultBills;
-          var visitors = _defaultVisitors;
-          var leads = _defaultLeads;
-          String? seedDocId;
-          final seed = await _db
-              .collection(_collection)
-              .where('email', isEqualTo: email)
-              .limit(1)
-              .get();
-          if (seed.docs.isNotEmpty) {
-            final s = seed.docs.first.data();
-            students = s['canAccessStudents'] as bool? ?? students;
-            studentDocs =
-                s['canAccessStudentDocs'] as bool? ?? studentDocs;
-            staff = s['canAccessStaff'] as bool? ?? staff;
-            stock = s['canAccessStock'] as bool? ?? stock;
-            bills = s['canAccessBills'] as bool? ?? bills;
-            visitors = s['canAccessVisitors'] as bool? ?? visitors;
-            leads = s['canAccessLeads'] as bool? ?? leads;
-            seedDocId = seed.docs.first.id;
-          }
-          final now = DateTime.now().toIso8601String();
-          await _db.collection(_collection).doc(user.uid).set({
-            'email': email,
-            'canAccessStudents': students,
-            'canAccessStudentDocs': studentDocs,
-            'canAccessStaff': staff,
-            'canAccessStock': stock,
-            'canAccessBills': bills,
-            'canAccessVisitors': visitors,
-            'canAccessLeads': leads,
-            'createdAt': now,
-            'updatedAt': now,
-            'updatedBy': email,
-          });
-          // The uid doc is now the source of truth; drop the consumed
-          // pre-provisioned doc so each account appears once.
-          if (seedDocId != null && seedDocId != user.uid) {
-            await _db.collection(_collection).doc(seedDocId).delete();
-          }
-          return AppSession(
-            uid: user.uid,
-            email: email,
-            isAdmin: false,
-            canAccessStudents: students,
-            canAccessStudentDocs: studentDocs,
-            canAccessStaff: staff,
-            canAccessStock: stock,
-            canAccessBills: bills,
-            canAccessVisitors: visitors,
-            canAccessLeads: leads,
-          );
-        }
+    final controller = StreamController<AppSession?>();
+    StreamSubscription<User?>? authSub;
+    StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? accessSub;
+    var cancelled = false;
+
+    void emit(AppSession? session) {
+      if (!cancelled) controller.add(session);
+    }
+
+    Future<AppSession> resolve(
+      String uid,
+      String email,
+      DocumentSnapshot<Map<String, dynamic>> doc,
+    ) async {
+      if (doc.exists) {
         final d = doc.data()!;
         return AppSession(
-          uid: user.uid,
+          uid: uid,
           email: email,
           isAdmin: false,
           canAccessStudents: d['canAccessStudents'] ?? _defaultStudents,
@@ -193,9 +136,156 @@ class AccessService {
           canAccessVisitors: d['canAccessVisitors'] ?? _defaultVisitors,
           canAccessLeads: d['canAccessLeads'] ?? _defaultLeads,
         );
+      }
+
+      // First login: inherit flags from a pre-provisioned doc for this
+      // email (created by the admin's one-time helper) when one exists,
+      // otherwise fall back to the defaults, then write the uid doc.
+      var students = _defaultStudents;
+      var studentDocs = _defaultStudentDocs;
+      var staff = _defaultStaff;
+      var stock = _defaultStock;
+      var bills = _defaultBills;
+      var visitors = _defaultVisitors;
+      var leads = _defaultLeads;
+      String? seedDocId;
+      final seed = await _db
+          .collection(_collection)
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get();
+      if (seed.docs.isNotEmpty) {
+        final s = seed.docs.first.data();
+        students = s['canAccessStudents'] as bool? ?? students;
+        studentDocs = s['canAccessStudentDocs'] as bool? ?? studentDocs;
+        staff = s['canAccessStaff'] as bool? ?? staff;
+        stock = s['canAccessStock'] as bool? ?? stock;
+        bills = s['canAccessBills'] as bool? ?? bills;
+        visitors = s['canAccessVisitors'] as bool? ?? visitors;
+        leads = s['canAccessLeads'] as bool? ?? leads;
+        seedDocId = seed.docs.first.id;
+      }
+      final now = DateTime.now().toIso8601String();
+      await _db.collection(_collection).doc(uid).set({
+        'email': email,
+        'canAccessStudents': students,
+        'canAccessStudentDocs': studentDocs,
+        'canAccessStaff': staff,
+        'canAccessStock': stock,
+        'canAccessBills': bills,
+        'canAccessVisitors': visitors,
+        'canAccessLeads': leads,
+        'createdAt': now,
+        'updatedAt': now,
+        'updatedBy': email,
       });
-    });
+      // The uid doc is now the source of truth; drop the consumed
+      // pre-provisioned doc so each account appears once.
+      if (seedDocId != null && seedDocId != uid) {
+        await _db.collection(_collection).doc(seedDocId).delete();
+      }
+      return AppSession(
+        uid: uid,
+        email: email,
+        isAdmin: false,
+        canAccessStudents: students,
+        canAccessStudentDocs: studentDocs,
+        canAccessStaff: staff,
+        canAccessStock: stock,
+        canAccessBills: bills,
+        canAccessVisitors: visitors,
+        canAccessLeads: leads,
+      );
+    }
+
+    void switchTo(User? user) {
+      // Cancel the previous account's live listener before subscribing to
+      // the new one — a stale listener must never deliver another user's
+      // flags.
+      accessSub?.cancel();
+      accessSub = null;
+      if (user == null) {
+        emit(null);
+        return;
+      }
+      final uid = user.uid;
+      final email = (user.email ?? '').trim().toLowerCase();
+      if (isAdminEmail(email)) {
+        emit(_adminSession(uid, email));
+        return;
+      }
+      accessSub = _db
+          .collection(_collection)
+          .doc(uid)
+          .snapshots()
+          .listen((doc) async {
+        // Drop events from an account that has since been replaced.
+        if (FirebaseAuth.instance.currentUser?.uid != uid) return;
+        try {
+          final session = await resolve(uid, email, doc);
+          if (FirebaseAuth.instance.currentUser?.uid != uid) return;
+          emit(session);
+        } catch (e) {
+          debugPrint('Access resolution failed for $email: $e');
+          // Fail closed: a provisioning failure must never grant access.
+          if (FirebaseAuth.instance.currentUser?.uid == uid) {
+            emit(_lockedSession(uid, email));
+          }
+        }
+      }, onError: (Object e, StackTrace st) {
+        // Fail closed on a failed access read too.
+        debugPrint('Access read failed for $email: $e');
+        if (FirebaseAuth.instance.currentUser?.uid == uid) {
+          emit(_lockedSession(uid, email));
+        }
+      });
+    }
+
+    authSub = FirebaseAuth.instance.authStateChanges().listen(
+      switchTo,
+      onError: (Object e, StackTrace st) {
+        if (!cancelled) controller.addError(e, st);
+      },
+    );
+
+    controller.onCancel = () async {
+      cancelled = true;
+      final a = authSub;
+      final s = accessSub;
+      authSub = null;
+      accessSub = null;
+      await a?.cancel();
+      await s?.cancel();
+    };
+
+    return controller.stream;
   }
+
+  static AppSession _adminSession(String uid, String email) => AppSession(
+        uid: uid,
+        email: email,
+        isAdmin: true,
+        canAccessStudents: true,
+        canAccessStudentDocs: true,
+        canAccessStaff: true,
+        canAccessStock: true,
+        canAccessBills: true,
+        canAccessVisitors: true,
+        canAccessLeads: true,
+      );
+
+  static AppSession _lockedSession(String uid, String email) => AppSession(
+        uid: uid,
+        email: email,
+        isAdmin: false,
+        canAccessStudents: false,
+        canAccessStudentDocs: false,
+        canAccessStaff: false,
+        canAccessStock: false,
+        canAccessBills: false,
+        canAccessVisitors: false,
+        canAccessLeads: false,
+      );
 
   /// All accounts for the admin dropdown, ordered by email.
   Stream<List<AppUser>> watchUsers() {

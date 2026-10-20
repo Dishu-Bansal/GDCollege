@@ -19,26 +19,28 @@ import 'Helper.dart';
 
 /// Side drawer with module entries gated by the signed-in user's live
 /// access flags. The Access Management entry is visible only to admins.
-/// While flags resolve, everything shows (avoids a flashing empty drawer).
+///
+/// Module entries are hidden until the access session for the *current*
+/// account resolves (fail closed) — a stale session from a previous login is
+/// ignored, so it can never leave the next account's drawer unrestricted.
 getSideDrawer(BuildContext context) {
   return Drawer(
     child: StreamBuilder<AppSession?>(
       stream: AccessService.watchAccessShared(),
       builder: (context, snap) {
-        final session = snap.data;
+        final session = currentAppSession(snap.data);
         // Synchronous admin check: the entry renders on the first frame on
         // every screen instead of waiting for the stream to resolve.
         final isAdmin = session?.isAdmin == true ||
             AccessService.isAdminEmail(
                 FirebaseAuth.instance.currentUser?.email);
-        final showStudents = session == null || session.canAccessStudents;
-        final showStudentDocs =
-            session == null || session.canAccessStudentDocs;
-        final showStaff = session == null || session.canAccessStaff;
-        final showStock = session == null || session.canAccessStock;
-        final showBills = session == null || session.canAccessBills;
-        final showVisitors = session == null || session.canAccessVisitors;
-        final showLeads = session == null || session.canAccessLeads;
+        final showStudents = session?.canAccessStudents ?? false;
+        final showStudentDocs = session?.canAccessStudentDocs ?? false;
+        final showStaff = session?.canAccessStaff ?? false;
+        final showStock = session?.canAccessStock ?? false;
+        final showBills = session?.canAccessBills ?? false;
+        final showVisitors = session?.canAccessVisitors ?? false;
+        final showLeads = session?.canAccessLeads ?? false;
         return ListView(
           padding: EdgeInsets.zero,
           children: [
@@ -66,6 +68,15 @@ getSideDrawer(BuildContext context) {
                 Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
               },
             ),
+            if (session == null)
+              const ListTile(
+                leading: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                title: Text('Loading access…'),
+              ),
             if (showStudents)
               ListTile(
                 leading: const Icon(Icons.people_alt),
