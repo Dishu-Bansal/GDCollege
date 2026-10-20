@@ -7,6 +7,7 @@ import '../../../providers.dart';
 import '../models/student_doc_models.dart';
 import '../services/firebase_student_docs_service.dart';
 import '../widgets/camera_capture_dialog.dart';
+import '../widgets/photo_viewer.dart';
 
 /// Per-student DMC + Degree workspace: one card per slot of the student's
 /// course. Each card holds the document scan, per-subject marks (DMCs) and
@@ -355,16 +356,31 @@ class _SlotCardState extends State<_SlotCard> {
 
   Future<void> _deleteFile() async {
     final ok = await _confirm('Delete this document scan?');
-    if (!ok) return;
+    if (!ok || _record.fileUrl == null) return;
     setState(() => _saving = true);
     try {
-      await widget.service.deleteUrl(_record.fileUrl ?? '');
+      final oldUrl = _record.fileUrl;
+      final oldName = _record.fileName ?? 'scan';
+      await widget.service.deleteUrl(oldUrl ?? '');
       _record.fileUrl = null;
       _record.fileName = null;
-      await widget.service.saveRecord(
+      await widget.service.commitSlotSave(
         studentId: widget.studentId,
         slotKey: widget.slot.key,
         record: _record,
+        logs: [
+          _baseLog(
+            action: 'updated',
+            changes: [
+              DocChange(
+                field: 'Document scan',
+                oldValue: oldName,
+                newValue: 'deleted',
+                oldUrl: oldUrl,
+              ),
+            ],
+          ),
+        ],
       );
       widget.onSaved(_record);
       _snack('Document deleted.');
@@ -381,6 +397,9 @@ class _SlotCardState extends State<_SlotCard> {
     if (!ok) return;
     setState(() => _saving = true);
     try {
+      final oldUrl = aadhar
+          ? _record.collector.aadharUrl
+          : _record.collector.livePhotoUrl;
       if (aadhar) {
         await widget.service
             .deleteUrl(_record.collector.aadharUrl ?? '');
@@ -390,10 +409,23 @@ class _SlotCardState extends State<_SlotCard> {
             .deleteUrl(_record.collector.livePhotoUrl ?? '');
         _record.collector.livePhotoUrl = null;
       }
-      await widget.service.saveRecord(
+      await widget.service.commitSlotSave(
         studentId: widget.studentId,
         slotKey: widget.slot.key,
         record: _record,
+        logs: [
+          _baseLog(
+            action: 'updated',
+            changes: [
+              DocChange(
+                field: aadhar ? 'Aadhaar photo' : 'Live photo',
+                oldValue: 'photo',
+                newValue: 'deleted',
+                oldUrl: oldUrl,
+              ),
+            ],
+          ),
+        ],
       );
       widget.onSaved(_record);
       _snack('Photo deleted.');
@@ -434,26 +466,103 @@ class _SlotCardState extends State<_SlotCard> {
 
   Future<void> _save() async {
     final phone = _phoneCtrl.text.trim();
-    if (phone.isNotEmpty && !RegExp(r'^[0-9]{10}$').hasMatch(phone)) {
-      _snack('Collector phone must be 10 digits.', error: true);
-      return;
-    }
+    final name = _nameCtrl.text.trim();
     final aadhar = _aadharCtrl.text.trim();
-    if (aadhar.isNotEmpty &&
-        !RegExp(r'^[0-9]{12}$').hasMatch(aadhar)) {
-      _snack('Aadhaar number must be 12 digits.', error: true);
-      return;
+
+    // Post-save collector picture (pending picks count as present).
+    final postAadharUrl = _pendingAadhar != null
+        ? 'pending'
+        : (_record.collector.aadharUrl ?? '');
+    final postLiveUrl = _pendingLive != null
+        ? 'pending'
+        : (_record.collector.livePhotoUrl ?? '');
+    final willHaveFile = _record.hasFile || _pendingFile != null;
+
+    // Post-save subject rows.
+    final postSubjects = _subjectRows
+        .map((r) => SubjectMark(
+              subject: r.subjectCtrl.text.trim(),
+              obtained: _parseNum(r.obtainedCtrl.text),
+              max: _parseNum(r.maxCtrl.text),
+            ))
+        .toList();
+    final filledSubjects = postSubjects
+        .where((s) =>
+            s.subject.isNotEmpty &&
+            s.obtained != null &&
+            s.max != null)
+        .length;
+
+    // ── Gate 1: stocking needs the scan + (DMCs) at least 5 subjects ──
+    if (_pendingFile != null) {
+      if (widget.slot.isDmc && filledSubjects < 5) {
+        _snack(
+            'Stocking needs at least 5 fully-filled subjects '
+            '(have $filledSubjects).',
+            error: true);
+        return;
+      }
     }
-    setState(() => _saving = true);
-    // Pre-save state drives event logging: a scan arriving where there
-    // was none is 'stocked'; the collector identity completing is 'issued'.
-    final hadFile = _record.hasFile;
+
+    // ── Gate 2: collector entry needs all 5 identity fields ──
     final wasIssued =
         _record.issued(isDmc: widget.slot.isDmc);
+    final collectorTouched = name.isNotEmpty ||
+        phone.isNotEmpty ||
+        aadhar.isNotEmpty ||
+        postAadharUrl.isNotEmpty ||
+        postLiveUrl.isNotEmpty ||
+        wasIssued;
+    if (collectorTouched) {
+      final missing = <String>[];
+      if (name.isEmpty) missing.add('name');
+      if (phone.isEmpty) {
+        missing.add('phone');
+      } else if (!RegExp(r'^[0-9]{10}$').hasMatch(phone)) {
+        _snack('Collector phone must be 10 digits.', error: true);
+        return;
+      }
+      if (aadhar.isEmpty) {
+        missing.add('Aadhaar number');
+      } else if (!RegExp(r'^[0-9]{12}$').hasMatch(aadhar)) {
+        _snack('Aadhaar number must be 12 digits.', error: true);
+        return;
+      }
+      if (postAadharUrl.isEmpty) missing.add('Aadhaar photo');
+      if (postLiveUrl.isEmpty) missing.add('live photo');
+      if (missing.isNotEmpty) {
+        _snack(
+            'Collector incomplete — missing: ${missing.join(', ')}.',
+            error: true);
+        return;
+      }
+      // ── Gate 3: no issue before stock ──
+      if (!willHaveFile) {
+        _snack(
+            'Stock the document scan first — a document cannot be '
+            'issued before it is in stock.',
+            error: true);
+        return;
+      }
+    }
+
+    // Snapshot pre-save values for the old-vs-new diff.
+    final oldFileUrl = _record.fileUrl;
+    final oldFileName = _record.fileName ?? 'scan';
+    final oldSubjectsSummary = _subjectsSummary(_record.subjects);
+    final oldCollector = CollectorInfo(
+      name: _record.collector.name,
+      phone: _record.collector.phone,
+      aadharNumber: _record.collector.aadharNumber,
+      aadharUrl: _record.collector.aadharUrl,
+      livePhotoUrl: _record.collector.livePhotoUrl,
+    );
+
+    setState(() => _saving = true);
     try {
       // Upload anything newly picked, replacing previous files.
       if (_pendingFile != null) {
-        await widget.service.deleteUrl(_record.fileUrl ?? '');
+        await widget.service.deleteUrl(oldFileUrl ?? '');
         _record.fileUrl = await widget.service.uploadSlotFile(
           studentId: widget.studentId,
           slotKey: widget.slot.key,
@@ -489,47 +598,114 @@ class _SlotCardState extends State<_SlotCard> {
         );
         _pendingLive = null;
       }
-      _record.collector.name = _nameCtrl.text.trim();
+      _record.collector.name = name;
       _record.collector.phone = phone;
       _record.collector.aadharNumber = aadhar;
-      _record.subjects = _subjectRows
-          .map((r) => SubjectMark(
-                subject: r.subjectCtrl.text.trim(),
-                obtained: _parseNum(r.obtainedCtrl.text),
-                max: _parseNum(r.maxCtrl.text),
-              ))
-          .toList();
-      await widget.service.saveRecord(
+      _record.subjects = postSubjects;
+
+      // Transitions (recomputed post-save).
+      final stockedNow =
+          (oldFileUrl == null || oldFileUrl.isEmpty) &&
+              _record.hasFile;
+      final nowIssued =
+          _record.issued(isDmc: widget.slot.isDmc);
+
+      final logs = <DocLogEntry>[];
+      if (stockedNow) {
+        logs.add(_baseLog(
+          action: 'stocked',
+          at: _record.fileUploadedAt,
+        ));
+      }
+      if (!wasIssued && nowIssued) {
+        logs.add(_baseLog(
+          action: 'issued',
+          at: _record.collectedAt,
+          collectorName: _record.collector.name,
+          collectorAadhar: _record.collector.aadharNumber,
+        ));
+      }
+
+      // Field diffs beyond the transitions themselves.
+      final diffs = <DocChange>[];
+      if (!stockedNow && oldFileUrl != _record.fileUrl) {
+        diffs.add(DocChange(
+          field: 'Document scan',
+          oldValue: oldFileName,
+          newValue: _record.fileName ?? 'scan',
+          oldUrl: oldFileUrl,
+          newUrl: _record.fileUrl,
+        ));
+      }
+      final newSubjectsSummary = _subjectsSummary(_record.subjects);
+      // First-time entries ride on their stocked/issued rows; only
+      // genuine later edits become 'updated' diffs.
+      final subjectsFirstEntry =
+          stockedNow && oldSubjectsSummary == '—';
+      if (!subjectsFirstEntry &&
+          oldSubjectsSummary != newSubjectsSummary) {
+        diffs.add(DocChange(
+          field: 'Subject marks',
+          oldValue: oldSubjectsSummary,
+          newValue: newSubjectsSummary,
+        ));
+      }
+      void diffText(String field, String oldV, String newV) {
+        if (oldV != newV) {
+          diffs.add(DocChange(
+              field: field,
+              oldValue: oldV.isEmpty ? '—' : oldV,
+              newValue: newV.isEmpty ? '—' : newV));
+        }
+      }
+
+      // Collector text diffs are covered by the 'issued' row when the
+      // completion just happened; otherwise they are real updates.
+      final justIssued = wasIssued == false && nowIssued == true;
+      if (!justIssued) {
+        diffText('Collector name', oldCollector.name, name);
+        diffText('Collector phone', oldCollector.phone, phone);
+        diffText('Collector Aadhaar no.', oldCollector.aadharNumber,
+            aadhar);
+      }
+      // Photo first-entries ride on the 'issued' row; replacements log.
+      if (!(justIssued && oldCollector.aadharUrl == null) &&
+          oldCollector.aadharUrl != _record.collector.aadharUrl) {
+        diffs.add(DocChange(
+          field: 'Aadhaar photo',
+          oldValue: oldCollector.aadharUrl == null ? '—' : 'photo',
+          newValue: _record.collector.aadharUrl == null
+              ? '—'
+              : 'photo',
+          oldUrl: oldCollector.aadharUrl,
+          newUrl: _record.collector.aadharUrl,
+        ));
+      }
+      if (!(justIssued && oldCollector.livePhotoUrl == null) &&
+          oldCollector.livePhotoUrl !=
+              _record.collector.livePhotoUrl) {
+        diffs.add(DocChange(
+          field: 'Live photo',
+          oldValue:
+              oldCollector.livePhotoUrl == null ? '—' : 'photo',
+          newValue: _record.collector.livePhotoUrl == null
+              ? '—'
+              : 'photo',
+          oldUrl: oldCollector.livePhotoUrl,
+          newUrl: _record.collector.livePhotoUrl,
+        ));
+      }
+      if (diffs.isNotEmpty) {
+        logs.add(_baseLog(action: 'updated', changes: diffs));
+      }
+
+      // ONE atomic commit: record + all its logs together.
+      await widget.service.commitSlotSave(
         studentId: widget.studentId,
         slotKey: widget.slot.key,
         record: _record,
+        logs: logs,
       );
-      final nowIssued =
-          _record.issued(isDmc: widget.slot.isDmc);
-      if (!hadFile && _record.hasFile) {
-        await widget.service.writeDocLog(
-          studentId: widget.studentId,
-          studentName: widget.studentName,
-          course: widget.course,
-          slotKey: widget.slot.key,
-          slotLabel: widget.slot.label,
-          isDmc: widget.slot.isDmc,
-          action: 'stocked',
-          at: _record.fileUploadedAt,
-        );
-      }
-      if (!wasIssued && nowIssued) {
-        await widget.service.writeDocLog(
-          studentId: widget.studentId,
-          studentName: widget.studentName,
-          course: widget.course,
-          slotKey: widget.slot.key,
-          slotLabel: widget.slot.label,
-          isDmc: widget.slot.isDmc,
-          action: 'issued',
-          at: _record.collectedAt,
-        );
-      }
       widget.onSaved(_record);
       _snack('${widget.slot.label} saved.');
     } catch (e) {
@@ -537,6 +713,47 @@ class _SlotCardState extends State<_SlotCard> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  /// Shared log envelope for this slot card.
+  DocLogEntry _baseLog({
+    required String action,
+    DateTime? at,
+    String collectorName = '',
+    String collectorAadhar = '',
+    List<DocChange> changes = const [],
+  }) {
+    return widget.service.buildLog(
+      studentId: widget.studentId,
+      studentName: widget.studentName,
+      course: widget.course,
+      slotKey: widget.slot.key,
+      slotLabel: widget.slot.label,
+      isDmc: widget.slot.isDmc,
+      action: action,
+      at: at,
+      collectorName: collectorName,
+      collectorAadhar: collectorAadhar,
+      changes: changes,
+    );
+  }
+
+  String _subjectsSummary(List<SubjectMark> subjects) {
+    if (subjects.isEmpty) return '—';
+    final filled = subjects
+        .where((s) =>
+            s.subject.isNotEmpty &&
+            s.obtained != null &&
+            s.max != null)
+        .toList();
+    final obt =
+        filled.fold(0.0, (s, x) => s + (x.obtained ?? 0));
+    final max = filled.fold(0.0, (s, x) => s + (x.max ?? 0));
+    final pct = max > 0
+        ? ' (${(obt / max * 100).toStringAsFixed(1)}%)'
+        : '';
+    return '${filled.length}/${subjects.length} subjects • '
+        '${_fmtNum(obt)}/${_fmtNum(max)}$pct';
   }
 
   @override
@@ -907,7 +1124,7 @@ class _SubjectRow {
 }
 
 /// Thumbnail box for Aadhaar / live photos: pending bytes, saved URL, or an
-/// action button to pick/capture.
+/// action button to pick/capture. Tapping a photo opens it full-size.
 class _PhotoBox extends StatelessWidget {
   final String title;
   final Uint8List? bytes;
@@ -930,20 +1147,29 @@ class _PhotoBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Widget? preview;
+    VoidCallback? onPreviewTap;
     final pendingBytes = bytes;
+    final savedUrl = url;
     if (pendingBytes != null) {
       preview = Image.memory(pendingBytes,
-          height: 110, width: double.infinity, fit: BoxFit.cover);
-    } else if (url != null && url!.isNotEmpty) {
-      preview = url!.toLowerCase().endsWith('.pdf')
-          ? const SizedBox(
-              height: 110,
-              child: Center(
-                  child: Icon(Icons.picture_as_pdf_outlined,
-                      size: 36, color: Colors.redAccent)),
-            )
-          : Image.network(url!,
-              height: 110, width: double.infinity, fit: BoxFit.cover);
+          height: 110, width: double.infinity, fit: BoxFit.contain);
+      onPreviewTap = () =>
+          showPhotoViewer(context, bytes: pendingBytes, title: title);
+    } else if (savedUrl != null && savedUrl.isNotEmpty) {
+      if (savedUrl.toLowerCase().endsWith('.pdf')) {
+        preview = const SizedBox(
+          height: 110,
+          child: Center(
+              child: Icon(Icons.picture_as_pdf_outlined,
+                  size: 36, color: Colors.redAccent)),
+        );
+        onPreviewTap = () => launchUrl(Uri.parse(savedUrl));
+      } else {
+        preview = Image.network(savedUrl,
+            height: 110, width: double.infinity, fit: BoxFit.contain);
+        onPreviewTap = () =>
+            showPhotoViewer(context, url: savedUrl, title: title);
+      }
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -962,24 +1188,52 @@ class _PhotoBox extends StatelessWidget {
             border: Border.all(color: Colors.grey.shade300),
           ),
           clipBehavior: Clip.antiAlias,
-          child: preview ??
-              InkWell(
-                onTap: onPick,
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(actionIcon,
-                          size: 26, color: Colors.grey.shade500),
-                      const SizedBox(height: 4),
-                      Text(actionLabel,
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600)),
-                    ],
+          child: preview == null
+              ? InkWell(
+                  onTap: onPick,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(actionIcon,
+                            size: 26, color: Colors.grey.shade500),
+                        const SizedBox(height: 4),
+                        Text(actionLabel,
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600)),
+                      ],
+                    ),
                   ),
+                )
+              : Stack(
+                  children: [
+                    InkWell(
+                      onTap: onPreviewTap,
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 110,
+                        child: preview,
+                      ),
+                    ),
+                    Positioned(
+                      right: 2,
+                      bottom: 2,
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Icon(
+                          Icons.zoom_in,
+                          size: 14,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
         ),
         if (preview != null)
           Row(

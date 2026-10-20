@@ -4,6 +4,7 @@ import '../../../constants.dart';
 import '../../../widgets/drawer.dart';
 import '../models/student_doc_models.dart';
 import '../services/firebase_student_docs_service.dart';
+import '../widgets/photo_viewer.dart';
 import 'student_doc_detail_screen.dart';
 
 /// Student Docs: batch-wise DMC + Degree tracking.
@@ -698,7 +699,14 @@ class _DocLogsTab extends StatelessWidget {
             final log = logs[i];
             final color = log.stocked
                 ? const Color(0xFF1565C0)
-                : const Color(0xFF2E7D32);
+                : log.issued
+                    ? const Color(0xFF2E7D32)
+                    : const Color(0xFFEF6C00);
+            final icon = log.stocked
+                ? Icons.inventory_2_outlined
+                : log.issued
+                    ? Icons.handshake_outlined
+                    : Icons.edit_outlined;
             return Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -709,20 +717,14 @@ class _DocLogsTab extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(
-                    log.stocked
-                        ? Icons.inventory_2_outlined
-                        : Icons.handshake_outlined,
-                    size: 18,
-                    color: color,
-                  ),
+                  Icon(icon, size: 18, color: color),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'DOC ${log.stocked ? "stocked" : "issued"} — ${log.studentName}',
+                          'DOC ${log.action} — ${log.studentName}',
                           style: const TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 13),
@@ -735,6 +737,93 @@ class _DocLogsTab extends StatelessWidget {
                               fontSize: 11,
                               color: Colors.grey.shade600),
                         ),
+                        if (log.issued &&
+                            (log.collectorName.isNotEmpty ||
+                                log.collectorAadhar.isNotEmpty)) ...[
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2E7D32)
+                                  .withValues(alpha: 0.07),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                if (log.collectorName.isNotEmpty)
+                                  Text(
+                                    'Collector: ${log.collectorName}',
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600),
+                                  ),
+                                if (log.collectorAadhar.isNotEmpty)
+                                  Text(
+                                    'Aadhaar: ${log.collectorAadhar}',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color:
+                                            Colors.grey.shade700),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        for (final change in log.changes) ...[
+                          const SizedBox(height: 4),
+                          if (change.isFileChange)
+                            Row(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    change.field,
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                                MiniThumb(
+                                    label: 'Old',
+                                    url: change.oldUrl),
+                                const SizedBox(width: 6),
+                                MiniThumb(
+                                    label: 'New',
+                                    url: change.newUrl),
+                              ],
+                            )
+                          else
+                            RichText(
+                              text: TextSpan(
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey.shade700),
+                                children: [
+                                  TextSpan(
+                                    text: '${change.field}: ',
+                                    style: const TextStyle(
+                                        fontWeight:
+                                            FontWeight.w600,
+                                        color: Colors.black87),
+                                  ),
+                                  TextSpan(
+                                      text: change.oldValue),
+                                  const TextSpan(text: '  →  '),
+                                  TextSpan(
+                                    text: change.newValue,
+                                    style: const TextStyle(
+                                        fontWeight:
+                                            FontWeight.w600,
+                                        color: Colors.black87),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
                         const SizedBox(height: 4),
                         Text(
                           '${_fmtDateTime(log.timestamp)}${log.changedBy.isNotEmpty ? '  •  by ${log.changedBy}' : ''}',

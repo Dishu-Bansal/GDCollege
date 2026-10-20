@@ -20,7 +20,7 @@ class FirebaseStudentDocsService {
   String get _by => UserSession().currentUser?.email ?? '';
 
   // ── Event logs ───────────────────────────────────────────────────────────
-  /// Most recent stock/issue events, newest first (the Logs tab).
+  /// Most recent stock/issue/update events, newest first (the Logs tab).
   Stream<List<DocLogEntry>> watchRecentDocLogs({int limit = 300}) {
     return _db
         .collection('docLogs')
@@ -30,10 +30,11 @@ class FirebaseStudentDocsService {
         .map((snap) => snap.docs
             .map((d) => DocLogEntry.fromMap(d.data()))
             .toList());
-  }  /// One row per stock/issue event in the top-level `docLogs` collection.
-  /// Powers the date-wise "Docs Stocked / Issued" daily-activity stats
-  /// (range query on `timestamp`, no composite index needed).
-  Future<void> writeDocLog({
+  }
+
+  /// Builds a log entry stamped with the current user (or [changedByOverride]
+  /// for backfilled rows, where the original actor is stored on the record).
+  DocLogEntry buildLog({
     required String studentId,
     required String studentName,
     required String course,
@@ -42,18 +43,51 @@ class FirebaseStudentDocsService {
     required bool isDmc,
     required String action,
     DateTime? at,
+    String collectorName = '',
+    String collectorAadhar = '',
+    List<DocChange> changes = const [],
+    String? changedByOverride,
+  }) {
+    return DocLogEntry(
+      studentId: studentId,
+      studentName: studentName,
+      course: course,
+      slotKey: slotKey,
+      slotLabel: slotLabel,
+      isDmc: isDmc,
+      action: action,
+      timestamp: at ?? DateTime.now(),
+      changedBy: changedByOverride ?? _by,
+      collectorName: collectorName,
+      collectorAadhar: collectorAadhar,
+      changes: changes,
+    );
+  }
+
+  /// Atomically persists one slot record together with its log rows: the
+  /// student-doc update and every `docLogs` set go in a SINGLE batch, so a
+  /// log can never exist without its change (or vice versa).
+  Future<void> commitSlotSave({
+    required String studentId,
+    required String slotKey,
+    required StudentDocRecord record,
+    List<DocLogEntry> logs = const [],
   }) async {
-    await _db.collection('docLogs').add({
-      'studentId': studentId,
-      'studentName': studentName,
-      'course': course,
-      'slotKey': slotKey,
-      'slotLabel': slotLabel,
-      'isDmc': isDmc,
-      'action': action, // 'stocked' | 'issued'
-      'timestamp': (at ?? DateTime.now()).toIso8601String(),
-      'changedBy': _by,
+    record.updatedBy = _by;
+    if (record.hasFile &&
+        record.collector.name.trim().isNotEmpty &&
+        record.collectedAt == null) {
+      record.collectedAt = DateTime.now();
+    }
+    final batch = _db.batch();
+    batch.update(_db.collection(_students).doc(studentId), {
+      'docRecords.$slotKey': record.toMap(),
+      'updatedAt': DateTime.now().toIso8601String(),
     });
+    for (final log in logs) {
+      batch.set(_db.collection('docLogs').doc(), log.toMap());
+    }
+    await batch.commit();
   }
 
   /// One-time backfill: synthesizes `docLogs` rows for records that predate
@@ -94,32 +128,51 @@ class FirebaseStudentDocsService {
             (fallback != null ? DateTime.tryParse(fallback) : null) ??
             DateTime.now();
 
-        Future<void> addRow(String action, DateTime at) async {
-          final id = '${doc.id}_${entry.key}_$action';
+        Future<void> addRow(DocLogEntry entry, String action) async {
+          final id = '${doc.id}_${entry.slotKey}_$action';
           final existing = await _db
               .collection('docLogs')
               .doc(id)
               .get();
           if (existing.exists) return;
-          batch.set(_db.collection('docLogs').doc(id), {
-            'studentId': doc.id,
-            'studentName': (data['name'] ?? '').toString(),
-            'course': course,
-            'slotKey': entry.key,
-            'slotLabel': label,
-            'isDmc': isDmc,
-            'action': action,
-            'timestamp': at.toIso8601String(),
-            'changedBy': (rec.updatedBy).toString(),
-          });
+          batch.set(
+              _db.collection('docLogs').doc(id), entry.toMap());
           pending++;
           written++;
           if (pending == 450) await flush();
         }
 
-        await addRow('stocked', stockedAt);
+        await addRow(
+          buildLog(
+            studentId: doc.id,
+            studentName: (data['name'] ?? '').toString(),
+            course: course,
+            slotKey: entry.key,
+            slotLabel: label,
+            isDmc: isDmc,
+            action: 'stocked',
+            at: stockedAt,
+            changedByOverride: (rec.updatedBy).toString(),
+          ),
+          'stocked',
+        );
         if (rec.complete(isDmc: isDmc)) {
-          await addRow('issued', rec.collectedAt ?? stockedAt);
+          await addRow(
+            buildLog(
+              studentId: doc.id,
+              studentName: (data['name'] ?? '').toString(),
+              course: course,
+              slotKey: entry.key,
+              slotLabel: label,
+              isDmc: isDmc,
+              action: 'issued',
+              at: rec.collectedAt ?? stockedAt,
+              collectorName: rec.collector.name,
+              collectorAadhar: rec.collector.aadharNumber,
+              changedByOverride: (rec.updatedBy).toString(),
+            ),
+            'issued',
+          );
         }
       }
     }
@@ -169,24 +222,18 @@ class FirebaseStudentDocsService {
   }
 
   // ── Record writes ────────────────────────────────────────────────────────
-  /// Merge-writes one slot record. Old students simply gain the
-  /// `docRecords.{slotKey}` map — nothing else is touched.
+  /// Merge-writes one slot record with no logs. Prefer [commitSlotSave]
+  /// whenever the change has log rows — it commits record + logs atomically.
   Future<void> saveRecord({
     required String studentId,
     required String slotKey,
     required StudentDocRecord record,
-  }) async {
-    record.updatedBy = _by;
-    if (record.hasFile &&
-        record.collector.name.trim().isNotEmpty &&
-        record.collectedAt == null) {
-      record.collectedAt = DateTime.now();
-    }
-    await _db.collection(_students).doc(studentId).update({
-      'docRecords.$slotKey': record.toMap(),
-      'updatedAt': DateTime.now().toIso8601String(),
-    });
-  }
+  }) =>
+      commitSlotSave(
+        studentId: studentId,
+        slotKey: slotKey,
+        record: record,
+      );
 
   // ── File uploads ─────────────────────────────────────────────────────────
   Future<String> _uploadBytes({

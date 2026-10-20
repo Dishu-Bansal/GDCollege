@@ -280,31 +280,86 @@ class DocBatchEntry {
   }
 }
 
-/// One stock/issue event from the top-level `docLogs` collection.
+/// One field-level change inside an 'updated' log row. Text changes carry
+/// old/new values; file and photo changes carry old/new URLs (rendered as
+/// side-by-side previews in the Logs tab).
+class DocChange {
+  final String field;
+  final String oldValue;
+  final String newValue;
+  final String? oldUrl;
+  final String? newUrl;
+
+  const DocChange({
+    required this.field,
+    this.oldValue = '',
+    this.newValue = '',
+    this.oldUrl,
+    this.newUrl,
+  });
+
+  bool get isFileChange =>
+      (oldUrl ?? '').isNotEmpty || (newUrl ?? '').isNotEmpty;
+
+  factory DocChange.fromMap(Map<String, dynamic> m) => DocChange(
+        field: (m['field'] ?? '').toString(),
+        oldValue: (m['oldValue'] ?? '').toString(),
+        newValue: (m['newValue'] ?? '').toString(),
+        oldUrl: m['oldUrl'] as String?,
+        newUrl: m['newUrl'] as String?,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'field': field,
+        'oldValue': oldValue,
+        'newValue': newValue,
+        'oldUrl': oldUrl,
+        'newUrl': newUrl,
+      };
+}
+
+/// One stock/issue/update event from the top-level `docLogs` collection.
 class DocLogEntry {
+  final String studentId;
   final String studentName;
   final String course;
+  final String slotKey;
   final String slotLabel;
   final bool isDmc;
-  final String action; // 'stocked' | 'issued'
+  final String action; // 'stocked' | 'issued' | 'updated'
   final DateTime timestamp;
   final String changedBy;
 
+  /// Collector identity snapshot (populated on 'issued' rows).
+  final String collectorName;
+  final String collectorAadhar;
+
+  /// Field diffs (populated on 'updated' rows).
+  final List<DocChange> changes;
+
   const DocLogEntry({
+    required this.studentId,
     required this.studentName,
     required this.course,
+    required this.slotKey,
     required this.slotLabel,
     required this.isDmc,
     required this.action,
     required this.timestamp,
     required this.changedBy,
+    this.collectorName = '',
+    this.collectorAadhar = '',
+    this.changes = const [],
   });
 
   bool get stocked => action == 'stocked';
+  bool get issued => action == 'issued';
 
   factory DocLogEntry.fromMap(Map<String, dynamic> m) => DocLogEntry(
+        studentId: (m['studentId'] ?? '').toString(),
         studentName: (m['studentName'] ?? '').toString(),
         course: (m['course'] ?? '').toString(),
+        slotKey: (m['slotKey'] ?? '').toString(),
         slotLabel: (m['slotLabel'] ?? '').toString(),
         isDmc: m['isDmc'] ?? true,
         action: (m['action'] ?? '').toString(),
@@ -312,5 +367,26 @@ class DocLogEntry {
             ? DateTime.tryParse(m['timestamp']) ?? DateTime.now()
             : DateTime.now(),
         changedBy: (m['changedBy'] ?? '').toString(),
+        collectorName: (m['collectorName'] ?? '').toString(),
+        collectorAadhar: (m['collectorAadhar'] ?? '').toString(),
+        changes: (m['changes'] as List? ?? [])
+            .map((e) =>
+                DocChange.fromMap((e as Map).cast<String, dynamic>()))
+            .toList(),
       );
+
+  Map<String, dynamic> toMap() => {
+        'studentId': studentId,
+        'studentName': studentName,
+        'course': course,
+        'slotKey': slotKey,
+        'slotLabel': slotLabel,
+        'isDmc': isDmc,
+        'action': action,
+        'timestamp': timestamp.toIso8601String(),
+        'changedBy': changedBy,
+        'collectorName': collectorName,
+        'collectorAadhar': collectorAadhar,
+        'changes': changes.map((c) => c.toMap()).toList(),
+      };
 }
