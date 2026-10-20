@@ -93,19 +93,17 @@ class _AccessManagementScreenState extends State<AccessManagementScreen> {
     return StreamBuilder<AppSession?>(
       stream: _sessionStream,
       builder: (context, sessionSnap) {
-        final session = sessionSnap.data;
-        // Still resolving the first event: show a loader. A resolved null
-        // session means signed out, so render nothing instead of spinning
-        // forever.
+        // Ignore a session that belongs to another (previous) account, so a
+        // stale admin session can never unlock this screen for the next login.
+        final session = currentAppSession(sessionSnap.data);
+        // Still resolving: show a loader instead of the editor.
         if (sessionSnap.connectionState == ConnectionState.waiting &&
-            !sessionSnap.hasData) {
+            session == null &&
+            !sessionSnap.hasError) {
           return const Scaffold(
               body: Center(child: CircularProgressIndicator()));
         }
-        if (session == null) {
-          return const Scaffold(body: SizedBox.shrink());
-        }
-        if (!session.isAdmin) {
+        if (session == null || !session.isAdmin) {
           return noAccessScaffold(
               module: 'Access Control',
               drawer: getSideDrawer(context));

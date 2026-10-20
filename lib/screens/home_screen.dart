@@ -685,11 +685,35 @@ class _ModuleTiles extends StatelessWidget {
     return StreamBuilder<AppSession?>(
       stream: AccessService.watchAccessShared(),
       builder: (context, snap) {
-        final session = snap.data;
-        final tiles = _moduleTargets
-            .where((t) => session == null || t.visible(session))
-            .toList();
-        if (session != null && tiles.isEmpty) {
+        // Ignore a session that belongs to another (previous) account.
+        final session = currentAppSession(snap.data);
+        if (session == null) {
+          final loading =
+              snap.connectionState == ConnectionState.waiting &&
+                  !snap.hasError;
+          if (loading) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            );
+          }
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Text(
+              'Access could not be resolved.\nPlease reopen the app or contact the admin.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+            ),
+          );
+        }
+        final tiles = _moduleTargets.where((t) => t.visible(session)).toList();
+        if (tiles.isEmpty) {
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
             child: Text(
@@ -721,7 +745,9 @@ class _AdminTiles extends StatelessWidget {
     return StreamBuilder<AppSession?>(
       stream: AccessService.watchAccessShared(),
       builder: (context, snap) {
-        final session = snap.data;
+        // Ignore a session that belongs to another (previous) account; the
+        // fresh email check still lets the hardcoded admin through.
+        final session = currentAppSession(snap.data);
         final isAdmin = session?.isAdmin == true ||
             AccessService.isAdminEmail(
                 FirebaseAuth.instance.currentUser?.email);
