@@ -19,14 +19,18 @@ class FirebaseStaffRepository implements StaffRepository {
   CollectionReference _staffLogs(String staffId) =>
       _firestore.collection('staff').doc(staffId).collection('staffLogs');
 
-  Future<void> _writeLog(String staffId, String staffName, String action, String detail) async {
-    await _staffLogs(staffId).add(AuditLog(
+  /// Payload for one audit-log row. Use with [WriteBatch.set] so the change
+  /// and its log commit together (or not at all). Migrations that write a
+  /// lone log row can still `add()` this payload directly.
+  Map<String, dynamic> _logData(
+      String staffId, String staffName, String action, String detail) {
+    return AuditLog(
       personId: staffId,
       personName: staffName,
       action: action,
       changedBy: UserSession().currentUser?.email ?? '',
       detail: detail,
-    ).toFirestore());
+    ).toFirestore();
   }
 
   // ─── CREATE ──────────────────────────────────────────────────────────────
@@ -36,10 +40,15 @@ class FirebaseStaffRepository implements StaffRepository {
     final now = DateTime.now();
     staff.createdAt = now;
     staff.updatedAt = now;
-    final docRef =
-    await _firestore.collection(_collection).add(staff.toFirestore());
+    // The record and its 'create' audit entry share one commit: the staff
+    // member is never created without its log (or logged without existing).
+    final docRef = _firestore.collection(_collection).doc();
     final createDetail = 'Created: ${staff.name}, ${staff.designation ?? '—'}';
-    await _writeLog(docRef.id, staff.name, 'create', createDetail);
+    final batch = _firestore.batch();
+    batch.set(docRef, staff.toFirestore());
+    batch.set(_staffLogs(docRef.id).doc(),
+        _logData(docRef.id, staff.name, 'create', createDetail));
+    await batch.commit();
     return docRef.id;
   }
 
@@ -58,12 +67,16 @@ class FirebaseStaffRepository implements StaffRepository {
     staff.updatedAt = DateTime.now();
     staff.documentVersion += 1;
     final data = staff.toFirestore();
-    await _firestore.collection(_collection).doc(docId).update(data);
 
+    // The record write and its 'update' audit entry share one commit.
+    final batch = _firestore.batch();
+    batch.update(_firestore.collection(_collection).doc(docId), data);
     if (writeLog) {
       final detail = _buildUpdateDetail(oldData!, data);
-      await _writeLog(docId, staff.name, 'update', detail);
+      batch.set(_staffLogs(docId).doc(),
+          _logData(docId, staff.name, 'update', detail));
     }
+    await batch.commit();
   }
 
   static const _fieldLabels = {
@@ -117,14 +130,20 @@ class FirebaseStaffRepository implements StaffRepository {
 
   @override
   Future<void> delete(String docId) async {
-    // Write log before deleting
     final doc = await _firestore.collection(_collection).doc(docId).get();
     final data = (doc.data() as Map<String, dynamic>?) ?? {};
     final name = data['name'] ?? '';
     final designation = data['designation'] ?? '';
     final deleteDetail = 'Deleted: $name, ${designation.isNotEmpty ? designation : '—'}';
-    await _writeLog(docId, name, 'delete', deleteDetail);
-    await _firestore.collection(_collection).doc(docId).delete();
+    // The removal and its 'delete' audit entry share one commit: a failed
+    // delete no longer leaves a "Deleted" log behind. Subcollection documents
+    // survive parent removal, so the global log keeps the entry.
+    final batch = _firestore.batch();
+    batch.delete(_firestore.collection(_collection).doc(docId));
+    batch.set(
+        _staffLogs(docId).doc(),
+        _logData(docId, name.toString(), 'delete', deleteDetail));
+    await batch.commit();
   }
 
   // ── Audit log readers ─────────────────────────────────────────────────────

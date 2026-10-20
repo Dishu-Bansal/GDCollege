@@ -263,7 +263,7 @@ class FirebaseStockRepository implements StockRepository {
   }
 
   @override
-  Future<void> logItemPhotoChange({
+  Future<void> updateCatalogItemPhotoWithLogs({
     required String catalogItemId,
     required String itemName,
     required String oldPhotoUrl,
@@ -274,34 +274,38 @@ class FirebaseStockRepository implements StockRepository {
   }) async {
     final changedBy = UserSession().currentUser?.email ?? '';
     final now = DateTime.now();
+    final batch = _db.batch();
 
-    void writeLog(String bid, String fid, String rid,
+    // The catalog photo change is part of the same commit as its log rows:
+    // either the new photo is saved together with its audit entries, or
+    // neither is applied.
+    batch.update(_itemsCatalog.doc(catalogItemId), {'photoUrl': newPhotoUrl});
+
+    void queueLog(String bid, String fid, String rid,
         String bName, String fName, String rName) {
-      _logs(bid, fid, rid).add(StockLog(
-        itemId: catalogItemId,
-        itemName: itemName,
-        type: 'photo',
-        quantity: 0,
-        previousQty: 0,
-        newQty: 0,
-        timestamp: now,
-        buildingName: bName,
-        floorName: fName,
-        roomName: rName,
-        changedBy: changedBy,
-        oldPhotoUrl: oldPhotoUrl,
-        newPhotoUrl: newPhotoUrl,
-      ).toFirestore());
+      batch.set(
+          _logs(bid, fid, rid).doc(),
+          StockLog(
+            itemId: catalogItemId,
+            itemName: itemName,
+            type: 'photo',
+            quantity: 0,
+            previousQty: 0,
+            newQty: 0,
+            timestamp: now,
+            buildingName: bName,
+            floorName: fName,
+            roomName: rName,
+            changedBy: changedBy,
+            oldPhotoUrl: oldPhotoUrl,
+            newPhotoUrl: newPhotoUrl,
+          ).toFirestore());
     }
 
-    // Logging must never break the photo update itself.
-    try {
-      if (building != null && floor != null && room != null) {
-        writeLog(building.id!, floor.id!, room.id!,
-            building.name, floor.name, room.name);
-        return;
-      }
-
+    if (building != null && floor != null && room != null) {
+      queueLog(building.id!, floor.id!, room.id!,
+          building.name, floor.name, room.name);
+    } else {
       // Catalog-level change: log into every room that currently stocks the
       // item so the entry shows in all three log views. A collection group
       // cannot filter on documentId() with a bare id, so read all room items
@@ -317,7 +321,7 @@ class FirebaseStockRepository implements StockRepository {
         final bSnap = await _buildings.doc(buildingId).get();
         final fSnap = await _floors(buildingId).doc(floorId).get();
         final rSnap = await _rooms(buildingId, floorId).doc(roomId).get();
-        writeLog(
+        queueLog(
           buildingId,
           floorId,
           roomId,
@@ -326,10 +330,9 @@ class FirebaseStockRepository implements StockRepository {
           (rSnap.data()?['name'] as String?) ?? roomId,
         );
       }
-    } catch (e) {
-      // Photo change succeeded; the audit log is best-effort.
-      print('Photo log failed: $e');
     }
+
+    await batch.commit();
   }
 
   // ── ITEMS ─────────────────────────────────────────────────────────────────
@@ -800,28 +803,33 @@ class FirebaseStockRepository implements StockRepository {
       checklistItems: checklist,
     );
 
-    final doc = await _inspections(building.id!, floor.id!, room.id!)
-        .add(inspection.toFirestore());
+    // The inspection document and its 'started' stock-log entry share one
+    // commit, so an inspection can never exist without its start log (or the
+    // log without the inspection).
+    final inspRef =
+        _inspections(building.id!, floor.id!, room.id!).doc();
+    final batch = _db.batch();
+    batch.set(inspRef, inspection.toFirestore());
+    batch.set(
+        _logs(building.id!, floor.id!, room.id!).doc(),
+        StockLog(
+          itemId: '',
+          itemName: 'Inspection',
+          type: 'inspection',
+          quantity: 0,
+          previousQty: 0,
+          newQty: 0,
+          note: 'Inspection started. ${currentItems.length} items to check.',
+          timestamp: DateTime.now(),
+          buildingName: building.name,
+          floorName: floor.name,
+          roomName: room.name,
+          changedBy: UserSession().currentUser?.email ?? '',
+          inspectionId: inspRef.id,
+        ).toFirestore());
+    await batch.commit();
 
-    // Write a log entry for the inspection start
-    final logRef = _logs(building.id!, floor.id!, room.id!).doc();
-    await logRef.set(StockLog(
-      itemId: '',
-      itemName: 'Inspection',
-      type: 'inspection',
-      quantity: 0,
-      previousQty: 0,
-      newQty: 0,
-      note: 'Inspection started. ${currentItems.length} items to check.',
-      timestamp: DateTime.now(),
-      buildingName: building.name,
-      floorName: floor.name,
-      roomName: room.name,
-      changedBy: UserSession().currentUser?.email ?? '',
-      inspectionId: doc.id,
-    ).toFirestore());
-
-    return doc.id;
+    return inspRef.id;
   }
 
   /// Saves updated checklist progress (called while editing).

@@ -331,8 +331,7 @@ class _ItemCardState extends State<_ItemCard> {
       );
       if (url != null) {
         final oldUrl = _catalog?.photoUrl ?? '';
-        await service.updateCatalogItemPhoto(item.id!, url);
-        await service.logItemPhotoChange(
+        await service.updateCatalogItemPhotoWithLogs(
           catalogItemId: item.id!,
           itemName: item.name,
           oldPhotoUrl: oldUrl,
@@ -489,8 +488,7 @@ class _ItemCardState extends State<_ItemCard> {
                     _pickAndUploadPhoto();
                   } else if (v == 'removePhoto') {
                     final oldUrl = _catalog?.photoUrl ?? '';
-                    await service.updateCatalogItemPhoto(item.id!, '');
-                    await service.logItemPhotoChange(
+                    await service.updateCatalogItemPhotoWithLogs(
                       catalogItemId: item.id!,
                       itemName: item.name,
                       oldPhotoUrl: oldUrl,

@@ -59,15 +59,24 @@ class FirebaseBillRepository implements BillRepository {
       bill.photoUrl = await _uploadPhoto(docRef.id, photoBytes, photoName);
     }
 
-    await docRef.set(bill.toFirestore());
+    // The bill and its 'create' log share one commit: the bill is never
+    // saved without its log (or logged without being saved).
+    final batch = _db.batch();
+    batch.set(docRef, bill.toFirestore());
+    batch.set(
+        _billLogs.doc(),
+        _logData(
+            docRef.id,
+            bill.billNumber,
+            'create',
+            'Bill created. ${bill.items.length} item(s), total '
+                '₹${bill.totalAmount.toStringAsFixed(2)}.'));
+    await batch.commit();
     // Service bills have no physical product: their items stay on the bill
     // only and are never added to stock.
     if (!bill.isService) {
       await _syncBillItemsToPending(bill, updateMode: false);
     }
-    await _writeLog(docRef.id, bill.billNumber, 'create',
-        'Bill created. ${bill.items.length} item(s), total '
-            '₹${bill.totalAmount.toStringAsFixed(2)}.');
     return docRef.id;
   }
 
@@ -101,14 +110,22 @@ class FirebaseBillRepository implements BillRepository {
         ? BillModel.fromFirestore(id, oldSnap.data()!).items
         : const <BillItem>[];
 
-    await _bills.doc(id).set(bill.toFirestore());
+    // The bill and its 'update' log share one commit.
+    final batch = _db.batch();
+    batch.set(_bills.doc(id), bill.toFirestore());
+    batch.set(
+        _billLogs.doc(),
+        _logData(
+            id,
+            bill.billNumber,
+            'update',
+            'Bill updated. ${bill.items.length} item(s), total '
+                '₹${bill.totalAmount.toStringAsFixed(2)}.'));
+    await batch.commit();
     if (!bill.isService) {
       await _syncBillItemsToPending(bill,
           updateMode: true, previousItems: previousItems);
     }
-    await _writeLog(id, bill.billNumber, 'update',
-        'Bill updated. ${bill.items.length} item(s), total '
-            '₹${bill.totalAmount.toStringAsFixed(2)}.');
   }
 
   @override
@@ -148,8 +165,13 @@ class FirebaseBillRepository implements BillRepository {
               '${date.day}/${date.month}/${date.year}.'
           : 'Bill marked as paid.';
     }
-    await _bills.doc(billId).update(updates);
-    await _writeLog(billId, billNumber, 'pay', logDetail);
+    // Payment update and its 'pay' log share one commit.
+    final batch = _db.batch();
+    batch.update(_bills.doc(billId), updates);
+    batch.set(
+        _billLogs.doc(),
+        _logData(billId, billNumber.toString(), 'pay', logDetail));
+    await batch.commit();
   }
 
   // ── Photo upload ────────────────────────────────────────────────────────────
@@ -194,15 +216,17 @@ class FirebaseBillRepository implements BillRepository {
 
   // ── Logs ────────────────────────────────────────────────────────────────────
 
-  Future<void> _writeLog(
-      String billId, String billNumber, String action, String detail) async {
-    await _billLogs.add(BillLog(
+  /// Payload for one bill-log row. Use with [WriteBatch.set] so the bill
+  /// change and its log commit together (or not at all).
+  Map<String, dynamic> _logData(
+      String billId, String billNumber, String action, String detail) {
+    return BillLog(
       billId: billId,
       billNumber: billNumber,
       action: action,
       changedBy: _currentUser,
       detail: detail,
-    ).toFirestore());
+    ).toFirestore();
   }
 
   // ── Stock integration: Extras > Pending > Pending ──────────────────────────

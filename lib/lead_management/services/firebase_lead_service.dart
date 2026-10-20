@@ -41,9 +41,17 @@ class FirebaseLeadRepository implements LeadRepository {
     lead.updatedAt = now;
     lead.createdBy = _currentUser;
     lead.updatedBy = _currentUser;
-    await docRef.set(lead.toFirestore());
-    await _writeLog(docRef.id, lead.name, 'create',
-        'Lead created (${lead.source}${lead.courses.isNotEmpty ? ', ${lead.courses.join(', ')}' : ''}).');
+    // Lead and its 'create' log share one commit.
+    final batch = _db.batch();
+    batch.set(docRef, lead.toFirestore());
+    batch.set(
+        _leadLogs.doc(),
+        _logData(
+            docRef.id,
+            lead.name,
+            'create',
+            'Lead created (${lead.source}${lead.courses.isNotEmpty ? ', ${lead.courses.join(', ')}' : ''}).'));
+    await batch.commit();
     return docRef.id;
   }
 
@@ -53,8 +61,11 @@ class FirebaseLeadRepository implements LeadRepository {
     if (id == null) return;
     lead.updatedAt = DateTime.now();
     lead.updatedBy = _currentUser;
-    await _leads.doc(id).set(lead.toFirestore());
-    await _writeLog(id, lead.name, 'update', 'Lead updated.');
+    // Lead and its 'update' log share one commit.
+    final batch = _db.batch();
+    batch.set(_leads.doc(id), lead.toFirestore());
+    batch.set(_leadLogs.doc(), _logData(id, lead.name, 'update', 'Lead updated.'));
+    await batch.commit();
   }
 
   @override
@@ -65,27 +76,35 @@ class FirebaseLeadRepository implements LeadRepository {
     lead.status = status;
     lead.updatedAt = DateTime.now();
     lead.updatedBy = _currentUser;
-    await _leads.doc(id).set(lead.toFirestore());
-    await _writeLog(
-        id, lead.name, 'status', 'Status changed: $old → $status.');
+    // Status change and its log share one commit.
+    final batch = _db.batch();
+    batch.set(_leads.doc(id), lead.toFirestore());
+    batch.set(
+        _leadLogs.doc(),
+        _logData(id, lead.name, 'status', 'Status changed: $old → $status.'));
+    await batch.commit();
   }
 
   @override
   Future<void> deleteLead(LeadModel lead) async {
     final id = lead.id;
     if (id == null) return;
-    await _leads.doc(id).delete();
-    await _writeLog(id, lead.name, 'delete', 'Lead deleted.');
+    // Removal and its 'delete' log share one commit: a failed delete leaves
+    // no phantom log, and a successful one can never go unlogged.
+    final batch = _db.batch();
+    batch.delete(_leads.doc(id));
+    batch.set(_leadLogs.doc(), _logData(id, lead.name, 'delete', 'Lead deleted.'));
+    await batch.commit();
   }
 
-  Future<void> _writeLog(
-      String leadId, String leadName, String action, String detail) async {
-    await _leadLogs.add(LeadLog(
+  Map<String, dynamic> _logData(
+      String leadId, String leadName, String action, String detail) {
+    return LeadLog(
       leadId: leadId,
       leadName: leadName,
       action: action,
       changedBy: _currentUser,
       detail: detail,
-    ).toFirestore());
+    ).toFirestore();
   }
 }
