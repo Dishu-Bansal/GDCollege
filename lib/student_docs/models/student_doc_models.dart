@@ -279,3 +279,38 @@ class DocBatchEntry {
         false;
   }
 }
+
+/// One stock/issue event from the top-level `docLogs` collection.
+class DocLogEntry {
+  final String studentName;
+  final String course;
+  final String slotLabel;
+  final bool isDmc;
+  final String action; // 'stocked' | 'issued'
+  final DateTime timestamp;
+  final String changedBy;
+
+  const DocLogEntry({
+    required this.studentName,
+    required this.course,
+    required this.slotLabel,
+    required this.isDmc,
+    required this.action,
+    required this.timestamp,
+    required this.changedBy,
+  });
+
+  bool get stocked => action == 'stocked';
+
+  factory DocLogEntry.fromMap(Map<String, dynamic> m) => DocLogEntry(
+        studentName: (m['studentName'] ?? '').toString(),
+        course: (m['course'] ?? '').toString(),
+        slotLabel: (m['slotLabel'] ?? '').toString(),
+        isDmc: m['isDmc'] ?? true,
+        action: (m['action'] ?? '').toString(),
+        timestamp: m['timestamp'] != null
+            ? DateTime.tryParse(m['timestamp']) ?? DateTime.now()
+            : DateTime.now(),
+        changedBy: (m['changedBy'] ?? '').toString(),
+      );
+}

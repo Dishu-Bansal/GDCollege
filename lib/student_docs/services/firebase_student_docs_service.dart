@@ -20,7 +20,17 @@ class FirebaseStudentDocsService {
   String get _by => UserSession().currentUser?.email ?? '';
 
   // ── Event logs ───────────────────────────────────────────────────────────
-  /// One row per stock/issue event in the top-level `docLogs` collection.
+  /// Most recent stock/issue events, newest first (the Logs tab).
+  Stream<List<DocLogEntry>> watchRecentDocLogs({int limit = 300}) {
+    return _db
+        .collection('docLogs')
+        .orderBy('timestamp', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((d) => DocLogEntry.fromMap(d.data()))
+            .toList());
+  }  /// One row per stock/issue event in the top-level `docLogs` collection.
   /// Powers the date-wise "Docs Stocked / Issued" daily-activity stats
   /// (range query on `timestamp`, no composite index needed).
   Future<void> writeDocLog({

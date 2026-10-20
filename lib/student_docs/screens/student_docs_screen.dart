@@ -25,7 +25,7 @@ class _StudentDocsScreenState extends State<StudentDocsScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 3, vsync: this);
+    _tabs = TabController(length: 4, vsync: this);
     _tabs.addListener(() => setState(() {}));
   }
 
@@ -62,6 +62,7 @@ class _StudentDocsScreenState extends State<StudentDocsScreen>
             Tab(text: 'GD College'),
             Tab(text: 'MLSN'),
             Tab(text: 'Skill India'),
+            Tab(text: 'Logs'),
           ],
         ),
       ),
@@ -86,6 +87,7 @@ class _StudentDocsScreenState extends State<StudentDocsScreen>
             courses: const [],
             isNarrow: isNarrow,
           ),
+          const _DocLogsTab(),
         ],
       ),
     );
@@ -623,6 +625,133 @@ class _Chip extends StatelessWidget {
         style: TextStyle(
             fontSize: 11, fontWeight: FontWeight.w700, color: color),
       ),
+    );
+  }
+}
+
+// ── Logs tab ─────────────────────────────────────────────────────────────────
+
+/// Most recent doc stock/issue events across all batches, newest first —
+/// the same log pattern as the other modules.
+class _DocLogsTab extends StatelessWidget {
+  const _DocLogsTab();
+
+  String _fmtDateTime(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}  '
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<DocLogEntry>>(
+      stream: FirebaseStudentDocsService().watchRecentDocLogs(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snap.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                'Unable to load logs.\n${snap.error}',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey.shade600),
+              ),
+            ),
+          );
+        }
+        final logs = snap.data ?? [];
+        if (logs.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.history_outlined,
+                      size: 48, color: Colors.grey.shade300),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No doc activity yet',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        color: Colors.grey.shade700),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Uploading a scan logs “stocked”;\ncompleting the collector logs “issued”.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 13, color: Colors.grey.shade500),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.all(12),
+          itemCount: logs.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 8),
+          itemBuilder: (_, i) {
+            final log = logs[i];
+            final color = log.stocked
+                ? const Color(0xFF1565C0)
+                : const Color(0xFF2E7D32);
+            return Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    log.stocked
+                        ? Icons.inventory_2_outlined
+                        : Icons.handshake_outlined,
+                    size: 18,
+                    color: color,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'DOC ${log.stocked ? "stocked" : "issued"} — ${log.studentName}',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${log.slotLabel}'
+                          '${log.course.isNotEmpty ? '  •  ${log.course}' : ''}',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade600),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${_fmtDateTime(log.timestamp)}${log.changedBy.isNotEmpty ? '  •  by ${log.changedBy}' : ''}',
+                          style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.grey.shade400),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
