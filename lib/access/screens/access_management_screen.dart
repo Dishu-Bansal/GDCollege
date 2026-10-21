@@ -92,6 +92,9 @@ class _AccessManagementScreenState extends State<AccessManagementScreen> {
   Widget build(BuildContext context) {
     return StreamBuilder<AppSession?>(
       stream: _sessionStream,
+      // Paint the known session on the first frame instead of a spinner;
+      // currentAppSession() still discards another account's session.
+      initialData: AccessService.cachedSession,
       builder: (context, sessionSnap) {
         // Ignore a session that belongs to another (previous) account, so a
         // stale admin session can never unlock this screen for the next login.

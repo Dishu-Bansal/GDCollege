@@ -1,3 +1,5 @@
+import 'package:gd_college/utils/timestamps.dart';
+
 /// Admission-lead statuses, in pipeline order.
 const List<String> leadStatuses = [
   'New',
@@ -38,14 +40,13 @@ class FollowUpNote {
 
   factory FollowUpNote.fromMap(Map<String, dynamic> m) => FollowUpNote(
         note: m['note'] ?? '',
-        date: m['date'] != null
-            ? DateTime.tryParse(m['date']) ?? DateTime.now()
-            : DateTime.now(),
+        date: parseDate(m['date']) ?? DateTime.now(),
       );
 
   Map<String, dynamic> toMap() => {
         'note': note,
-        'date': date.toIso8601String(),
+        // A due date is a calendar date; it is stored without a timezone.
+        'date': dateToWire(date),
       };
 }
 
@@ -114,7 +115,7 @@ class LeadModel {
         : <FollowUpNote>[];
     // Legacy single follow-up date reads as one undated entry.
     if (followUps.isEmpty && d['followUpAt'] != null) {
-      final legacy = DateTime.tryParse(d['followUpAt']);
+      final legacy = parseDate(d['followUpAt']);
       if (legacy != null) followUps = [FollowUpNote(date: legacy)];
     }
     return LeadModel(
@@ -127,15 +128,9 @@ class LeadModel {
       status: d['status'] ?? 'New',
       notes: d['notes'] ?? '',
       followUps: followUps,
-      followUpAt: d['followUpAt'] != null
-          ? DateTime.tryParse(d['followUpAt'])
-          : null,
-      createdAt: d['createdAt'] != null
-          ? DateTime.tryParse(d['createdAt']) ?? DateTime.now()
-          : DateTime.now(),
-      updatedAt: d['updatedAt'] != null
-          ? DateTime.tryParse(d['updatedAt']) ?? DateTime.now()
-          : DateTime.now(),
+      followUpAt: parseDate(d['followUpAt']),
+      createdAt: parseTimestamp(d['createdAt']) ?? DateTime.now(),
+      updatedAt: parseTimestamp(d['updatedAt']) ?? DateTime.now(),
       createdBy: d['createdBy'] ?? '',
       updatedBy: d['updatedBy'] ?? '',
     );
@@ -150,9 +145,9 @@ class LeadModel {
         'status': status,
         'notes': notes,
         'followUps': followUps.map((f) => f.toMap()).toList(),
-        'followUpAt': followUpAt?.toIso8601String(),
-        'createdAt': createdAt.toIso8601String(),
-        'updatedAt': updatedAt.toIso8601String(),
+        'followUpAt': dateToWire(followUpAt),
+        'createdAt': timestampToWire(createdAt),
+        'updatedAt': timestampToWire(updatedAt),
         'createdBy': createdBy,
         'updatedBy': updatedBy,
       };
@@ -187,9 +182,7 @@ class LeadLog {
         action: d['action'] ?? 'create',
         changedBy: d['changedBy'] ?? '',
         detail: d['detail'] ?? '',
-        timestamp: d['timestamp'] != null
-            ? DateTime.tryParse(d['timestamp']) ?? DateTime.now()
-            : DateTime.now(),
+        timestamp: parseTimestamp(d['timestamp']) ?? DateTime.now(),
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -198,6 +191,6 @@ class LeadLog {
         'action': action,
         'changedBy': changedBy,
         'detail': detail,
-        'timestamp': timestamp.toIso8601String(),
+        'timestamp': timestampToWire(timestamp),
       };
 }

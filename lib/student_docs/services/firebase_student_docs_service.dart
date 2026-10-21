@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:gd_college/utils/timestamps.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import '../../models/user_session.dart';
@@ -82,7 +83,8 @@ class FirebaseStudentDocsService {
     final batch = _db.batch();
     batch.update(_db.collection(_students).doc(studentId), {
       'docRecords.$slotKey': record.toMap(),
-      'updatedAt': DateTime.now().toIso8601String(),
+      // UTC so the student's "last updated" instant is timezone-unambiguous.
+      'updatedAt': timestampToWire(DateTime.now()),
     });
     for (final log in logs) {
       batch.set(_db.collection('docLogs').doc(), log.toMap());
@@ -115,7 +117,7 @@ class FirebaseStudentDocsService {
       if (records.isEmpty) continue;
       final course = (data['nameOfCourse'] ?? '').toString();
       final slots = docSlotsForCourse(course);
-      final fallback = data['updatedAt']?.toString();
+      final fallback = parseTimestamp(data['updatedAt']);
       for (final entry in records.entries) {
         final rec = entry.value;
         if (!rec.hasFile) continue;
@@ -125,7 +127,7 @@ class FirebaseStudentDocsService {
         final isDmc = slot.isEmpty ? true : slot.first.isDmc;
         final stockedAt = rec.fileUploadedAt ??
             rec.collectedAt ??
-            (fallback != null ? DateTime.tryParse(fallback) : null) ??
+            fallback ??
             DateTime.now();
 
         Future<void> addRow(DocLogEntry entry, String action) async {

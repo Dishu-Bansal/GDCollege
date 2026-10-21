@@ -26,7 +26,7 @@ List<AccountAmount> accountSharesFromTally(Map<String, int> tally) {
 /// Each activity total has a matching account-wise breakdown
 /// ([AccountAmount] list) whose entries sum to that total.
 class HomeAnalytics {
-  /// Start of the analytics day (00:00 IST).
+  /// The IST calendar day these counts describe (midnight, device zone).
   final DateTime day;
 
   // Students

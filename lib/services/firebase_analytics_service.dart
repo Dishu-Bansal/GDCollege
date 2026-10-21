@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:gd_college/providers.dart';
+import 'package:gd_college/utils/timestamps.dart';
 import '../models/home_analytics.dart';
 import '../repositories/analytics_repository.dart';
 
@@ -8,23 +9,41 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
 
   static const Duration _istOffset = Duration(hours: 5, minutes: 30);
 
-  /// Boundaries of the previous calendar day in IST.
-  ///
-  /// Stored timestamps are ISO-8601 wall-clock strings (no timezone offset),
-  /// so we compare against IST wall-clock boundaries.
-  ({DateTime start, DateTime end}) _previousIstDay() {
-    final nowIst = DateTime.now().toUtc().add(_istOffset);
-    final start = DateTime(nowIst.year, nowIst.month, nowIst.day - 1);
-    final end = DateTime(nowIst.year, nowIst.month, nowIst.day);
-    return (start: start, end: end);
+  /// The IST calendar day containing [instant], as a pair of real instants:
+  /// IST midnight boundaries expressed in UTC.
+  static ({DateTime start, DateTime end}) _istDayOf(DateTime instant) {
+    final ist = instant.toUtc().add(_istOffset);
+    final startUtc =
+        DateTime.utc(ist.year, ist.month, ist.day).subtract(_istOffset);
+    return (start: startUtc, end: startUtc.add(const Duration(days: 1)));
   }
 
-  /// Boundaries of an arbitrary IST calendar day (time ignored).
-  ({DateTime start, DateTime end}) _istDayRange(DateTime istDay) {
-    final start = DateTime(istDay.year, istDay.month, istDay.day);
-    final end = DateTime(istDay.year, istDay.month, istDay.day + 1);
-    return (start: start, end: end);
+  /// The IST calendar day described by the y/m/d of [istDay].
+  static ({DateTime start, DateTime end}) _istDayRange(DateTime istDay) {
+    final startUtc =
+        DateTime.utc(istDay.year, istDay.month, istDay.day)
+            .subtract(_istOffset);
+    return (start: startUtc, end: startUtc.add(const Duration(days: 1)));
   }
+
+  /// True when [raw] (a stored timestamp of any supported shape) falls inside
+  /// the [start]..[end) UTC window.
+  static bool _inWindow(Object? raw, DateTime start, DateTime end) {
+    final at = parseTimestamp(raw)?.toUtc();
+    return at != null && !at.isBefore(start) && at.isBefore(end);
+  }
+
+  /// Widened string bounds used to select candidate rows server-side.
+  ///
+  /// New records are UTC strings, but legacy rows hold naive local wall-clock
+  /// strings, so a lexicographic comparison with the exact UTC window can sit
+  /// nearly a timezone away from the true instant. A one-day pad on both sides
+  /// plus the [parseTimestamp]-based [_inWindow] filter keeps the result exact
+  /// for both shapes while staying on existing single-field indexes.
+  static ({String start, String end}) _queryBounds(DateTime start, DateTime end) => (
+        start: start.subtract(const Duration(days: 1)).toIso8601String(),
+        end: end.add(const Duration(days: 1)).toIso8601String(),
+      );
 
   /// Email of the user who performed the activity, or '' when unknown.
   String _actorOf(QueryDocumentSnapshot<Map<String, dynamic>> doc) =>
@@ -47,8 +66,9 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
 
   @override
   Future<HomeAnalytics> fetchPreviousDayAnalytics() async {
-    final day = _previousIstDay();
-    return _fetchForRange(day.start, day.end);
+    final today = _istDayOf(DateTime.now());
+    final previousDayStart = today.start.subtract(const Duration(days: 1));
+    return _fetchForRange(previousDayStart, today.start);
   }
 
   @override
@@ -58,10 +78,9 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
   }
 
   Future<HomeAnalytics> _fetchForRange(DateTime start, DateTime end) async {
-    final startIso = start.toIso8601String();
-    final endIso = end.toIso8601String();
+    final bounds = _queryBounds(start, end);
 
-    final inspectionsFuture = _countCompletedInspections(startIso, endIso);
+    final inspectionsFuture = _countCompletedInspections(start, end, bounds);
     // The range filters order by the same field, descending, so the queries
     // reuse the existing COLLECTION_GROUP DESCENDING indexes on `timestamp`
     // (the ones the app's global-log screens already rely on). docLogs is
@@ -70,42 +89,57 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
     final results = await Future.wait([
       _db
           .collectionGroup('studentLogs')
-          .where('timestamp', isGreaterThanOrEqualTo: startIso)
-          .where('timestamp', isLessThan: endIso)
+          .where('timestamp', isGreaterThanOrEqualTo: bounds.start)
+          .where('timestamp', isLessThan: bounds.end)
           .orderBy('timestamp', descending: true)
           .get(),
       _db
           .collectionGroup('staffLogs')
-          .where('timestamp', isGreaterThanOrEqualTo: startIso)
-          .where('timestamp', isLessThan: endIso)
+          .where('timestamp', isGreaterThanOrEqualTo: bounds.start)
+          .where('timestamp', isLessThan: bounds.end)
           .orderBy('timestamp', descending: true)
           .get(),
       _db
           .collectionGroup('stockLogs')
-          .where('timestamp', isGreaterThanOrEqualTo: startIso)
-          .where('timestamp', isLessThan: endIso)
+          .where('timestamp', isGreaterThanOrEqualTo: bounds.start)
+          .where('timestamp', isLessThan: bounds.end)
           .orderBy('timestamp', descending: true)
           .get(),
       _db
           .collection('consumableAssignments')
-          .where('assignedAt', isGreaterThanOrEqualTo: startIso)
-          .where('assignedAt', isLessThan: endIso)
+          .where('assignedAt', isGreaterThanOrEqualTo: bounds.start)
+          .where('assignedAt', isLessThan: bounds.end)
           .orderBy('assignedAt', descending: true)
           .get(),
       _db
           .collection('docLogs')
-          .where('timestamp', isGreaterThanOrEqualTo: startIso)
-          .where('timestamp', isLessThan: endIso)
+          .where('timestamp', isGreaterThanOrEqualTo: bounds.start)
+          .where('timestamp', isLessThan: bounds.end)
           .orderBy('timestamp', descending: true)
           .get(),
     ]);
     final inspectionsDone = await inspectionsFuture;
 
-    final studentLogs = results[0].docs;
-    final staffLogs = results[1].docs;
-    final stockLogs = results[2].docs;
-    final assignments = results[3].docs;
-    final docLogs = results[4].docs;
+    final studentLogs = results[0]
+        .docs
+        .where((d) => _inWindow(d.data()['timestamp'], start, end))
+        .toList();
+    final staffLogs = results[1]
+        .docs
+        .where((d) => _inWindow(d.data()['timestamp'], start, end))
+        .toList();
+    final stockLogs = results[2]
+        .docs
+        .where((d) => _inWindow(d.data()['timestamp'], start, end))
+        .toList();
+    final assignments = results[3]
+        .docs
+        .where((d) => _inWindow(d.data()['assignedAt'], start, end))
+        .toList();
+    final docLogs = results[4]
+        .docs
+        .where((d) => _inWindow(d.data()['timestamp'], start, end))
+        .toList();
 
     // ── Students: tally each create/update/delete by the acting account ──
     final studentsCreatedBy = <String, int>{};
@@ -205,8 +239,12 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
       }
     }
 
+    // The UI compares [HomeAnalytics.day] against today's (and yesterday's)
+    // calendar date, so report the IST calendar day of the window rather than
+    // the UTC instant that starts it.
+    final istStart = start.toUtc().add(_istOffset);
     return HomeAnalytics(
-      day: start,
+      day: DateTime(istStart.year, istStart.month, istStart.day),
       studentsCreated: _sum(studentsCreatedBy),
       studentsUpdated: _sum(studentsUpdatedBy),
       studentsDeleted: _sum(studentsDeletedBy),
@@ -236,12 +274,16 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
     );
   }
 
-  /// Counts inspections completed during [startIso]..[endIso].
+  /// Counts inspections completed during the [start]..[end) window.
   ///
   /// Inspections live in `rooms/{roomId}/inspections` subcollections and are
   /// stamped `status: 'completed'` with `completedAt` on completion, so we
   /// walk the building → floor → room tree and read each room's inspections.
-  Future<int> _countCompletedInspections(String startIso, String endIso) async {
+  /// Candidate rows are fetched with the widened [bounds] and then filtered on
+  /// the true instant, so legacy local strings and new UTC strings both count
+  /// correctly.
+  Future<int> _countCompletedInspections(
+      DateTime start, DateTime end, ({String start, String end}) bounds) async {
     final buildings = await _db.collection('buildings').get();
     final roomQueries = <Future<QuerySnapshot<Map<String, dynamic>>>>[];
     for (final b in buildings.docs) {
@@ -268,8 +310,8 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
                 .collection('rooms')
                 .doc(r.id)
                 .collection('inspections')
-                .where('completedAt', isGreaterThanOrEqualTo: startIso)
-                .where('completedAt', isLessThan: endIso)
+                .where('completedAt', isGreaterThanOrEqualTo: bounds.start)
+                .where('completedAt', isLessThan: bounds.end)
                 .get(),
           );
         }
@@ -280,7 +322,8 @@ class FirebaseAnalyticsRepository implements AnalyticsRepository {
     var count = 0;
     for (final snap in snapshots) {
       for (final d in snap.docs) {
-        if (d.data()['status'] == 'completed') count++;
+        if (d.data()['status'] != 'completed') continue;
+        if (_inWindow(d.data()['completedAt'], start, end)) count++;
       }
     }
     return count;

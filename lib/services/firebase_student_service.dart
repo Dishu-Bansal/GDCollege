@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:gd_college/utils/timestamps.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:gd_college/constants.dart';
 import 'package:gd_college/providers.dart';
@@ -143,6 +144,10 @@ class FirebaseStudentRepository implements StudentRepository {
     // so new URLs are already on the model).
     _refreshDocsFlags(student);
     final data = student.toFirestore();
+    // Never re-write the creation instant on an edit: the stored value (or a
+    // legacy wall-clock string) is the record's true origin, while the model's
+    // copy may be shifted by the editing device's clock/timezone.
+    data.remove('createdAt');
     data['_searchIndex'] = _buildSearchIndex(student);
 
     // The record write and its 'update' audit entry share one commit, so an
@@ -173,7 +178,8 @@ class FirebaseStudentRepository implements StudentRepository {
     batch.update(ref, {
       'isVerified': true,
       'verifiedBy': by,
-      'verifiedAt': DateTime.now().toIso8601String(),
+      // UTC so the timestamp is unambiguous regardless of the client clock.
+      'verifiedAt': timestampToWire(DateTime.now()),
     });
     batch.set(
         _studentLogs(docId).doc(),
@@ -228,15 +234,27 @@ class FirebaseStudentRepository implements StudentRepository {
     'scCertificateUrl', 'bcCertificateUrl', 'sportsCertificateUrl',
   };
 
+  // Date fields are compared as calendar dates, so a legacy full-ISO value
+  // (`2000-01-01T00:00:00.000`) and the current `yyyy-MM-dd` form do not read
+  // as an edit.
+  static const _dateFieldKeys = {'dob'};
+
+  static String? _normalizeField(String key, Object? raw) {
+    if (raw == null || raw == '' || raw == 0) return null;
+    if (_dateFieldKeys.contains(key)) {
+      final wired = dateToWire(parseDate(raw));
+      if (wired != null) return wired;
+    }
+    return raw.toString();
+  }
+
   String _buildUpdateDetail(Map<String, dynamic> oldData, Map<String, dynamic> newData) {
     final changes = <String>[];
     for (final entry in _fieldLabels.entries) {
       final key = entry.key;
       // Normalize: treat null, '', 0 as equivalent empty values
-      final oldVal = oldData[key];
-      final newVal = newData[key];
-      final oldNorm = (oldVal == null || oldVal == '' || oldVal == 0) ? null : oldVal.toString();
-      final newNorm = (newVal == null || newVal == '' || newVal == 0) ? null : newVal.toString();
+      final oldNorm = _normalizeField(key, oldData[key]);
+      final newNorm = _normalizeField(key, newData[key]);
       if (oldNorm == newNorm) continue;
       if (_fileFieldKeys.contains(key)) {
         changes.add('${entry.value} changed');
@@ -312,12 +330,7 @@ class FirebaseStudentRepository implements StudentRepository {
           .get();
       if (existing.docs.isNotEmpty) continue;
 
-      DateTime ts = DateTime.now();
-      if (createdAtRaw is String) {
-        ts = DateTime.tryParse(createdAtRaw) ?? DateTime.now();
-      } else if (createdAtRaw is Timestamp) {
-        ts = createdAtRaw.toDate();
-      }
+      final ts = parseTimestamp(createdAtRaw) ?? DateTime.now();
 
       final detail = 'Created: $name, $course, ${year ?? '—'}';
       await _studentLogs(doc.id).add(AuditLog(

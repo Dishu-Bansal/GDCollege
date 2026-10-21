@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:gd_college/utils/timestamps.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:gd_college/providers.dart';
 import '../bill_management/models/bill_models.dart';
@@ -144,13 +145,14 @@ class FirebaseBillRepository implements BillRepository {
 
     final updates = <String, dynamic>{
       'paid': true,
-      'updatedAt': now.toIso8601String(),
+      'updatedAt': timestampToWire(now),
       'updatedBy': _currentUser,
     };
     String logDetail;
     if (needsReimbursement) {
       final date = reimbursementDate ?? now;
-      updates['reimbursementDate'] = date.toIso8601String();
+      // A payment/reimbursement day is a calendar date, not an instant.
+      updates['reimbursementDate'] = dateToWire(date);
       if (reimbursedBy.isNotEmpty) updates['reimbursedBy'] = reimbursedBy;
       logDetail = reimbursedBy.isNotEmpty
           ? 'Bill reimbursed by $reimbursedBy on '
@@ -158,7 +160,7 @@ class FirebaseBillRepository implements BillRepository {
           : 'Bill marked as reimbursed.';
     } else {
       final date = paymentDate ?? now;
-      updates['paymentDate'] = date.toIso8601String();
+      updates['paymentDate'] = dateToWire(date);
       if (paymentBy.isNotEmpty) updates['paymentBy'] = paymentBy;
       logDetail = paymentBy.isNotEmpty
           ? 'Bill marked as paid by $paymentBy on '
@@ -234,7 +236,7 @@ class FirebaseBillRepository implements BillRepository {
   /// Finds or creates the 'Extras' building > 'Pending' floor > 'Pending' room.
   Future<({String buildingId, String floorId, String roomId})>
   _ensurePendingRoom() async {
-    final now = DateTime.now().toIso8601String();
+    final now = timestampToWire(DateTime.now());
 
     String buildingId;
     final buildings = await _db

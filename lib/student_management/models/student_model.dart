@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:gd_college/constants.dart';
 import 'package:gd_college/models/user_session.dart';
+import 'package:gd_college/utils/timestamps.dart';
 
 class StudentModel {
 
@@ -216,7 +217,7 @@ class StudentModel {
       'name': name,
       'fatherName': fatherName,
       'motherName': motherName,
-      'dob': dob?.toIso8601String(),
+      'dob': dateToWire(dob),
       'gender': gender,
       'caste': caste,
       'address': address,
@@ -258,11 +259,11 @@ class StudentModel {
       'missingDocsCount': missingDocsCount,
       'isVerified': isVerified,
       'verifiedBy': verifiedBy,
-      'verifiedAt': verifiedAt?.toIso8601String(),
+      'verifiedAt': timestampToWire(verifiedAt),
       'documentVersion': documentVersion,
       'isLocked': isLocked,
-      'createdAt': createdAt?.toIso8601String(),
-      'updatedAt': updatedAt?.toIso8601String(),
+      'createdAt': timestampToWire(createdAt),
+      'updatedAt': timestampToWire(updatedAt),
       'createdBy': createdBy ?? UserSession().currentUser!.email,
       'lastUpdatedBy': UserSession().currentUser!.email,
     };
@@ -339,7 +340,7 @@ class StudentModel {
       name: data['name'] ?? '',
       fatherName: data['fatherName'] ?? '',
       motherName: data['motherName'] ?? '',
-      dob: data['dob'] != null ? DateTime.tryParse(data['dob']) : null,
+      dob: parseDate(data['dob']),
       gender: data['gender'] ?? '',
       caste: data['caste'] ?? '',
       address: data['address'] ?? '',
@@ -386,17 +387,11 @@ class StudentModel {
       // Pre-verification documents lack these keys → unverified.
       isVerified: data['isVerified'] == true,
       verifiedBy: data['verifiedBy'] ?? '',
-      verifiedAt: data['verifiedAt'] != null
-          ? DateTime.tryParse(data['verifiedAt'])
-          : null,
+      verifiedAt: parseTimestamp(data['verifiedAt']),
       documentVersion: data['documentVersion'] ?? 1,
-      isLocked: data['isLocked'] ?? false,
-      createdAt: data['createdAt'] != null
-          ? DateTime.tryParse(data['createdAt'])
-          : null,
-      updatedAt: data['updatedAt'] != null
-          ? DateTime.tryParse(data['updatedAt'])
-          : null,
+      isLocked: data['isLocked'] == true,
+      createdAt: parseTimestamp(data['createdAt']),
+      updatedAt: parseTimestamp(data['updatedAt']),
       createdBy: data['createdBy'] ?? '',
       lastUpdatedBy: data['lastUpdatedBy'] ?? '',
     );

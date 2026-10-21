@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:gd_college/utils/timestamps.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
@@ -30,54 +31,69 @@ class AccessService {
   /// listener instead of one per widget.
   ///
   /// A plain broadcast stream is NOT enough here: it does not replay, so a
-  /// screen subscribing after the single emission (e.g. opening Access
-  /// Management later) would wait forever. Each caller therefore gets its
+  /// caller subscribing after the single emission (e.g. opening the drawer for
+  /// the second time) would wait forever. Each subscriber therefore gets its
   /// own stream that first replays the latest value, then follows live.
   ///
-  /// The per-caller stream is broadcast-insulated: even if the framework
-  /// ever attaches twice to the same instance (drawer open/close cycles,
-  /// route transitions), it degrades to live-only for the second
-  /// attachment instead of throwing "Stream has already been listened to".
+  /// Built with [Stream.multi] rather than `asBroadcastStream`: a broadcast
+  /// stream is dead once its last listener cancels, so a widget that keeps a
+  /// `Stream` in its (unchanged) widget tree — the side drawer is built once
+  /// per screen and re-inflated each time it opens — would subscribe to a
+  /// spent stream on the second open and sit on "Loading access…" forever.
+  /// [Stream.multi] runs its factory on every listen, so re-listening after a
+  /// cancel replays the cached session again.
   ///
   /// The replay is bound to the account signed in at subscribe time: a
   /// session cached from a previous login on this device is only replayed
-  /// when its uid still matches the current user. Otherwise the caller
-  /// goes straight to the live stream, so a newly signed-in account can
-  /// never briefly (or permanently, if its own read stalls) see the
-  /// previous account's screens.
+  /// when its uid still matches the current user. Otherwise the caller goes
+  /// straight to the live stream, so a newly signed-in account can never
+  /// briefly (or permanently, if its own read stalls) see the previous
+  /// account's screens.
   static final StreamController<AppSession?> _sharedController =
       StreamController<AppSession?>.broadcast();
   static AppSession? _latestAccess;
   static bool _hasLatestAccess = false;
   static bool _sharedStarted = false;
 
-  static Stream<AppSession?> watchAccessShared() {
-    if (!_sharedStarted) {
-      _sharedStarted = true;
-      AccessService().watchAccess().listen(
-        (s) {
-          _latestAccess = s;
-          _hasLatestAccess = true;
-          if (!_sharedController.isClosed) _sharedController.add(s);
-        },
-        onError: (Object e) {
-          if (!_sharedController.isClosed) _sharedController.addError(e);
-        },
-      );
-    }
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    return _replayThenLive(uid).asBroadcastStream(
-      // Tear down the per-caller generator when its last listener leaves
-      // so rebuilt screens don't accumulate dead subscriptions.
-      onCancel: (sub) => sub.cancel(),
+  /// The most recently resolved session, if any.
+  ///
+  /// Widgets can use it as `StreamBuilder.initialData` to paint their first
+  /// frame with the known flags instead of a spinner. It is NOT a substitute
+  /// for the uid guard: [currentAppSession] still discards a session that
+  /// belongs to another account.
+  static AppSession? get cachedSession =>
+      _hasLatestAccess ? _latestAccess : null;
+
+  static void _ensureSharedStarted() {
+    if (_sharedStarted) return;
+    _sharedStarted = true;
+    AccessService().watchAccess().listen(
+      (s) {
+        _latestAccess = s;
+        _hasLatestAccess = true;
+        if (!_sharedController.isClosed) _sharedController.add(s);
+      },
+      onError: (Object e) {
+        if (!_sharedController.isClosed) _sharedController.addError(e);
+      },
     );
   }
 
-  static Stream<AppSession?> _replayThenLive(String? uid) async* {
-    if (_hasLatestAccess && uid != null && _latestAccess?.uid == uid) {
-      yield _latestAccess;
-    }
-    yield* _sharedController.stream;
+  static Stream<AppSession?> watchAccessShared() {
+    _ensureSharedStarted();
+    return Stream.multi((controller) {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (_hasLatestAccess && uid != null && _latestAccess?.uid == uid) {
+        controller.add(_latestAccess);
+      }
+      final live = _sharedController.stream.listen(
+        controller.add,
+        onError: controller.addError,
+      );
+      // A cancelled subscriber must not leave a listener on the shared
+      // controller behind (drawer open/close cycles, route transitions).
+      controller.onCancel = () => live.cancel();
+    });
   }
 
   final FirebaseFirestore _db = db;
@@ -165,7 +181,7 @@ class AccessService {
         leads = s['canAccessLeads'] as bool? ?? leads;
         seedDocId = seed.docs.first.id;
       }
-      final now = DateTime.now().toIso8601String();
+      final now = timestampToWire(DateTime.now());
       await _db.collection(_collection).doc(uid).set({
         'email': email,
         'canAccessStudents': students,
@@ -317,7 +333,7 @@ class AccessService {
       'canAccessBills': bills,
       'canAccessVisitors': visitors,
       'canAccessLeads': leads,
-      'updatedAt': DateTime.now().toIso8601String(),
+      'updatedAt': timestampToWire(DateTime.now()),
       'updatedBy': by,
     });
   }
@@ -372,7 +388,7 @@ class AccessService {
         leads = s['canAccessLeads'] as bool? ?? leads;
         seedDocId = seed.docs.first.id;
       }
-      final now = DateTime.now().toIso8601String();
+      final now = timestampToWire(DateTime.now());
       await _db.collection(_collection).doc(uid).set({
         'email': normalized,
         'canAccessStudents': students,

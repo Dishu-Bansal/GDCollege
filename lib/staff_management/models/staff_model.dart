@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:gd_college/constants.dart';
 import 'package:gd_college/models/user_session.dart';
+import 'package:gd_college/utils/timestamps.dart';
 
 import '../../widgets/increments.dart';
 
@@ -215,7 +216,7 @@ class StaffModel {
       'name': name,
       'fatherName': fatherName,
       'motherName': motherName,
-      'dob': dob?.toIso8601String(),
+      'dob': dateToWire(dob),
       'gender': gender,
       'caste': caste,
       'address': address,
@@ -252,15 +253,15 @@ class StaffModel {
       'experienceCertificateUrls': experienceCertificateUrls,
       'salary': salary,
       'increments': increments.map((e) => {
-        'date': e.date?.toIso8601String(),
+        'date': dateToWire(e.date),
         'amount': e.amount,
       }).toList(),
-      'dateOfJoining': dateOfJoining?.toIso8601String(),
-      'dateOfRelieving': dateOfRelieving?.toIso8601String(),
+      'dateOfJoining': dateToWire(dateOfJoining),
+      'dateOfRelieving': dateToWire(dateOfRelieving),
       'documentVersion': documentVersion,
       'isLocked': isLocked,
-      'createdAt': createdAt?.toIso8601String(),
-      'updatedAt': updatedAt?.toIso8601String(),
+      'createdAt': timestampToWire(createdAt),
+      'updatedAt': timestampToWire(updatedAt),
       'createdBy': createdBy ?? UserSession().currentUser!.email,
       'lastUpdatedBy': UserSession().currentUser!.email,
     };
@@ -309,7 +310,7 @@ class StaffModel {
       name: data['name'] ?? '',
       fatherName: data['fatherName'] ?? '',
       motherName: data['motherName'] ?? '',
-      dob: data['dob'] != null ? DateTime.tryParse(data['dob']) : null,
+      dob: parseDate(data['dob']),
       gender: data['gender'] ?? '',
       caste: data['caste'] ?? '',
       address: data['address'] ?? '',
@@ -337,15 +338,11 @@ class StaffModel {
       salary: data['salary'] ?? '',
       increments: (data['increments'] as List<dynamic>? ?? [])
           .map((e) => IncrementEntry(
-        date: e['date'] != null ? DateTime.tryParse(e['date']) : null,
+        date: parseDate(e['date']),
         amount: e['amount'] ?? '',
       )).toList(),
-      dateOfJoining: data['dateOfJoining'] != null
-          ? DateTime.tryParse(data['dateOfJoining'])
-          : null,
-      dateOfRelieving: data['dateOfRelieving'] != null
-          ? DateTime.tryParse(data['dateOfRelieving'])
-          : null,
+      dateOfJoining: parseDate(data['dateOfJoining']),
+      dateOfRelieving: parseDate(data['dateOfRelieving']),
       staffId: data['staffId'],
       photoUrl: data['photoUrl'],
       scCertificateUrl: data['scCertificateUrl'],
@@ -358,12 +355,8 @@ class StaffModel {
       otherFileUrls: List<String>.from(data['otherFileUrls'] ?? []),
       documentVersion: data['documentVersion'] ?? 1,
       isLocked: data['isLocked'] ?? false,
-      createdAt: data['createdAt'] != null
-          ? DateTime.tryParse(data['createdAt'])
-          : null,
-      updatedAt: data['updatedAt'] != null
-          ? DateTime.tryParse(data['updatedAt'])
-          : null,
+      createdAt: parseTimestamp(data['createdAt']),
+      updatedAt: parseTimestamp(data['updatedAt']),
       createdBy: data['createdBy'] ?? '',
       lastUpdatedBy: data['lastUpdatedBy'] ?? '',
     );
