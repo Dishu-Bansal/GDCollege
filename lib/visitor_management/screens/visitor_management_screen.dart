@@ -50,7 +50,7 @@ class _VisitorManagementScreenState
   @override
   Widget build(BuildContext context) {
     return AccessGate(
-      module: 'Visitor Management',
+      module: 'Visitors',
       canAccess: (s) => s.canAccessVisitors,
       drawer: getSideDrawer(context),
       child: _buildContent(context),
@@ -63,7 +63,7 @@ class _VisitorManagementScreenState
       backgroundColor: const Color(0xFFF4F6FA),
       drawer: getSideDrawer(context),
       appBar: AppBar(
-        title: const Text('Visitor Management',
+        title: const Text('Visitors',
             style: TextStyle(fontWeight: FontWeight.w700)),
         bottom: TabBar(
           controller: _tabs,

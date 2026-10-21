@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:gd_college/utils/timestamps.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:gd_college/constants.dart';
 import 'package:gd_college/providers.dart';
@@ -22,14 +23,18 @@ class FirebaseStudentRepository implements StudentRepository {
   CollectionReference _studentLogs(String studentId) =>
       _firestore.collection('students').doc(studentId).collection('studentLogs');
 
-  Future<void> _writeLog(String studentId, String studentName, String action, String detail) async {
-    await _studentLogs(studentId).add(AuditLog(
+  /// Payload for one audit-log row. Use with [WriteBatch.set] so the change
+  /// and its log commit together (or not at all). Migrations that write a
+  /// lone log row can still `add()` this payload directly.
+  Map<String, dynamic> _logData(
+      String studentId, String studentName, String action, String detail) {
+    return AuditLog(
       personId: studentId,
       personName: studentName,
       action: action,
       changedBy: UserSession().currentUser?.email ?? '',
       detail: detail,
-    ).toFirestore());
+    ).toFirestore();
   }
 
   // ── N-gram index builder ──────────────────────────────────────────────────
@@ -100,9 +105,15 @@ class FirebaseStudentRepository implements StudentRepository {
     _refreshDocsFlags(student);
     final data = student.toFirestore();
     data['_searchIndex'] = _buildSearchIndex(student);
-    final docRef = await _firestore.collection(_collection).add(data);
+    // The record and its 'create' audit entry share one commit: the student
+    // is never created without its log (or logged without being created).
+    final docRef = _firestore.collection(_collection).doc();
     final createDetail = 'Created: ${student.name}, ${student.nameOfCourse}, ${student.yearOfAdmission ?? '—'}';
-    await _writeLog(docRef.id, student.name, 'create', createDetail);
+    final batch = _firestore.batch();
+    batch.set(docRef, data);
+    batch.set(_studentLogs(docRef.id).doc(),
+        _logData(docRef.id, student.name, 'create', createDetail));
+    await batch.commit();
     return docRef.id;
   }
 
@@ -133,19 +144,26 @@ class FirebaseStudentRepository implements StudentRepository {
     // so new URLs are already on the model).
     _refreshDocsFlags(student);
     final data = student.toFirestore();
+    // Never re-write the creation instant on an edit: the stored value (or a
+    // legacy wall-clock string) is the record's true origin, while the model's
+    // copy may be shifted by the editing device's clock/timezone.
+    data.remove('createdAt');
     data['_searchIndex'] = _buildSearchIndex(student);
-    await _firestore.collection(_collection).doc(docId).update(data);
 
-    // NOTE: `group` is (re)stamped by toFirestore(), while `_meta`
-    // facets are maintained by the syncStudentMeta Cloud Function.
-
+    // The record write and its 'update' audit entry share one commit, so an
+    // edit is never applied without its log (and a failed log never leaves
+    // the record updated).
+    final batch = _firestore.batch();
+    batch.update(_firestore.collection(_collection).doc(docId), data);
     if (writeLog) {
       var detail = _buildUpdateDetail(oldData!, data);
       if (autoRevoked) {
         detail = '$detail. Verification revoked (record edited).';
       }
-      await _writeLog(docId, student.name, 'update', detail);
+      batch.set(_studentLogs(docId).doc(),
+          _logData(docId, student.name, 'update', detail));
     }
+    await batch.commit();
   }
 
   // ── VERIFICATION ────────────────────────────────────────────────────────
@@ -156,13 +174,18 @@ class FirebaseStudentRepository implements StudentRepository {
     final snap = await ref.get();
     final data = snap.data() as Map<String, dynamic>? ?? {};
     final by = UserSession().currentUser?.email ?? '';
-    await ref.update({
+    final batch = _firestore.batch();
+    batch.update(ref, {
       'isVerified': true,
       'verifiedBy': by,
-      'verifiedAt': DateTime.now().toIso8601String(),
+      // UTC so the timestamp is unambiguous regardless of the client clock.
+      'verifiedAt': timestampToWire(DateTime.now()),
     });
-    await _writeLog(docId, (data['name'] ?? '').toString(), 'verify',
-        'Verified by $by');
+    batch.set(
+        _studentLogs(docId).doc(),
+        _logData(docId, (data['name'] ?? '').toString(), 'verify',
+            'Verified by $by'));
+    await batch.commit();
   }
 
   @override
@@ -171,16 +194,20 @@ class FirebaseStudentRepository implements StudentRepository {
     final snap = await ref.get();
     final data = snap.data() as Map<String, dynamic>? ?? {};
     final by = UserSession().currentUser?.email ?? '';
-    await ref.update({
+    final batch = _firestore.batch();
+    batch.update(ref, {
       'isVerified': false,
       'verifiedBy': '',
       'verifiedAt': null,
     });
-    await _writeLog(
-        docId,
-        (data['name'] ?? '').toString(),
-        'unverify',
-        'Verification revoked by $by${reason.isNotEmpty ? ': $reason' : ''}');
+    batch.set(
+        _studentLogs(docId).doc(),
+        _logData(
+            docId,
+            (data['name'] ?? '').toString(),
+            'unverify',
+            'Verification revoked by $by${reason.isNotEmpty ? ': $reason' : ''}'));
+    await batch.commit();
   }
 
   static const _fieldLabels = {
@@ -207,15 +234,27 @@ class FirebaseStudentRepository implements StudentRepository {
     'scCertificateUrl', 'bcCertificateUrl', 'sportsCertificateUrl',
   };
 
+  // Date fields are compared as calendar dates, so a legacy full-ISO value
+  // (`2000-01-01T00:00:00.000`) and the current `yyyy-MM-dd` form do not read
+  // as an edit.
+  static const _dateFieldKeys = {'dob'};
+
+  static String? _normalizeField(String key, Object? raw) {
+    if (raw == null || raw == '' || raw == 0) return null;
+    if (_dateFieldKeys.contains(key)) {
+      final wired = dateToWire(parseDate(raw));
+      if (wired != null) return wired;
+    }
+    return raw.toString();
+  }
+
   String _buildUpdateDetail(Map<String, dynamic> oldData, Map<String, dynamic> newData) {
     final changes = <String>[];
     for (final entry in _fieldLabels.entries) {
       final key = entry.key;
       // Normalize: treat null, '', 0 as equivalent empty values
-      final oldVal = oldData[key];
-      final newVal = newData[key];
-      final oldNorm = (oldVal == null || oldVal == '' || oldVal == 0) ? null : oldVal.toString();
-      final newNorm = (newVal == null || newVal == '' || newVal == 0) ? null : newVal.toString();
+      final oldNorm = _normalizeField(key, oldData[key]);
+      final newNorm = _normalizeField(key, newData[key]);
       if (oldNorm == newNorm) continue;
       if (_fileFieldKeys.contains(key)) {
         changes.add('${entry.value} changed');
@@ -230,15 +269,22 @@ class FirebaseStudentRepository implements StudentRepository {
 
   @override
   Future<void> delete(String docId) async {
-    // Write log before deleting
     final doc = await _firestore.collection(_collection).doc(docId).get();
     final data = (doc.data() as Map<String, dynamic>?) ?? {};
     final name = data['name'] ?? '';
     final course = data['nameOfCourse'] ?? '';
     final year = data['yearOfAdmission'];
     final deleteDetail = 'Deleted: $name, $course, ${year ?? '—'}';
-    await _writeLog(docId, name, 'delete', deleteDetail);
-    await _firestore.collection(_collection).doc(docId).delete();
+    // The removal and its 'delete' audit entry share one commit: a failed
+    // delete no longer leaves a "Deleted" log behind, and a successful one
+    // can never go unlogged. Subcollection documents survive parent removal,
+    // so the global log keeps the entry.
+    final batch = _firestore.batch();
+    batch.delete(_firestore.collection(_collection).doc(docId));
+    batch.set(
+        _studentLogs(docId).doc(),
+        _logData(docId, name.toString(), 'delete', deleteDetail));
+    await batch.commit();
     // NOTE: counters + facets are maintained by syncStudentMeta.
   }
 
@@ -284,12 +330,7 @@ class FirebaseStudentRepository implements StudentRepository {
           .get();
       if (existing.docs.isNotEmpty) continue;
 
-      DateTime ts = DateTime.now();
-      if (createdAtRaw is String) {
-        ts = DateTime.tryParse(createdAtRaw) ?? DateTime.now();
-      } else if (createdAtRaw is Timestamp) {
-        ts = createdAtRaw.toDate();
-      }
+      final ts = parseTimestamp(createdAtRaw) ?? DateTime.now();
 
       final detail = 'Created: $name, $course, ${year ?? '—'}';
       await _studentLogs(doc.id).add(AuditLog(

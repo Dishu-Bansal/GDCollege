@@ -61,13 +61,17 @@ abstract class StockRepository {
   Future<void> updateCatalogItemPhoto(
       String catalogItemId, String url);
 
-  /// Records a photo change for a catalog item in the stock logs.
+  /// Atomically updates a catalog item's photo **and** records the change in
+  /// the stock logs.
   ///
-  /// The entry (type 'photo') shows the old and new photo URL and surfaces in
-  /// the item-level, room-level and global (all rooms) logs. When
+  /// The 'photo' entry shows the old and new photo URL and surfaces in the
+  /// item-level, room-level and global (all rooms) logs. When
   /// [building]/[floor]/[room] are given the entry is written to that room
   /// only; otherwise it is written to every room that stocks the item.
-  Future<void> logItemPhotoChange({
+  ///
+  /// The photo update and its log entries share one commit, so the photo is
+  /// never changed without its log (or logged without being changed).
+  Future<void> updateCatalogItemPhotoWithLogs({
     required String catalogItemId,
     required String itemName,
     required String oldPhotoUrl,

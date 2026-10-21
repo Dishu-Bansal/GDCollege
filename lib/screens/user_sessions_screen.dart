@@ -84,7 +84,7 @@ class _UserSessionsScreenState extends ConsumerState<UserSessionsScreen> {
   @override
   Widget build(BuildContext context) {
     return AccessGate(
-      module: 'User Sessions',
+      module: 'Login Sessions',
       canAccess: (s) => s.isAdmin,
       drawer: getSideDrawer(context),
       child: _buildContent(context),
@@ -96,7 +96,7 @@ class _UserSessionsScreenState extends ConsumerState<UserSessionsScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
       appBar: AppBar(
-        title: const Text('User Sessions',
+        title: const Text('Login Sessions',
             style: TextStyle(fontWeight: FontWeight.w700)),
       ),
       drawer: getSideDrawer(context),

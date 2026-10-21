@@ -26,7 +26,7 @@ List<AccountAmount> accountSharesFromTally(Map<String, int> tally) {
 /// Each activity total has a matching account-wise breakdown
 /// ([AccountAmount] list) whose entries sum to that total.
 class HomeAnalytics {
-  /// Start of the analytics day (00:00 IST).
+  /// The IST calendar day these counts describe (midnight, device zone).
   final DateTime day;
 
   // Students
@@ -43,7 +43,12 @@ class HomeAnalytics {
   final int inspectionsDone;
   final int itemsAdded;
   final int itemsRemoved;
+  final int itemsDeleted;
   final int assignmentsDone;
+
+  // Student Docs
+  final int docsStocked;
+  final int docsIssued;
 
   // Account-wise breakdowns (per-account share of each total above).
   final List<AccountAmount> studentsCreatedAccounts;
@@ -55,7 +60,10 @@ class HomeAnalytics {
   final List<AccountAmount> inspectionsAccounts;
   final List<AccountAmount> itemsAddedAccounts;
   final List<AccountAmount> itemsRemovedAccounts;
+  final List<AccountAmount> itemsDeletedAccounts;
   final List<AccountAmount> assignmentsAccounts;
+  final List<AccountAmount> docsStockedAccounts;
+  final List<AccountAmount> docsIssuedAccounts;
 
   const HomeAnalytics({
     required this.day,
@@ -68,7 +76,10 @@ class HomeAnalytics {
     this.inspectionsDone = 0,
     this.itemsAdded = 0,
     this.itemsRemoved = 0,
+    this.itemsDeleted = 0,
     this.assignmentsDone = 0,
+    this.docsStocked = 0,
+    this.docsIssued = 0,
     this.studentsCreatedAccounts = const [],
     this.studentsUpdatedAccounts = const [],
     this.studentsDeletedAccounts = const [],
@@ -78,7 +89,10 @@ class HomeAnalytics {
     this.inspectionsAccounts = const [],
     this.itemsAddedAccounts = const [],
     this.itemsRemovedAccounts = const [],
+    this.itemsDeletedAccounts = const [],
     this.assignmentsAccounts = const [],
+    this.docsStockedAccounts = const [],
+    this.docsIssuedAccounts = const [],
   });
 
   int get studentEvents => studentsCreated + studentsUpdated + studentsDeleted;
@@ -91,5 +105,8 @@ class HomeAnalytics {
       inspectionsDone > 0 ||
       itemsAdded > 0 ||
       itemsRemoved > 0 ||
-      assignmentsDone > 0;
+      itemsDeleted > 0 ||
+      assignmentsDone > 0 ||
+      docsStocked > 0 ||
+      docsIssued > 0;
 }

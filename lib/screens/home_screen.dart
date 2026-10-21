@@ -5,9 +5,11 @@ import '../access/access_service.dart';
 import '../access/app_session.dart';
 import '../access/screens/access_management_screen.dart';
 import '../bill_management/screens/bill_management_screen.dart';
+import '../lead_management/screens/lead_management_screen.dart';
 import '../fees_management/screens/fees_management_screen.dart';
 import '../models/home_analytics.dart';
 import '../providers.dart';
+import '../student_docs/screens/student_docs_screen.dart';
 import '../student_management/screens/student_list_screen.dart';
 import '../staff_management/screens/staff_list_screen.dart';
 import '../stock_management/screens/buildings_screen.dart';
@@ -25,46 +27,83 @@ class HomeScreen extends ConsumerWidget {
       drawer: getSideDrawer(context),
       body: SafeArea(
         child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Column(
-              children: [
-                const SizedBox(height: 32),
-                // Welcome header
-                Icon(
-                  Icons.school,
-                  size: 56,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Welcome to',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(color: Colors.grey[600]),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Lala Kundan Lal\nMemorial Society',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                // Daily analytics (previous calendar day, IST)
-                _AnalyticsCard(analytics: analytics),
-                const SizedBox(height: 24),
-                // Navigation cards (gated by live access flags)
-                const _ModuleCards(),
-                // Admin cards (visible to dishubansal@lklms.com only)
-                const _AdminCards(),
-                const SizedBox(height: 40),
-              ],
+          child: ConstrainedBox(
+            // Keeps lines short and centered on wide laptop screens
+            // instead of stretching edge to edge.
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                children: [
+                  const SizedBox(height: 20),
+                  // Compact welcome header: one row, not a giant banner.
+                  const _HomeHeader(),
+                  const SizedBox(height: 16),
+                  // Daily analytics (previous calendar day, IST)
+                  _AnalyticsCard(analytics: analytics),
+                  const SizedBox(height: 20),
+                  // Navigation tiles (gated by live access flags)
+                  const _ModuleTiles(),
+                  // Admin tiles (visible to dishubansal@lklms.com only)
+                  const _AdminTiles(),
+                  const SizedBox(height: 32),
+                ],
+              ),
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// One compact header row: app mark + society name + signed-in account.
+class _HomeHeader extends StatelessWidget {
+  const _HomeHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final email = FirebaseAuth.instance.currentUser?.email ?? '';
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(9),
+          decoration: BoxDecoration(
+            color: Theme.of(context)
+                .colorScheme
+                .primary
+                .withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            Icons.school,
+            size: 26,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Lala Kundan Lal Memorial Society',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
+              ),
+              if (email.isNotEmpty)
+                Text(
+                  email,
+                  style: TextStyle(
+                      fontSize: 11.5, color: Colors.grey.shade500),
+                  overflow: TextOverflow.ellipsis,
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -136,7 +175,7 @@ class _AnalyticsCard extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 6),
           analytics.when(
             loading: () => const Padding(
               padding: EdgeInsets.symmetric(vertical: 24),
@@ -173,25 +212,37 @@ class _AnalyticsCard extends ConsumerWidget {
             data: (data) => Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Date pill + reset link share one compact row.
                 Row(
                   children: [
-                    Expanded(
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1A3C6E)
+                            .withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
                       child: Text(
                         _dayCaption(data.day),
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.grey.shade500),
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1A3C6E),
+                        ),
                       ),
                     ),
+                    const Spacer(),
                     if (selectedDay != null)
                       GestureDetector(
                         onTap: () => ref
                             .read(selectedAnalyticsDateProvider.notifier)
                             .state = null,
-                        child: Text(
+                        child: const Text(
                           'Back to yesterday',
                           style: TextStyle(
-                            fontSize: 12,
-                            color: const Color(0xFF1A3C6E),
+                            fontSize: 11.5,
+                            color: Color(0xFF1A3C6E),
                             fontWeight: FontWeight.w600,
                             decoration: TextDecoration.underline,
                           ),
@@ -199,7 +250,7 @@ class _AnalyticsCard extends ConsumerWidget {
                       ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 if (!data.hasAnyActivity)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
@@ -234,7 +285,6 @@ class _AnalyticsCard extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
                   _AnalyticsGroup(
                     title: 'Staff',
                     icon: Icons.badge,
@@ -257,7 +307,6 @@ class _AnalyticsCard extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
                   _AnalyticsGroup(
                     title: 'Stock',
                     icon: Icons.inventory_2,
@@ -279,9 +328,31 @@ class _AnalyticsCard extends ConsumerWidget {
                         accounts: data.itemsRemovedAccounts,
                       ),
                       (
+                        label: 'Items Deleted',
+                        value: data.itemsDeleted,
+                        accounts: data.itemsDeletedAccounts,
+                      ),
+                      (
                         label: 'Assignments',
                         value: data.assignmentsDone,
                         accounts: data.assignmentsAccounts,
+                      ),
+                    ],
+                  ),
+                  _AnalyticsGroup(
+                    title: 'DMC & Degrees',
+                    icon: Icons.folder_shared_outlined,
+                    color: const Color(0xFF4E342E),
+                    stats: [
+                      (
+                        label: 'Docs Stocked',
+                        value: data.docsStocked,
+                        accounts: data.docsStockedAccounts,
+                      ),
+                      (
+                        label: 'Docs Issued',
+                        value: data.docsIssued,
+                        accounts: data.docsIssuedAccounts,
                       ),
                     ],
                   ),
@@ -353,6 +424,9 @@ class _AnalyticsCard extends ConsumerWidget {
   }
 }
 
+/// One module group in Daily Activity: a collapsible section whose header
+/// shows the group's total at a glance. Groups and metrics with zero
+/// activity are hidden so quiet days stay short.
 class _AnalyticsGroup extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -368,22 +442,36 @@ class _AnalyticsGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasBreakdowns = stats.any((s) => s.accounts.isNotEmpty);
+    final active = stats.where((s) => s.value > 0).toList();
+    if (active.isEmpty) return const SizedBox.shrink();
+    final total = active.fold(0, (sum, s) => sum + s.value);
     return Container(
-      padding: const EdgeInsets.all(10),
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: Colors.grey.shade50,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: Colors.grey.shade200),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 16, color: color),
-              const SizedBox(width: 6),
-              Text(
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
+        initiallyExpanded: true,
+        tilePadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+        childrenPadding:
+            const EdgeInsets.fromLTRB(12, 0, 12, 10),
+        shape: const Border(),
+        leading: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 16, color: color),
+        ),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
                 title,
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
@@ -391,319 +479,253 @@ class _AnalyticsGroup extends StatelessWidget {
                   color: color,
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          if (!hasBreakdowns)
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final s in stats)
-                  _StatChip(label: s.label, value: s.value, color: color),
-              ],
-            )
-          else
-            for (var i = 0; i < stats.length; i++) ...[
-              _ActivityBox(
-                label: stats[i].label,
-                value: stats[i].value,
-                accounts: stats[i].accounts,
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 9, vertical: 2),
+              decoration: BoxDecoration(
                 color: color,
+                borderRadius: BorderRadius.circular(12),
               ),
-              if (i != stats.length - 1) const SizedBox(height: 10),
-            ],
+              child: Text(
+                '$total',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+        children: [
+          for (var i = 0; i < active.length; i++) ...[
+            if (i > 0)
+              Divider(
+                  height: 13, color: color.withValues(alpha: 0.12)),
+            _MetricRow(
+              label: active[i].label,
+              value: active[i].value,
+              accounts: active[i].accounts,
+              color: color,
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-/// One activity in a single box: the total on the first row and the
-/// account-wise breakdown (each account's share) listed beneath it, e.g.
-/// "Total 20" followed by "email1 13 / email2 4 / email3 3".
-class _ActivityBox extends StatelessWidget {
+/// One metric row: label + per-account shares on the left, total on the
+/// right — e.g. "Updated … 7" with "a@x (4) · b@y (3)" beneath it.
+class _MetricRow extends StatelessWidget {
   final String label;
   final int value;
   final List<AccountAmount> accounts;
   final Color color;
 
-  const _ActivityBox({
+  const _MetricRow({
     required this.label,
     required this.value,
     required this.accounts,
     required this.color,
   });
 
-  String _accountLabel(String account) =>
-      account.isEmpty ? 'Unknown account' : account;
-
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.18)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Total row: activity name on the left, "Total" + count on the right.
-          Row(
+    final shares = accounts
+        .map((a) =>
+            '${(a.account.isEmpty ? 'Unknown' : a.account)} (${a.amount})')
+        .join(' · ');
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12.5,
-                    color: color,
+              Text(
+                label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12.5,
+                  color: Colors.grey.shade800,
+                ),
+              ),
+              if (shares.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Text(
+                    shares,
+                    style: TextStyle(
+                        fontSize: 11, color: Colors.grey.shade500),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-              ),
-              Text(
-                'Total',
-                style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                '$value',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: color,
-                ),
-              ),
             ],
           ),
-          if (accounts.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Divider(height: 1, color: color.withValues(alpha: 0.15)),
-            const SizedBox(height: 2),
-            for (final a in accounts)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2.5),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _accountLabel(a.account),
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          color: Colors.grey.shade700,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      '${a.amount}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: color,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ],
-      ),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          '$value',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            color: color,
+          ),
+        ),
+      ],
     );
   }
 }
 
-class _StatChip extends StatelessWidget {
+// ── Module navigation tiles (access-gated) ────────────────────────────────
+
+/// One module's navigation target, resolved against the live session.
+class _ModuleTarget {
+  final IconData icon;
   final String label;
-  final int value;
   final Color color;
+  final bool Function(AppSession) visible;
+  final Widget Function() open;
 
-  const _StatChip({
+  const _ModuleTarget({
+    required this.icon,
     required this.label,
-    required this.value,
     required this.color,
+    required this.visible,
+    required this.open,
   });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '$value',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: color,
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              color: color.withValues(alpha: 0.75),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
-// ── Admin cards (admin only) ─────────────────────────────────────────────────
+const _moduleTargets = [
+  _ModuleTarget(
+    icon: Icons.people_alt,
+    label: 'Students',
+    color: Color(0xFF1565C0),
+    visible: _showStudents,
+    open: StudentListScreen.new,
+  ),
+  _ModuleTarget(
+    icon: Icons.folder_shared_outlined,
+    label: 'DMC & Degrees',
+    color: Color(0xFF4E342E),
+    visible: _showStudentDocs,
+    open: StudentDocsScreen.new,
+  ),
+  _ModuleTarget(
+    icon: Icons.badge,
+    label: 'Staff',
+    color: Color(0xFF2E7D32),
+    visible: _showStaff,
+    open: StaffListScreen.new,
+  ),
+  _ModuleTarget(
+    icon: Icons.inventory_2,
+    label: 'Stock',
+    color: Color(0xFF6A1B9A),
+    visible: _showStock,
+    open: BuildingsScreen.new,
+  ),
+  _ModuleTarget(
+    icon: Icons.receipt_long,
+    label: 'Bills',
+    color: Color(0xFF00838F),
+    visible: _showBills,
+    open: BillManagementScreen.new,
+  ),
+  _ModuleTarget(
+    icon: Icons.how_to_reg,
+    label: 'Visitors',
+    color: Color(0xFFAD1457),
+    visible: _showVisitors,
+    open: VisitorManagementScreen.new,
+  ),
+  _ModuleTarget(
+    icon: Icons.person_search_outlined,
+    label: 'Leads',
+    color: Color(0xFF00695C),
+    visible: _showLeads,
+    open: LeadManagementScreen.new,
+  ),
+  _ModuleTarget(
+    icon: Icons.payments_outlined,
+    label: 'Fees',
+    color: Color(0xFF6D4C41),
+    visible: _showFees,
+    open: FeesManagementScreen.new,
+  ),
+];
 
-class _AdminCards extends StatelessWidget {
-  const _AdminCards();
+bool _showStudents(AppSession s) => s.canAccessStudents;
+bool _showStudentDocs(AppSession s) => s.canAccessStudentDocs;
+bool _showStaff(AppSession s) => s.canAccessStaff;
+bool _showStock(AppSession s) => s.canAccessStock;
+bool _showBills(AppSession s) => s.canAccessBills;
+bool _showVisitors(AppSession s) => s.canAccessVisitors;
+bool _showLeads(AppSession s) => s.canAccessLeads;
+bool _showFees(AppSession s) => s.canAccessFees;
+
+const _adminTargets = [
+  _ModuleTarget(
+    icon: Icons.access_time,
+    label: 'Login Sessions',
+    color: Color(0xFF4E342E),
+    visible: _showAdmin,
+    open: UserSessionsScreen.new,
+  ),
+  _ModuleTarget(
+    icon: Icons.admin_panel_settings_outlined,
+    label: 'Access Control',
+    color: Color(0xFF37474F),
+    visible: _showAdmin,
+    open: AccessManagementScreen.new,
+  ),
+];
+
+bool _showAdmin(AppSession s) => s.isAdmin;
+
+class _ModuleTiles extends StatelessWidget {
+  const _ModuleTiles();
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<AppSession?>(
       stream: AccessService.watchAccessShared(),
+      // Paint the known flags on the first frame instead of a spinner;
+      // currentAppSession() still discards another account's session.
+      initialData: AccessService.cachedSession,
       builder: (context, snap) {
-        final session = snap.data;
-        final isAdmin = session?.isAdmin == true ||
-            AccessService.isAdminEmail(
-                FirebaseAuth.instance.currentUser?.email);
-        if (!isAdmin) return const SizedBox.shrink();
-        return Column(
-          children: [
-            const SizedBox(height: 16),
-            _NavCard(
-              icon: Icons.access_time,
-              label: 'User Sessions',
-              color: const Color(0xFF4E342E),
-              onTap: () => Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const UserSessionsScreen(),
+        // Ignore a session that belongs to another (previous) account.
+        final session = currentAppSession(snap.data);
+        if (session == null) {
+          final loading =
+              snap.connectionState == ConnectionState.waiting &&
+                  !snap.hasError;
+          if (loading) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
               ),
+            );
+          }
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Text(
+              'Access could not be resolved.\nPlease reopen the app or contact the admin.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
             ),
-            const SizedBox(height: 16),
-            _NavCard(
-              icon: Icons.admin_panel_settings_outlined,
-              label: 'Access Management',
-              color: const Color(0xFF37474F),
-              onTap: () => Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const AccessManagementScreen(),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-// ── Module navigation cards (access-gated) ─────────────────────────────────
-
-class _ModuleCards extends StatelessWidget {
-  const _ModuleCards();
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<AppSession?>(
-      stream: AccessService.watchAccessShared(),
-      builder: (context, snap) {
-        final session = snap.data;
-        bool show(bool Function(AppSession) flag) =>
-            session == null || flag(session);
-        final cards = <Widget>[];
-        void add(Widget card) {
-          if (cards.isNotEmpty) cards.add(const SizedBox(height: 16));
-          cards.add(card);
+          );
         }
-
-        if (show((s) => s.canAccessStudents)) {
-          add(_NavCard(
-            icon: Icons.people_alt,
-            label: 'Student Management',
-            color: const Color(0xFF1565C0),
-            onTap: () => Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const StudentListScreen(),
-              ),
-            ),
-          ));
-        }
-        if (show((s) => s.canAccessStaff)) {
-          add(_NavCard(
-            icon: Icons.badge,
-            label: 'Staff Management',
-            color: const Color(0xFF2E7D32),
-            onTap: () => Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const StaffListScreen()),
-            ),
-          ));
-        }
-        if (show((s) => s.canAccessStock)) {
-          add(_NavCard(
-            icon: Icons.inventory_2,
-            label: 'Stock Management',
-            color: const Color(0xFF6A1B9A),
-            onTap: () => Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const BuildingsScreen()),
-            ),
-          ));
-        }
-        if (show((s) => s.canAccessBills)) {
-          add(_NavCard(
-            icon: Icons.receipt_long,
-            label: 'Bill Management',
-            color: const Color(0xFF00838F),
-            onTap: () => Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const BillManagementScreen(),
-              ),
-            ),
-          ));
-        }
-        if (show((s) => s.canAccessVisitors)) {
-          add(_NavCard(
-            icon: Icons.how_to_reg,
-            label: 'Visitor Management',
-            color: const Color(0xFFAD1457),
-            onTap: () => Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const VisitorManagementScreen(),
-              ),
-            ),
-          ));
-        }
-        if (show((s) => s.canAccessFees)) {
-          add(_NavCard(
-            icon: Icons.payments_outlined,
-            label: 'Fees Management',
-            color: const Color(0xFFEF6C00),
-            onTap: () => Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const FeesManagementScreen(),
-              ),
-            ),
-          ));
-        }
-        if (cards.isEmpty) {
+        final tiles = _moduleTargets.where((t) => t.visible(session)).toList();
+        if (tiles.isEmpty) {
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
             child: Text(
@@ -713,59 +735,151 @@ class _ModuleCards extends StatelessWidget {
             ),
           );
         }
-        return Column(children: cards);
+        return _TileGrid(
+          tiles: tiles,
+          open: (t) => Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => t.open()),
+          ),
+        );
       },
     );
   }
 }
 
-class _NavCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
+// ── Admin tiles (admin only) ─────────────────────────────────────────────────
 
-  const _NavCard({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.onTap,
-  });
+class _AdminTiles extends StatelessWidget {
+  const _AdminTiles();
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(icon, color: color, size: 28),
-                ),
-                const SizedBox(width: 20),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                Icon(Icons.chevron_right, color: Colors.grey[400]),
-              ],
+    return StreamBuilder<AppSession?>(
+      stream: AccessService.watchAccessShared(),
+      // Paint the known flags on the first frame instead of a spinner;
+      // currentAppSession() still discards another account's session.
+      initialData: AccessService.cachedSession,
+      builder: (context, snap) {
+        // Ignore a session that belongs to another (previous) account; the
+        // fresh email check still lets the hardcoded admin through.
+        final session = currentAppSession(snap.data);
+        final isAdmin = session?.isAdmin == true ||
+            AccessService.isAdminEmail(
+                FirebaseAuth.instance.currentUser?.email);
+        if (!isAdmin) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 20),
+            Text(
+              'Admin',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey.shade500,
+                letterSpacing: 0.8,
+              ),
             ),
+            const SizedBox(height: 8),
+            _TileGrid(
+              tiles: _adminTargets,
+              open: (t) => Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => t.open()),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Responsive tile layout: a compact 2-column grid on laptop/wide
+/// screens, single-column rows on phones.
+class _TileGrid extends StatelessWidget {
+  final List<_ModuleTarget> tiles;
+  final void Function(_ModuleTarget) open;
+
+  const _TileGrid({required this.tiles, required this.open});
+
+  @override
+  Widget build(BuildContext context) {
+return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 520) {
+          return Column(
+            children: [
+              for (var i = 0; i < tiles.length; i++) ...[
+                if (i > 0) const SizedBox(height: 8),
+                _ModuleTile(
+                    target: tiles[i], onTap: () => open(tiles[i])),
+              ],
+            ],
+          );
+        }
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate:
+              const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            mainAxisExtent: 64,
+          ),
+          itemCount: tiles.length,
+          itemBuilder: (context, i) => _ModuleTile(
+              target: tiles[i], onTap: () => open(tiles[i])),
+        );
+      },
+    );
+  }
+}
+
+class _ModuleTile extends StatelessWidget {
+  final _ModuleTarget target;
+  final VoidCallback onTap;
+
+  const _ModuleTile({required this.target, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 1,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+              horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: target.color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child:
+                    Icon(target.icon, color: target.color, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  target.label,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              Icon(Icons.chevron_right,
+                  color: Colors.grey[400], size: 20),
+            ],
           ),
         ),
       ),

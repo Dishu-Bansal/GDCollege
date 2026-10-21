@@ -1,3 +1,5 @@
+import 'package:gd_college/utils/timestamps.dart';
+
 // ── Visitor (unique external person) ──────────────────────────────────────────
 
 /// A unique external visitor. One doc per person — repeat visits reuse the
@@ -23,6 +25,11 @@ class VisitorModel {
   /// Added after launch: old docs lack the key and read as ''.
   String phone;
 
+  /// Set when the visitor is captured as an admission lead (admin-only
+  /// "Add as Lead" on the detail screen). Old docs lack the key and read
+  /// as false.
+  bool addedAsLead;
+
   VisitorModel({
     this.id,
     this.name = '',
@@ -33,6 +40,7 @@ class VisitorModel {
     this.vehicleNumber = '',
     this.fromPlace = '',
     this.phone = '',
+    this.addedAsLead = false,
   });
 
   factory VisitorModel.fromFirestore(String id, Map<String, dynamic> d) =>
@@ -40,18 +48,13 @@ class VisitorModel {
         id: id,
         name: d['name'] ?? '',
         visitCount: (d['visitCount'] as num?)?.toInt() ?? 0,
-        firstVisitAt: d['firstVisitAt'] != null
-            ? DateTime.tryParse(d['firstVisitAt'])
-            : null,
-        lastVisitAt: d['lastVisitAt'] != null
-            ? DateTime.tryParse(d['lastVisitAt'])
-            : null,
-        lastCheckOutAt: d['lastCheckOutAt'] != null
-            ? DateTime.tryParse(d['lastCheckOutAt'])
-            : null,
+        firstVisitAt: parseTimestamp(d['firstVisitAt']),
+        lastVisitAt: parseTimestamp(d['lastVisitAt']),
+        lastCheckOutAt: parseTimestamp(d['lastCheckOutAt']),
         vehicleNumber: d['vehicleNumber'] ?? '',
         fromPlace: d['fromPlace'] ?? '',
         phone: d['phone'] ?? '',
+        addedAsLead: d['addedAsLead'] ?? false,
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -60,12 +63,13 @@ class VisitorModel {
     // without a client-side scan.
     'nameLower': name.toLowerCase(),
     'visitCount': visitCount,
-    'firstVisitAt': firstVisitAt?.toIso8601String(),
-    'lastVisitAt': lastVisitAt?.toIso8601String(),
-    'lastCheckOutAt': lastCheckOutAt?.toIso8601String(),
+    'firstVisitAt': timestampToWire(firstVisitAt),
+    'lastVisitAt': timestampToWire(lastVisitAt),
+    'lastCheckOutAt': timestampToWire(lastCheckOutAt),
     'vehicleNumber': vehicleNumber,
     'fromPlace': fromPlace,
     'phone': phone,
+    'addedAsLead': addedAsLead,
   };
 }
 
@@ -137,15 +141,11 @@ class VisitorEventModel {
       VisitorEventModel(
         id: id,
         type: d['type'] ?? 'entry',
-        at: d['at'] != null
-            ? DateTime.tryParse(d['at']) ?? DateTime.now()
-            : DateTime.now(),
+        at: parseTimestamp(d['at']) ?? DateTime.now(),
         // Pre-createdAt events fall back to their business time.
-        createdAt: d['createdAt'] != null
-            ? DateTime.tryParse(d['createdAt']) ?? DateTime.now()
-            : (d['at'] != null
-                ? DateTime.tryParse(d['at']) ?? DateTime.now()
-                : DateTime.now()),
+        createdAt: parseTimestamp(d['createdAt']) ??
+            parseTimestamp(d['at']) ??
+            DateTime.now(),
         visitId: d['visitId'] ?? '',
         personType: d['personType'] ?? 'visitor',
         personRefId: d['personRefId'] ?? '',
@@ -154,17 +154,15 @@ class VisitorEventModel {
         purpose: d['purpose'] ?? '',
         fromPlace: d['fromPlace'] ?? '',
         phone: d['phone'] ?? '',
-        outAt: d['outAt'] != null
-            ? DateTime.tryParse(d['outAt'])
-            : null,
+        outAt: parseTimestamp(d['outAt']),
         accompanyingPeople: List<String>.from(d['accompanyingPeople'] ?? []),
         by: d['by'] ?? '',
       );
 
   Map<String, dynamic> toFirestore() => {
     'type': type,
-    'at': at.toIso8601String(),
-    'createdAt': createdAt.toIso8601String(),
+    'at': timestampToWire(at),
+    'createdAt': timestampToWire(createdAt),
     'visitId': visitId,
     'personType': personType,
     'personRefId': personRefId,
@@ -173,7 +171,7 @@ class VisitorEventModel {
     'purpose': purpose,
     'fromPlace': fromPlace,
     'phone': phone,
-    'outAt': outAt?.toIso8601String(),
+    'outAt': timestampToWire(outAt),
     'accompanyingPeople': accompanyingPeople,
     'by': by,
   };
@@ -242,12 +240,8 @@ class VisitorVisitModel {
         fromPlace: d['fromPlace'] ?? '',
         phone: d['phone'] ?? '',
         accompanyingPeople: List<String>.from(d['accompanyingPeople'] ?? []),
-        checkInAt: d['checkInAt'] != null
-            ? DateTime.tryParse(d['checkInAt']) ?? DateTime.now()
-            : DateTime.now(),
-        checkOutAt: d['checkOutAt'] != null
-            ? DateTime.tryParse(d['checkOutAt'])
-            : null,
+        checkInAt: parseTimestamp(d['checkInAt']) ?? DateTime.now(),
+        checkOutAt: parseTimestamp(d['checkOutAt']),
         completedAtEntry: d['completedAtEntry'] == true,
         checkedInBy: d['checkedInBy'] ?? '',
         checkedOutBy: d['checkedOutBy'] ?? '',
@@ -262,8 +256,8 @@ class VisitorVisitModel {
     'fromPlace': fromPlace,
     'phone': phone,
     'accompanyingPeople': accompanyingPeople,
-    'checkInAt': checkInAt.toIso8601String(),
-    'checkOutAt': checkOutAt?.toIso8601String(),
+    'checkInAt': timestampToWire(checkInAt),
+    'checkOutAt': timestampToWire(checkOutAt),
     'completedAtEntry': completedAtEntry,
     // Explicit boolean so the "currently inside" query can use a reliable
     // equality filter (null-equality filters don't re-evaluate reliably when

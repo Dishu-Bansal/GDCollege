@@ -4,6 +4,8 @@ import '../providers.dart';
 import '../student_management/models/student_model.dart';
 import 'drawer.dart';
 
+/// Maintenance screen. Only the two document-completeness tools live here:
+/// the read-only audit and the flag backfill.
 class Helper extends ConsumerStatefulWidget {
   const Helper({super.key});
 
@@ -12,13 +14,8 @@ class Helper extends ConsumerStatefulWidget {
 }
 
 class _HelperState extends ConsumerState<Helper> {
-  String _stockMsg = 'Migrate Stock Logs (add location fields)';
-  String _studentMsg = 'Migrate Student Audit Logs';
-  String _staffMsg = 'Migrate Staff Audit Logs';
   String _docsMsg = 'Audit Student Documents';
   String _backfillMsg = 'Backfill Document Flags';
-  String _verifyBackfillMsg = 'Backfill Verification Flags';
-  String _visitorEventsMsg = 'Backfill Visitor Events';
   bool _running = false;
 
   @override
@@ -26,7 +23,7 @@ class _HelperState extends ConsumerState<Helper> {
     return Scaffold(
       drawer: getSideDrawer(context),
       appBar: AppBar(
-        title: const Text('Helper',
+        title: const Text('Tools',
             style: TextStyle(fontWeight: FontWeight.w700)),
       ),
       body: Center(
@@ -35,24 +32,6 @@ class _HelperState extends ConsumerState<Helper> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _buildButton(_stockMsg, () => _runMigration(
-                ref.read(stockRepositoryProvider).migrateStockLogsLocation(),
-                'Stock',
-                (s) => _stockMsg = s,
-              )),
-              const SizedBox(height: 16),
-              _buildButton(_studentMsg, () => _runMigration(
-                ref.read(studentRepositoryProvider).migrateStudentAuditLogs(),
-                'Student',
-                (s) => _studentMsg = s,
-              )),
-              const SizedBox(height: 16),
-              _buildButton(_staffMsg, () => _runMigration(
-                ref.read(staffRepositoryProvider).migrateStaffAuditLogs(),
-                'Staff',
-                (s) => _staffMsg = s,
-              )),
-              const SizedBox(height: 16),
               _buildButton(_docsMsg, _runDocsAudit),
               const SizedBox(height: 16),
               _buildButton(_backfillMsg, () => _runMigration(
@@ -61,28 +40,13 @@ class _HelperState extends ConsumerState<Helper> {
                 (s) => _backfillMsg = s,
                 unit: 'record(s)',
               )),
-              const SizedBox(height: 16),
-              _buildButton(_verifyBackfillMsg, () => _runMigration(
-                ref
-                    .read(studentRepositoryProvider)
-                    .backfillVerificationFlags(),
-                'Verification flags',
-                (s) => _verifyBackfillMsg = s,
-                unit: 'record(s)',
-              )),
-              const SizedBox(height: 16),
-              _buildButton(_visitorEventsMsg, () => _runMigration(
-                ref.read(visitorRepositoryProvider).backfillVisitEvents(),
-                'Visitor events',
-                (s) => _visitorEventsMsg = s,
-                unit: 'event(s)',
-              )),
               const SizedBox(height: 12),
               Text(
-                'One-time migrations. Each can be run safely multiple times —\n'
-                'existing logs are skipped. The documents audit is read-only;\n'
-                'the backfill stamps the filter flags on pre-flag records\n'
-                '(every later edit recomputes them automatically).',
+                'Rules: Aadhar number + card for 2016+ admissions; PAN number '
+                '+ card for everyone; 10th & 12th files; caste certificates; '
+                'Haryana Family ID + residence; ABC ID for 2024+ admissions.\n\n'
+                'The documents audit is read-only; the backfill stamps the '
+                'filter flags (every later edit recomputes them automatically).',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),

@@ -24,22 +24,26 @@ class _AccessManagementScreenState extends State<AccessManagementScreen> {
 
   String? _selectedUid;
   bool _students = true;
+  bool _studentDocs = true;
   bool _staff = true;
   bool _stock = true;
   bool _bills = true;
   bool _visitors = true;
-  bool _fees = true;
+  bool _leads = false;
+  bool _fees = false;
   bool _saving = false;
 
   void _pickUser(AppUser? user) {
     setState(() {
       _selectedUid = user?.uid;
       _students = user?.canAccessStudents ?? true;
+      _studentDocs = user?.canAccessStudentDocs ?? true;
       _staff = user?.canAccessStaff ?? true;
       _stock = user?.canAccessStock ?? true;
       _bills = user?.canAccessBills ?? true;
       _visitors = user?.canAccessVisitors ?? true;
-      _fees = user?.canAccessFees ?? true;
+      _leads = user?.canAccessLeads ?? false;
+      _fees = user?.canAccessFees ?? false;
     });
   }
 
@@ -51,10 +55,12 @@ class _AccessManagementScreenState extends State<AccessManagementScreen> {
       await _service.updatePermissions(
         uid: uid,
         students: _students,
+        studentDocs: _studentDocs,
         staff: _staff,
         stock: _stock,
         bills: _bills,
         visitors: _visitors,
+        leads: _leads,
         fees: _fees,
       );
       if (!mounted) return;
@@ -89,29 +95,30 @@ class _AccessManagementScreenState extends State<AccessManagementScreen> {
   Widget build(BuildContext context) {
     return StreamBuilder<AppSession?>(
       stream: _sessionStream,
+      // Paint the known session on the first frame instead of a spinner;
+      // currentAppSession() still discards another account's session.
+      initialData: AccessService.cachedSession,
       builder: (context, sessionSnap) {
-        final session = sessionSnap.data;
-        // Still resolving the first event: show a loader. A resolved null
-        // session means signed out, so render nothing instead of spinning
-        // forever.
+        // Ignore a session that belongs to another (previous) account, so a
+        // stale admin session can never unlock this screen for the next login.
+        final session = currentAppSession(sessionSnap.data);
+        // Still resolving: show a loader instead of the editor.
         if (sessionSnap.connectionState == ConnectionState.waiting &&
-            !sessionSnap.hasData) {
+            session == null &&
+            !sessionSnap.hasError) {
           return const Scaffold(
               body: Center(child: CircularProgressIndicator()));
         }
-        if (session == null) {
-          return const Scaffold(body: SizedBox.shrink());
-        }
-        if (!session.isAdmin) {
+        if (session == null || !session.isAdmin) {
           return noAccessScaffold(
-              module: 'Access Management',
+              module: 'Access Control',
               drawer: getSideDrawer(context));
         }
         return Scaffold(
           backgroundColor: const Color(0xFFF4F6FA),
           drawer: getSideDrawer(context),
           appBar: AppBar(
-            title: const Text('Access Management',
+            title: const Text('Access Control',
                 style: TextStyle(fontWeight: FontWeight.w700)),
           ),
           floatingActionButton: FloatingActionButton.extended(
@@ -182,22 +189,28 @@ class _AccessManagementScreenState extends State<AccessManagementScreen> {
                         style: TextStyle(
                             fontWeight: FontWeight.w700, fontSize: 13)),
                     const SizedBox(height: 6),
-                    _accessRow('Student Management', _students,
+                    _accessRow('Students', _students,
                         (v) => setState(() => _students = v)),
                     const SizedBox(height: 12),
-                    _accessRow('Staff Management', _staff,
+                    _accessRow('DMC & Degrees', _studentDocs,
+                        (v) => setState(() => _studentDocs = v)),
+                    const SizedBox(height: 12),
+                    _accessRow('Staff', _staff,
                         (v) => setState(() => _staff = v)),
                     const SizedBox(height: 12),
-                    _accessRow('Stock Management', _stock,
+                    _accessRow('Stock', _stock,
                         (v) => setState(() => _stock = v)),
                     const SizedBox(height: 12),
-                    _accessRow('Bill Management', _bills,
+                    _accessRow('Bills', _bills,
                         (v) => setState(() => _bills = v)),
                     const SizedBox(height: 12),
-                    _accessRow('Visitor Management', _visitors,
+                    _accessRow('Visitors', _visitors,
                         (v) => setState(() => _visitors = v)),
                     const SizedBox(height: 12),
-                    _accessRow('Fees Management', _fees,
+                    _accessRow('Leads', _leads,
+                        (v) => setState(() => _leads = v)),
+                    const SizedBox(height: 12),
+                    _accessRow('Fees', _fees,
                         (v) => setState(() => _fees = v)),
                     const SizedBox(height: 24),
                     SizedBox(

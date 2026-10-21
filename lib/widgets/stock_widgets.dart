@@ -419,8 +419,7 @@ class _ItemPhotoButtonState extends State<ItemPhotoButton> {
       );
       if (url != null) {
         final oldUrl = widget.photoUrl ?? '';
-        await widget.service.updateCatalogItemPhoto(widget.catalogItemId, url);
-        await widget.service.logItemPhotoChange(
+        await widget.service.updateCatalogItemPhotoWithLogs(
           catalogItemId: widget.catalogItemId,
           itemName: widget.itemName,
           oldPhotoUrl: oldUrl,

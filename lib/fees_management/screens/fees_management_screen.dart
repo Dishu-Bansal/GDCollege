@@ -64,7 +64,7 @@ class _FeesManagementScreenState extends ConsumerState<FeesManagementScreen>
   @override
   Widget build(BuildContext context) {
     return AccessGate(
-      module: 'Fees Management',
+      module: 'Fees',
       canAccess: (s) => s.canAccessFees,
       drawer: getSideDrawer(context),
       child: _content(),

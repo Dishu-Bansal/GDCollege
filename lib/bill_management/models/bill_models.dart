@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:gd_college/utils/timestamps.dart';
+
 /// Units selectable for bill line items.
 const List<String> stockUnits = [
   'Pieces',
@@ -64,7 +66,13 @@ class BillModel {
   String? id;
   String billNumber;
   String storeName;
+
+  /// 'stock' (items synced into stock) or 'service' (no physical product —
+  /// items stay on the bill only, never touch stock). Old docs lack the key
+  /// and read as 'stock', which matches how they were created.
+  String billType;
   DateTime billDate;
+  DateTime? receivedDate;
   DateTime? paymentDate;
   String paymentBy;
   DateTime? reimbursementDate;
@@ -82,7 +90,9 @@ class BillModel {
     this.id,
     this.billNumber = '',
     this.storeName = '',
+    this.billType = 'stock',
     DateTime? billDate,
+    this.receivedDate,
     this.paymentDate,
     this.paymentBy = '',
     this.reimbursementDate,
@@ -102,6 +112,8 @@ class BillModel {
   double get totalAmount =>
       items.fold(0, (sum, i) => sum + i.total);
 
+  bool get isService => billType == 'service';
+
   bool get isPaymentPending => reimbursementRequired && !paid;
 
   factory BillModel.fromFirestore(String id, Map<String, dynamic> d) =>
@@ -109,16 +121,12 @@ class BillModel {
         id: id,
         billNumber: d['billNumber'] ?? '',
         storeName: d['storeName'] ?? '',
-        billDate: d['billDate'] != null
-            ? DateTime.tryParse(d['billDate']) ?? DateTime.now()
-            : DateTime.now(),
-        paymentDate: d['paymentDate'] != null
-            ? DateTime.tryParse(d['paymentDate'])
-            : null,
+        billType: d['billType'] ?? 'stock',
+        billDate: parseDate(d['billDate']) ?? DateTime.now(),
+        receivedDate: parseDate(d['receivedDate']),
+        paymentDate: parseDate(d['paymentDate']),
         paymentBy: d['paymentBy'] ?? '',
-        reimbursementDate: d['reimbursementDate'] != null
-            ? DateTime.tryParse(d['reimbursementDate'])
-            : null,
+        reimbursementDate: parseDate(d['reimbursementDate']),
         reimbursedBy: d['reimbursedBy'] ?? '',
         reimbursementRequired: d['reimbursementRequired'] ?? false,
         paid: d['paid'] ?? false,
@@ -126,12 +134,8 @@ class BillModel {
         items: (d['items'] as List<dynamic>? ?? [])
             .map((e) => BillItem.fromMap(e as Map<String, dynamic>))
             .toList(),
-        createdAt: d['createdAt'] != null
-            ? DateTime.tryParse(d['createdAt']) ?? DateTime.now()
-            : DateTime.now(),
-        updatedAt: d['updatedAt'] != null
-            ? DateTime.tryParse(d['updatedAt']) ?? DateTime.now()
-            : DateTime.now(),
+        createdAt: parseTimestamp(d['createdAt']) ?? DateTime.now(),
+        updatedAt: parseTimestamp(d['updatedAt']) ?? DateTime.now(),
         createdBy: d['createdBy'] ?? '',
         updatedBy: d['updatedBy'] ?? '',
       );
@@ -139,17 +143,21 @@ class BillModel {
   Map<String, dynamic> toFirestore() => {
     'billNumber': billNumber,
     'storeName': storeName,
-    'billDate': billDate.toIso8601String(),
-    'paymentDate': paymentDate?.toIso8601String(),
+    'billType': billType,
+    // Bill/received/payment/reimbursement are calendar dates: stored as
+    // yyyy-MM-dd, so no timezone can shift them.
+    'billDate': dateToWire(billDate),
+    'receivedDate': dateToWire(receivedDate),
+    'paymentDate': dateToWire(paymentDate),
     'paymentBy': paymentBy,
-    'reimbursementDate': reimbursementDate?.toIso8601String(),
+    'reimbursementDate': dateToWire(reimbursementDate),
     'reimbursedBy': reimbursedBy,
     'reimbursementRequired': reimbursementRequired,
     'paid': paid,
     'photoUrl': photoUrl,
     'items': items.map((e) => e.toMap()).toList(),
-    'createdAt': createdAt.toIso8601String(),
-    'updatedAt': updatedAt.toIso8601String(),
+    'createdAt': timestampToWire(createdAt),
+    'updatedAt': timestampToWire(updatedAt),
     'createdBy': createdBy,
     'updatedBy': updatedBy,
   };
@@ -184,9 +192,7 @@ class BillLog {
         action: d['action'] ?? 'create',
         changedBy: d['changedBy'] ?? '',
         detail: d['detail'] ?? '',
-        timestamp: d['timestamp'] != null
-            ? DateTime.tryParse(d['timestamp']) ?? DateTime.now()
-            : DateTime.now(),
+        timestamp: parseTimestamp(d['timestamp']) ?? DateTime.now(),
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -195,6 +201,6 @@ class BillLog {
     'action': action,
     'changedBy': changedBy,
     'detail': detail,
-    'timestamp': timestamp.toIso8601String(),
+    'timestamp': timestampToWire(timestamp),
   };
 }

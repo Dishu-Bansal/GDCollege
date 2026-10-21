@@ -1,3 +1,5 @@
+import 'package:gd_college/utils/timestamps.dart';
+
 // ── Building ──────────────────────────────────────────────────────────────────
 class BuildingModel {
   String? id;
@@ -11,12 +13,12 @@ class BuildingModel {
         id: id,
         name: d['name'] ?? '',
         createdAt:
-        d['createdAt'] != null ? DateTime.tryParse(d['createdAt']) : null,
+        parseTimestamp(d['createdAt']),
       );
 
   Map<String, dynamic> toFirestore() => {
     'name': name,
-    'createdAt': createdAt?.toIso8601String(),
+    'createdAt': timestampToWire(createdAt),
   };
 }
 
@@ -36,13 +38,13 @@ class FloorModel {
         name: d['name'] ?? '',
         buildingId: d['buildingId'] ?? '',
         createdAt:
-        d['createdAt'] != null ? DateTime.tryParse(d['createdAt']) : null,
+        parseTimestamp(d['createdAt']),
       );
 
   Map<String, dynamic> toFirestore() => {
     'name': name,
     'buildingId': buildingId,
-    'createdAt': createdAt?.toIso8601String(),
+    'createdAt': timestampToWire(createdAt),
   };
 }
 
@@ -94,13 +96,9 @@ class RoomModel {
         photoUrls: List<String>.from(d['photoUrls'] ?? []),
         videoUrls: List<String>.from(d['videoUrls'] ?? []),
         createdAt:
-        d['createdAt'] != null ? DateTime.tryParse(d['createdAt']) : null,
-        lastMediaUploadedAt: d['lastMediaUploadedAt'] != null
-            ? DateTime.tryParse(d['lastMediaUploadedAt'])
-            : null,
-        lastInspectedAt: d['lastInspectedAt'] != null
-            ? DateTime.tryParse(d['lastInspectedAt'])
-            : null,
+        parseTimestamp(d['createdAt']),
+        lastMediaUploadedAt: parseTimestamp(d['lastMediaUploadedAt']),
+        lastInspectedAt: parseTimestamp(d['lastInspectedAt']),
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -109,9 +107,9 @@ class RoomModel {
     'buildingId': buildingId,
     'photoUrls': photoUrls,
     'videoUrls': videoUrls,
-    'createdAt': createdAt?.toIso8601String(),
-    'lastMediaUploadedAt': lastMediaUploadedAt?.toIso8601String(),
-    'lastInspectedAt': lastInspectedAt?.toIso8601String(),
+    'createdAt': timestampToWire(createdAt),
+    'lastMediaUploadedAt': timestampToWire(lastMediaUploadedAt),
+    'lastInspectedAt': timestampToWire(lastInspectedAt),
   };
 }
 
@@ -150,9 +148,9 @@ class StockItem {
         unitPrice: (d['unitPrice'] ?? 0).toDouble(),
         currentQuantity: d['currentQuantity'] ?? 0,
         createdAt:
-        d['createdAt'] != null ? DateTime.tryParse(d['createdAt']) : null,
+        parseTimestamp(d['createdAt']),
         updatedAt:
-        d['updatedAt'] != null ? DateTime.tryParse(d['updatedAt']) : null,
+        parseTimestamp(d['updatedAt']),
         store: d['store'] ?? '',
         bill: d['bill'] ?? '',
         unit: d['unit'] ?? 'Pieces',
@@ -163,8 +161,8 @@ class StockItem {
     'name': name,
     'unitPrice': unitPrice,
     'currentQuantity': currentQuantity,
-    'createdAt': createdAt?.toIso8601String(),
-    'updatedAt': updatedAt?.toIso8601String(),
+    'createdAt': timestampToWire(createdAt),
+    'updatedAt': timestampToWire(updatedAt),
     'store': store,
     'bill': bill,
     'unit': unit,
@@ -256,9 +254,9 @@ class CatalogItem {
         totalQuantity: d['totalQuantity'] ?? 0,
         photoUrl: d['photoUrl'],
         createdAt:
-        d['createdAt'] != null ? DateTime.tryParse(d['createdAt']) : null,
+        parseTimestamp(d['createdAt']),
         updatedAt:
-        d['updatedAt'] != null ? DateTime.tryParse(d['updatedAt']) : null,
+        parseTimestamp(d['updatedAt']),
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -266,8 +264,8 @@ class CatalogItem {
     'lastPrice': lastPrice,
     'totalQuantity': totalQuantity,
     'photoUrl': photoUrl,
-    'createdAt': createdAt?.toIso8601String(),
-    'updatedAt': updatedAt?.toIso8601String(),
+    'createdAt': timestampToWire(createdAt),
+    'updatedAt': timestampToWire(updatedAt),
   };
 }
 
@@ -320,9 +318,7 @@ class StockLog {
         previousQty: d['previousQty'] ?? 0,
         newQty: d['newQty'] ?? 0,
         note: d['note'] ?? '',
-        timestamp: d['timestamp'] != null
-            ? DateTime.tryParse(d['timestamp']) ?? DateTime.now()
-            : DateTime.now(),
+        timestamp: parseTimestamp(d['timestamp']) ?? DateTime.now(),
         buildingName: d['buildingName'] ?? '',
         floorName: d['floorName'] ?? '',
         roomName: d['roomName'] ?? '',
@@ -340,7 +336,7 @@ class StockLog {
     'previousQty': previousQty,
     'newQty': newQty,
     'note': note,
-    'timestamp': timestamp.toIso8601String(),
+    'timestamp': timestampToWire(timestamp),
     'buildingName': buildingName,
     'floorName': floorName,
     'roomName': roomName,
@@ -436,12 +432,8 @@ class InspectionModel {
         floorName: d['floorName'] ?? '',
         buildingId: d['buildingId'] ?? '',
         buildingName: d['buildingName'] ?? '',
-        startedAt: d['startedAt'] != null
-            ? DateTime.tryParse(d['startedAt']) ?? DateTime.now()
-            : DateTime.now(),
-        completedAt: d['completedAt'] != null
-            ? DateTime.tryParse(d['completedAt'])
-            : null,
+        startedAt: parseTimestamp(d['startedAt']) ?? DateTime.now(),
+        completedAt: parseTimestamp(d['completedAt']),
         status: d['status'] ?? 'in_progress',
         overallNote: d['overallNote'] ?? '',
         hasDiscrepancy: d['hasDiscrepancy'] ?? false,
@@ -459,8 +451,8 @@ class InspectionModel {
     'floorName': floorName,
     'buildingId': buildingId,
     'buildingName': buildingName,
-    'startedAt': startedAt.toIso8601String(),
-    'completedAt': completedAt?.toIso8601String(),
+    'startedAt': timestampToWire(startedAt),
+    'completedAt': timestampToWire(completedAt),
     'status': status,
     'overallNote': overallNote,
     'hasDiscrepancy': hasDiscrepancy,
@@ -532,9 +524,7 @@ class StockTransfer {
         itemName: d['itemName'] ?? '',
         quantity: d['quantity'] ?? 0,
         note: d['note'] ?? '',
-        transferredAt: d['transferredAt'] != null
-            ? DateTime.tryParse(d['transferredAt']) ?? DateTime.now()
-            : DateTime.now(),
+        transferredAt: parseTimestamp(d['transferredAt']) ?? DateTime.now(),
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -554,7 +544,7 @@ class StockTransfer {
     'itemName': itemName,
     'quantity': quantity,
     'note': note,
-    'transferredAt': transferredAt.toIso8601String(),
+    'transferredAt': timestampToWire(transferredAt),
   };
 }
 
@@ -607,12 +597,8 @@ class ConsumableAssignment {
         itemName: d['itemName'] ?? '',
         quantity: d['quantity'] ?? 0,
         assignedTo: d['assignedTo'] ?? '',
-        assignedAt: d['assignedAt'] != null
-            ? DateTime.tryParse(d['assignedAt']) ?? DateTime.now()
-            : DateTime.now(),
-        returnedAt: d['returnedAt'] != null
-            ? DateTime.tryParse(d['returnedAt'])
-            : null,
+        assignedAt: parseTimestamp(d['assignedAt']) ?? DateTime.now(),
+        returnedAt: parseTimestamp(d['returnedAt']),
         returnedQty: d['returnedQty'] ?? 0,
         status: d['status'] ?? 'active',
         note: d['note'] ?? '',
@@ -627,8 +613,8 @@ class ConsumableAssignment {
     'itemName': itemName,
     'quantity': quantity,
     'assignedTo': assignedTo,
-    'assignedAt': assignedAt.toIso8601String(),
-    'returnedAt': returnedAt?.toIso8601String(),
+    'assignedAt': timestampToWire(assignedAt),
+    'returnedAt': timestampToWire(returnedAt),
     'returnedQty': returnedQty,
     'status': status,
     'note': note,

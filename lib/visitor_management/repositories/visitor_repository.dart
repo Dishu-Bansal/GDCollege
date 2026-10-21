@@ -49,6 +49,10 @@ abstract class VisitorRepository {
   /// check-in time.
   Future<void> checkOut(String visitId, {DateTime? at});
 
+  /// Flags a visitor as captured-as-lead (admin-only "Add as Lead").
+  /// Merge-write so no other profile field is touched.
+  Future<void> markVisitorAddedAsLead(String visitorId);
+
   /// One-time backfill: creates entry events for all visits and exit events
   /// for completed ones. Safe to re-run (deterministic doc ids). Returns the
   /// number of event docs written.

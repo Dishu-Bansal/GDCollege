@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:gd_college/utils/timestamps.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:gd_college/providers.dart';
 import '../bill_management/models/bill_models.dart';
@@ -59,11 +60,24 @@ class FirebaseBillRepository implements BillRepository {
       bill.photoUrl = await _uploadPhoto(docRef.id, photoBytes, photoName);
     }
 
-    await docRef.set(bill.toFirestore());
-    await _syncBillItemsToPending(bill, updateMode: false);
-    await _writeLog(docRef.id, bill.billNumber, 'create',
-        'Bill created. ${bill.items.length} item(s), total '
-            '₹${bill.totalAmount.toStringAsFixed(2)}.');
+    // The bill and its 'create' log share one commit: the bill is never
+    // saved without its log (or logged without being saved).
+    final batch = _db.batch();
+    batch.set(docRef, bill.toFirestore());
+    batch.set(
+        _billLogs.doc(),
+        _logData(
+            docRef.id,
+            bill.billNumber,
+            'create',
+            'Bill created. ${bill.items.length} item(s), total '
+                '₹${bill.totalAmount.toStringAsFixed(2)}.'));
+    await batch.commit();
+    // Service bills have no physical product: their items stay on the bill
+    // only and are never added to stock.
+    if (!bill.isService) {
+      await _syncBillItemsToPending(bill, updateMode: false);
+    }
     return docRef.id;
   }
 
@@ -88,17 +102,31 @@ class FirebaseBillRepository implements BillRepository {
     }
 
     // Snapshot the old bill so the stock sync can diff against it.
-    final oldSnap = await _bills.doc(id).get();
-    final previousItems = oldSnap.exists
+    // Skipped for service bills (the form locks bill type after creation,
+    // so a service bill was never synced and has nothing to diff).
+    final oldSnap = bill.isService
+        ? null
+        : await _bills.doc(id).get();
+    final previousItems = (oldSnap != null && oldSnap.exists)
         ? BillModel.fromFirestore(id, oldSnap.data()!).items
         : const <BillItem>[];
 
-    await _bills.doc(id).set(bill.toFirestore());
-    await _syncBillItemsToPending(bill,
-        updateMode: true, previousItems: previousItems);
-    await _writeLog(id, bill.billNumber, 'update',
-        'Bill updated. ${bill.items.length} item(s), total '
-            '₹${bill.totalAmount.toStringAsFixed(2)}.');
+    // The bill and its 'update' log share one commit.
+    final batch = _db.batch();
+    batch.set(_bills.doc(id), bill.toFirestore());
+    batch.set(
+        _billLogs.doc(),
+        _logData(
+            id,
+            bill.billNumber,
+            'update',
+            'Bill updated. ${bill.items.length} item(s), total '
+                '₹${bill.totalAmount.toStringAsFixed(2)}.'));
+    await batch.commit();
+    if (!bill.isService) {
+      await _syncBillItemsToPending(bill,
+          updateMode: true, previousItems: previousItems);
+    }
   }
 
   @override
@@ -117,13 +145,14 @@ class FirebaseBillRepository implements BillRepository {
 
     final updates = <String, dynamic>{
       'paid': true,
-      'updatedAt': now.toIso8601String(),
+      'updatedAt': timestampToWire(now),
       'updatedBy': _currentUser,
     };
     String logDetail;
     if (needsReimbursement) {
       final date = reimbursementDate ?? now;
-      updates['reimbursementDate'] = date.toIso8601String();
+      // A payment/reimbursement day is a calendar date, not an instant.
+      updates['reimbursementDate'] = dateToWire(date);
       if (reimbursedBy.isNotEmpty) updates['reimbursedBy'] = reimbursedBy;
       logDetail = reimbursedBy.isNotEmpty
           ? 'Bill reimbursed by $reimbursedBy on '
@@ -131,15 +160,20 @@ class FirebaseBillRepository implements BillRepository {
           : 'Bill marked as reimbursed.';
     } else {
       final date = paymentDate ?? now;
-      updates['paymentDate'] = date.toIso8601String();
+      updates['paymentDate'] = dateToWire(date);
       if (paymentBy.isNotEmpty) updates['paymentBy'] = paymentBy;
       logDetail = paymentBy.isNotEmpty
           ? 'Bill marked as paid by $paymentBy on '
               '${date.day}/${date.month}/${date.year}.'
           : 'Bill marked as paid.';
     }
-    await _bills.doc(billId).update(updates);
-    await _writeLog(billId, billNumber, 'pay', logDetail);
+    // Payment update and its 'pay' log share one commit.
+    final batch = _db.batch();
+    batch.update(_bills.doc(billId), updates);
+    batch.set(
+        _billLogs.doc(),
+        _logData(billId, billNumber.toString(), 'pay', logDetail));
+    await batch.commit();
   }
 
   // ── Photo upload ────────────────────────────────────────────────────────────
@@ -184,15 +218,17 @@ class FirebaseBillRepository implements BillRepository {
 
   // ── Logs ────────────────────────────────────────────────────────────────────
 
-  Future<void> _writeLog(
-      String billId, String billNumber, String action, String detail) async {
-    await _billLogs.add(BillLog(
+  /// Payload for one bill-log row. Use with [WriteBatch.set] so the bill
+  /// change and its log commit together (or not at all).
+  Map<String, dynamic> _logData(
+      String billId, String billNumber, String action, String detail) {
+    return BillLog(
       billId: billId,
       billNumber: billNumber,
       action: action,
       changedBy: _currentUser,
       detail: detail,
-    ).toFirestore());
+    ).toFirestore();
   }
 
   // ── Stock integration: Extras > Pending > Pending ──────────────────────────
@@ -200,7 +236,7 @@ class FirebaseBillRepository implements BillRepository {
   /// Finds or creates the 'Extras' building > 'Pending' floor > 'Pending' room.
   Future<({String buildingId, String floorId, String roomId})>
   _ensurePendingRoom() async {
-    final now = DateTime.now().toIso8601String();
+    final now = timestampToWire(DateTime.now());
 
     String buildingId;
     final buildings = await _db

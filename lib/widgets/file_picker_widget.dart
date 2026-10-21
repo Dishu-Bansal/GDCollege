@@ -43,6 +43,11 @@ class FilePicker extends StatelessWidget {
   /// link below the picker so the user can compare before re-uploading.
   final String? existingUrl;
 
+  /// Called when the user deletes the already-uploaded file (edit mode).
+  /// The caller should clear the stored URL (and any picked data) so saving
+  /// the form drops the file. Null hides the delete option.
+  final void Function()? onExistingRemoved;
+
   const FilePicker({
     super.key,
     required this.label,
@@ -53,6 +58,7 @@ class FilePicker extends StatelessWidget {
     this.imageOnly = false,
     this.isRequired = false,
     this.existingUrl,
+    this.onExistingRemoved,
   });
 
   Future<void> _pickFile(BuildContext context) async {
@@ -155,6 +161,30 @@ class FilePicker extends StatelessWidget {
         behavior: SnackBarBehavior.floating,
       ),
     );
+  }
+
+  Future<void> _confirmRemoveExisting(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('Remove file?'),
+        content: Text(
+            'The current $label file will be deleted when you save the form.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) onExistingRemoved?.call();
   }
 
   @override
@@ -269,21 +299,41 @@ class FilePicker extends StatelessWidget {
             ),
           ),
           // Link to the currently uploaded file (if any), so the user can
-          // compare before deciding to upload a replacement.
+          // compare before deciding to upload a replacement — plus a
+          // delete option that drops the file on save.
           if (existingUrl != null && existingUrl!.isNotEmpty)
             Align(
               alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4),
-                ),
-                icon: const Icon(Icons.visibility_outlined, size: 14),
-                label: const Text('View current file',
-                    style: TextStyle(fontSize: 12)),
-                onPressed: () =>
-                    launchUrl(Uri.parse(existingUrl!)),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 4),
+                    ),
+                    icon: const Icon(Icons.visibility_outlined, size: 14),
+                    label: const Text('View current file',
+                        style: TextStyle(fontSize: 12)),
+                    onPressed: () =>
+                        launchUrl(Uri.parse(existingUrl!)),
+                  ),
+                  if (onExistingRemoved != null)
+                    TextButton.icon(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 4),
+                        foregroundColor: Colors.red.shade700,
+                      ),
+                      icon: const Icon(Icons.delete_outline, size: 14),
+                      label: const Text('Delete',
+                          style: TextStyle(fontSize: 12)),
+                      onPressed: () =>
+                          _confirmRemoveExisting(context),
+                    ),
+                ],
               ),
             ),
         ],
