@@ -184,7 +184,7 @@ class FirebaseStudentDocsService {
 
   // ── Batch reads ──────────────────────────────────────────────────────────
   /// One batch: students of [group] + [course] + [year]. Any of
-  /// [course]/[year] may be null to skip that filter. Sorted by name
+  /// [course]/[year] may be null to skip that filter. Sorted by student ID
   /// client-side. Each entry carries the parsed `docRecords` map so status
   /// chips render without extra reads.
   ///
@@ -218,9 +218,22 @@ class FirebaseStudentDocsService {
         records: StudentDocRecord.recordsOf(data),
       );
     }).toList();
-    list.sort((a, b) =>
-        a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    list.sort(_compareByStudentId);
     return list;
+  }
+
+  /// Student-ID order: numeric when both IDs parse as numbers (so "2"
+  /// comes before "10"), plain string order otherwise. Empty IDs sort last.
+  static int _compareByStudentId(DocBatchEntry a, DocBatchEntry b) {
+    final ai = a.studentId.trim();
+    final bi = b.studentId.trim();
+    if (ai.isEmpty && bi.isEmpty) return 0;
+    if (ai.isEmpty) return 1;
+    if (bi.isEmpty) return -1;
+    final an = int.tryParse(ai);
+    final bn = int.tryParse(bi);
+    if (an != null && bn != null) return an.compareTo(bn);
+    return ai.toLowerCase().compareTo(bi.toLowerCase());
   }
 
   // ── Record writes ────────────────────────────────────────────────────────
