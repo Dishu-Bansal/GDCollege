@@ -30,6 +30,9 @@ class AccessGate extends StatelessWidget {
   Widget build(BuildContext context) {
     return StreamBuilder<AppSession?>(
       stream: AccessService.watchAccessShared(),
+      // Paint the known flags on the first frame instead of a spinner;
+      // currentAppSession() still discards another account's session.
+      initialData: AccessService.cachedSession,
       builder: (context, snap) {
         // Ignore a session that belongs to another (previous) account.
         final session = currentAppSession(snap.data);

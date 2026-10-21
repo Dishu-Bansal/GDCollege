@@ -27,6 +27,11 @@ getSideDrawer(BuildContext context) {
   return Drawer(
     child: StreamBuilder<AppSession?>(
       stream: AccessService.watchAccessShared(),
+      // The app-wide session is already known after the first resolution, so
+      // re-opening the drawer paints the same entries on the first frame
+      // instead of flashing "Loading access…". currentAppSession() below still
+      // discards a cached session that belongs to another account.
+      initialData: AccessService.cachedSession,
       builder: (context, snap) {
         final session = currentAppSession(snap.data);
         // Synchronous admin check: the entry renders on the first frame on
