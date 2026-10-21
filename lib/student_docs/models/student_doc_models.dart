@@ -319,9 +319,15 @@ class DocChange {
 }
 
 /// One stock/issue/update event from the top-level `docLogs` collection.
+/// `studentId` is the Firestore doc id; `rollNo` is the display student ID
+/// and `yearOfAdmission` the admission year. Both are stamped at write
+/// time, so old rows (written before these fields existed) read back as
+/// empty/null — call sites must fall back gracefully.
 class DocLogEntry {
   final String studentId;
   final String studentName;
+  final String rollNo;
+  final int? yearOfAdmission;
   final String course;
   final String slotKey;
   final String slotLabel;
@@ -340,6 +346,8 @@ class DocLogEntry {
   const DocLogEntry({
     required this.studentId,
     required this.studentName,
+    this.rollNo = '',
+    this.yearOfAdmission,
     required this.course,
     required this.slotKey,
     required this.slotLabel,
@@ -358,6 +366,8 @@ class DocLogEntry {
   factory DocLogEntry.fromMap(Map<String, dynamic> m) => DocLogEntry(
         studentId: (m['studentId'] ?? '').toString(),
         studentName: (m['studentName'] ?? '').toString(),
+        rollNo: (m['rollNo'] ?? '').toString(),
+        yearOfAdmission: (m['yearOfAdmission'] as num?)?.toInt(),
         course: (m['course'] ?? '').toString(),
         slotKey: (m['slotKey'] ?? '').toString(),
         slotLabel: (m['slotLabel'] ?? '').toString(),
@@ -376,6 +386,8 @@ class DocLogEntry {
   Map<String, dynamic> toMap() => {
         'studentId': studentId,
         'studentName': studentName,
+        'rollNo': rollNo,
+        'yearOfAdmission': yearOfAdmission,
         'course': course,
         'slotKey': slotKey,
         'slotLabel': slotLabel,

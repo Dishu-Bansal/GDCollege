@@ -38,6 +38,8 @@ class FirebaseStudentDocsService {
   DocLogEntry buildLog({
     required String studentId,
     required String studentName,
+    String rollNo = '',
+    int? yearOfAdmission,
     required String course,
     required String slotKey,
     required String slotLabel,
@@ -52,6 +54,8 @@ class FirebaseStudentDocsService {
     return DocLogEntry(
       studentId: studentId,
       studentName: studentName,
+      rollNo: rollNo,
+      yearOfAdmission: yearOfAdmission,
       course: course,
       slotKey: slotKey,
       slotLabel: slotLabel,
@@ -116,6 +120,8 @@ class FirebaseStudentDocsService {
       final records = StudentDocRecord.recordsOf(data);
       if (records.isEmpty) continue;
       final course = (data['nameOfCourse'] ?? '').toString();
+      final backfillRoll = (data['studentId'] ?? '').toString();
+      final backfillYear = (data['yearOfAdmission'] as num?)?.toInt();
       final slots = docSlotsForCourse(course);
       final fallback = parseTimestamp(data['updatedAt']);
       for (final entry in records.entries) {
@@ -148,6 +154,8 @@ class FirebaseStudentDocsService {
           buildLog(
             studentId: doc.id,
             studentName: (data['name'] ?? '').toString(),
+            rollNo: backfillRoll,
+            yearOfAdmission: backfillYear,
             course: course,
             slotKey: entry.key,
             slotLabel: label,
@@ -163,6 +171,8 @@ class FirebaseStudentDocsService {
             buildLog(
               studentId: doc.id,
               studentName: (data['name'] ?? '').toString(),
+              rollNo: backfillRoll,
+              yearOfAdmission: backfillYear,
               course: course,
               slotKey: entry.key,
               slotLabel: label,
