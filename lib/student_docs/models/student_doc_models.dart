@@ -203,8 +203,10 @@ class StudentDocRecord {
       StudentDocRecord(
         fileUrl: m['fileUrl'] as String?,
         fileName: m['fileName'] as String?,
+        // Legacy values are naive local strings; newer/UTC values carry a
+        // zone suffix — normalise both to the device's local zone.
         fileUploadedAt: m['fileUploadedAt'] != null
-            ? DateTime.tryParse(m['fileUploadedAt'])
+            ? DateTime.tryParse(m['fileUploadedAt'].toString())?.toLocal()
             : null,
         subjects: (m['subjects'] as List? ?? [])
             .map((e) =>
@@ -213,7 +215,7 @@ class StudentDocRecord {
         collector: CollectorInfo.fromMap(
             ((m['collector'] as Map?) ?? {}).cast<String, dynamic>()),
         collectedAt: m['collectedAt'] != null
-            ? DateTime.tryParse(m['collectedAt'])
+            ? DateTime.tryParse(m['collectedAt'].toString())?.toLocal()
             : null,
         updatedBy: (m['updatedBy'] ?? '').toString(),
       );
@@ -363,9 +365,11 @@ class DocLogEntry {
         slotLabel: (m['slotLabel'] ?? '').toString(),
         isDmc: m['isDmc'] ?? true,
         action: (m['action'] ?? '').toString(),
-        timestamp: m['timestamp'] != null
-            ? DateTime.tryParse(m['timestamp']) ?? DateTime.now()
-            : DateTime.now(),
+        timestamp: (m['timestamp'] != null
+                ? DateTime.tryParse(m['timestamp'].toString())
+                : null)
+                ?.toLocal() ??
+            DateTime.now(),
         changedBy: (m['changedBy'] ?? '').toString(),
         collectorName: (m['collectorName'] ?? '').toString(),
         collectorAadhar: (m['collectorAadhar'] ?? '').toString(),

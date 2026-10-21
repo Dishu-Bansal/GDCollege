@@ -143,6 +143,10 @@ class FirebaseStudentRepository implements StudentRepository {
     // so new URLs are already on the model).
     _refreshDocsFlags(student);
     final data = student.toFirestore();
+    // Never re-write the creation instant on an edit: the stored value (or a
+    // legacy wall-clock string) is the record's true origin, while the model's
+    // copy may be shifted by the editing device's clock/timezone.
+    data.remove('createdAt');
     data['_searchIndex'] = _buildSearchIndex(student);
 
     // The record write and its 'update' audit entry share one commit, so an
@@ -173,7 +177,8 @@ class FirebaseStudentRepository implements StudentRepository {
     batch.update(ref, {
       'isVerified': true,
       'verifiedBy': by,
-      'verifiedAt': DateTime.now().toIso8601String(),
+      // UTC so the timestamp is unambiguous regardless of the client clock.
+      'verifiedAt': DateTime.now().toUtc().toIso8601String(),
     });
     batch.set(
         _studentLogs(docId).doc(),

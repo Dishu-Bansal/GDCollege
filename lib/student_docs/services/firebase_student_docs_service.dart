@@ -82,7 +82,8 @@ class FirebaseStudentDocsService {
     final batch = _db.batch();
     batch.update(_db.collection(_students).doc(studentId), {
       'docRecords.$slotKey': record.toMap(),
-      'updatedAt': DateTime.now().toIso8601String(),
+      // UTC so the student's "last updated" instant is timezone-unambiguous.
+      'updatedAt': DateTime.now().toUtc().toIso8601String(),
     });
     for (final log in logs) {
       batch.set(_db.collection('docLogs').doc(), log.toMap());
