@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:gd_college/constants.dart';
 import 'package:gd_college/models/user_session.dart';
+import 'package:gd_college/utils/timestamps.dart';
 
 class StudentModel {
 
@@ -212,32 +212,12 @@ class StudentModel {
     this.lastUpdatedBy,
   });
 
-  /// Parses a stored timestamp that may be an ISO-8601 string (older app
-  /// versions stored naive local wall-clock strings) or a Firestore
-  /// [Timestamp] (server-authored values, imports, future versions). The
-  /// returned value is in the device's local zone so display code, sorts and
-  /// comparisons keep working unchanged.
-  static DateTime? _parseTimestamp(Object? value) {
-    if (value == null) return null;
-    if (value is Timestamp) return value.toDate().toLocal();
-    final text = value.toString();
-    return DateTime.tryParse(text)?.toLocal();
-  }
-
-  /// Serialises an instant as an unambiguous UTC ISO-8601 string (`...Z`).
-  ///
-  /// Older records hold naive local wall-clock strings without an offset; the
-  /// reader above still accepts those, but every new value is UTC so a device
-  /// in another timezone can never shift the stored moment.
-  static String? _toUtcIso(DateTime? value) =>
-      value?.toUtc().toIso8601String();
-
   Map<String, dynamic> toFirestore() {
     return {
       'name': name,
       'fatherName': fatherName,
       'motherName': motherName,
-      'dob': dob?.toIso8601String(),
+      'dob': dateToWire(dob),
       'gender': gender,
       'caste': caste,
       'address': address,
@@ -279,11 +259,11 @@ class StudentModel {
       'missingDocsCount': missingDocsCount,
       'isVerified': isVerified,
       'verifiedBy': verifiedBy,
-      'verifiedAt': _toUtcIso(verifiedAt),
+      'verifiedAt': timestampToWire(verifiedAt),
       'documentVersion': documentVersion,
       'isLocked': isLocked,
-      'createdAt': _toUtcIso(createdAt),
-      'updatedAt': _toUtcIso(updatedAt),
+      'createdAt': timestampToWire(createdAt),
+      'updatedAt': timestampToWire(updatedAt),
       'createdBy': createdBy ?? UserSession().currentUser!.email,
       'lastUpdatedBy': UserSession().currentUser!.email,
     };
@@ -360,7 +340,7 @@ class StudentModel {
       name: data['name'] ?? '',
       fatherName: data['fatherName'] ?? '',
       motherName: data['motherName'] ?? '',
-      dob: _parseTimestamp(data['dob']),
+      dob: parseDate(data['dob']),
       gender: data['gender'] ?? '',
       caste: data['caste'] ?? '',
       address: data['address'] ?? '',
@@ -407,11 +387,11 @@ class StudentModel {
       // Pre-verification documents lack these keys → unverified.
       isVerified: data['isVerified'] == true,
       verifiedBy: data['verifiedBy'] ?? '',
-      verifiedAt: _parseTimestamp(data['verifiedAt']),
+      verifiedAt: parseTimestamp(data['verifiedAt']),
       documentVersion: data['documentVersion'] ?? 1,
-      isLocked: data['isLocked'] ?? false,
-      createdAt: _parseTimestamp(data['createdAt']),
-      updatedAt: _parseTimestamp(data['updatedAt']),
+      isLocked: data['isLocked'] == true,
+      createdAt: parseTimestamp(data['createdAt']),
+      updatedAt: parseTimestamp(data['updatedAt']),
       createdBy: data['createdBy'] ?? '',
       lastUpdatedBy: data['lastUpdatedBy'] ?? '',
     );

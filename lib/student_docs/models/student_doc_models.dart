@@ -1,3 +1,5 @@
+import 'package:gd_college/utils/timestamps.dart';
+
 /// Data model for the Student Docs (DMC + Degree) tracking module.
 ///
 /// DMC slots are derived from the student's course — yearly courses get one
@@ -205,28 +207,24 @@ class StudentDocRecord {
         fileName: m['fileName'] as String?,
         // Legacy values are naive local strings; newer/UTC values carry a
         // zone suffix — normalise both to the device's local zone.
-        fileUploadedAt: m['fileUploadedAt'] != null
-            ? DateTime.tryParse(m['fileUploadedAt'].toString())?.toLocal()
-            : null,
+        fileUploadedAt: parseTimestamp(m['fileUploadedAt']),
         subjects: (m['subjects'] as List? ?? [])
             .map((e) =>
                 SubjectMark.fromMap((e as Map).cast<String, dynamic>()))
             .toList(),
         collector: CollectorInfo.fromMap(
             ((m['collector'] as Map?) ?? {}).cast<String, dynamic>()),
-        collectedAt: m['collectedAt'] != null
-            ? DateTime.tryParse(m['collectedAt'].toString())?.toLocal()
-            : null,
+        collectedAt: parseTimestamp(m['collectedAt']),
         updatedBy: (m['updatedBy'] ?? '').toString(),
       );
 
   Map<String, dynamic> toMap() => {
         'fileUrl': fileUrl,
         'fileName': fileName,
-        'fileUploadedAt': fileUploadedAt?.toIso8601String(),
+        'fileUploadedAt': timestampToWire(fileUploadedAt),
         'subjects': subjects.map((s) => s.toMap()).toList(),
         'collector': collector.toMap(),
-        'collectedAt': collectedAt?.toIso8601String(),
+        'collectedAt': timestampToWire(collectedAt),
         'updatedBy': updatedBy,
       };
 
@@ -365,11 +363,7 @@ class DocLogEntry {
         slotLabel: (m['slotLabel'] ?? '').toString(),
         isDmc: m['isDmc'] ?? true,
         action: (m['action'] ?? '').toString(),
-        timestamp: (m['timestamp'] != null
-                ? DateTime.tryParse(m['timestamp'].toString())
-                : null)
-                ?.toLocal() ??
-            DateTime.now(),
+        timestamp: parseTimestamp(m['timestamp']) ?? DateTime.now(),
         changedBy: (m['changedBy'] ?? '').toString(),
         collectorName: (m['collectorName'] ?? '').toString(),
         collectorAadhar: (m['collectorAadhar'] ?? '').toString(),
@@ -387,7 +381,7 @@ class DocLogEntry {
         'slotLabel': slotLabel,
         'isDmc': isDmc,
         'action': action,
-        'timestamp': timestamp.toIso8601String(),
+        'timestamp': timestampToWire(timestamp),
         'changedBy': changedBy,
         'collectorName': collectorName,
         'collectorAadhar': collectorAadhar,

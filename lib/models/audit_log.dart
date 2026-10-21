@@ -1,3 +1,5 @@
+import 'package:gd_college/utils/timestamps.dart';
+
 class AuditLog {
   String? id;
   String personId;
@@ -25,9 +27,7 @@ class AuditLog {
         action: d['action'] ?? 'update',
         changedBy: d['changedBy'] ?? '',
         detail: d['detail'] ?? '',
-        timestamp: d['timestamp'] != null
-            ? DateTime.tryParse(d['timestamp']) ?? DateTime.now()
-            : DateTime.now(),
+        timestamp: parseTimestamp(d['timestamp']) ?? DateTime.now(),
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -36,6 +36,8 @@ class AuditLog {
     'action': action,
     'changedBy': changedBy,
     'detail': detail,
-    'timestamp': timestamp.toIso8601String(),
+    // Instants are stored in UTC so a log entry never depends on the writer's
+    // clock zone; readers normalise every historical shape back to local.
+    'timestamp': timestampToWire(timestamp),
   };
 }

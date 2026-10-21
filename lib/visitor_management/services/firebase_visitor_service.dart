@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:gd_college/utils/timestamps.dart';
 import '../../models/user_session.dart';
 import '../../providers.dart';
 import '../models/visitor_models.dart';
@@ -10,17 +11,6 @@ class FirebaseVisitorRepository implements VisitorRepository {
   CollectionReference get _visits => _db.collection('visits');
   CollectionReference get _visitors => _db.collection('visitors');
   CollectionReference get _events => _db.collection('visitEvents');
-
-  /// Old visit docs may store times as ISO strings (current) or Firestore
-  /// Timestamps (legacy). A Timestamp's .toString() does not parse, and the
-  /// old code fell back to DateTime.now() — floating those events to the
-  /// top of the time-sorted log.
-  static DateTime? _parseAt(dynamic v) {
-    if (v == null) return null;
-    if (v is Timestamp) return v.toDate();
-    if (v is DateTime) return v;
-    return DateTime.tryParse(v.toString());
-  }
 
   // ── Streams ─────────────────────────────────────────────────────────────
 
@@ -126,13 +116,13 @@ class FirebaseVisitorRepository implements VisitorRepository {
       // the Visitors tab order) or the remembered car/place/phone back.
       final prevSnap = await _visitors.doc(visitorId).get();
       final prev = prevSnap.data() as Map<String, dynamic>?;
-      final prevIn = _parseAt(prev?['lastVisitAt']);
+      final prevIn = parseTimestamp(prev?['lastVisitAt']);
       final isLatest = prevIn == null || !now.isBefore(prevIn);
       final update = <String, dynamic>{
         'visitCount': FieldValue.increment(1),
       };
       if (isLatest) {
-        update['lastVisitAt'] = now.toIso8601String();
+        update['lastVisitAt'] = timestampToWire(now);
         if (vehicleNumber.trim().isNotEmpty) {
           update['vehicleNumber'] = vehicleNumber.trim();
         }
@@ -159,9 +149,9 @@ class FirebaseVisitorRepository implements VisitorRepository {
         }
       }
       if (checkOutAt != null) {
-        final prevOut = _parseAt(prev?['lastCheckOutAt']);
+        final prevOut = parseTimestamp(prev?['lastCheckOutAt']);
         if (prevOut == null || checkOutAt.isAfter(prevOut)) {
-          update['lastCheckOutAt'] = checkOutAt.toIso8601String();
+          update['lastCheckOutAt'] = timestampToWire(checkOutAt);
         }
       }
       batch.update(_visitors.doc(visitorId), update);
@@ -239,7 +229,7 @@ class FirebaseVisitorRepository implements VisitorRepository {
       throw ArgumentError('Visit no longer exists.');
     }
     final data = snap.data() as Map<String, dynamic>? ?? {};
-    final checkIn = _parseAt(data['checkInAt']);
+    final checkIn = parseTimestamp(data['checkInAt']);
     if (checkIn != null && chosen.isBefore(checkIn)) {
       throw ArgumentError('Check-out time cannot be before check-in time.');
     }
@@ -248,7 +238,7 @@ class FirebaseVisitorRepository implements VisitorRepository {
     final batch = _db.batch();
     batch.update(_visits.doc(visitId), {
       'inside': false,
-      'checkOutAt': chosen.toIso8601String(),
+      'checkOutAt': timestampToWire(chosen),
       'checkedOutBy': by,
     });
     // The global log's exit row — a separate doc so it sorts by its own time.
@@ -279,7 +269,7 @@ class FirebaseVisitorRepository implements VisitorRepository {
       final refId = (data['personRefId'] ?? '').toString();
       if (refId.isNotEmpty) {
         batch.update(_visitors.doc(refId), {
-          'lastCheckOutAt': chosen.toIso8601String(),
+          'lastCheckOutAt': timestampToWire(chosen),
         });
       }
     }
@@ -322,8 +312,8 @@ class FirebaseVisitorRepository implements VisitorRepository {
       final phone = (data['phone'] ?? '').toString();
       final accompanying =
           List<String>.from(data['accompanyingPeople'] ?? []);
-      final checkInAt = _parseAt(data['checkInAt']);
-      final checkOutAt = _parseAt(data['checkOutAt']);
+      final checkInAt = parseTimestamp(data['checkInAt']);
+      final checkOutAt = parseTimestamp(data['checkOutAt']);
       final completedAtEntry = data['completedAtEntry'] == true;
 
       if (checkInAt != null) {
@@ -396,16 +386,16 @@ class FirebaseVisitorRepository implements VisitorRepository {
     }
     final data = existing.data() as Map<String, dynamic>?;
     final current =
-        _parseAt(data?['at']);
+        parseTimestamp(data?['at']);
     if (current == null ||
         current.difference(expected.at).abs() > const Duration(minutes: 1)) {
-      batch.update(ref, {'at': expected.at.toIso8601String()});
+      batch.update(ref, {'at': timestampToWire(expected.at)});
       onWrite();
       return 1;
     }
     if (data?['createdAt'] == null) {
       batch.update(ref, {
-        'createdAt': expected.createdAt.toIso8601String(),
+        'createdAt': timestampToWire(expected.createdAt),
       });
       onWrite();
       return 1;

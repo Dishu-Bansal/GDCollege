@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:gd_college/utils/timestamps.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
@@ -165,7 +166,7 @@ class AccessService {
         leads = s['canAccessLeads'] as bool? ?? leads;
         seedDocId = seed.docs.first.id;
       }
-      final now = DateTime.now().toIso8601String();
+      final now = timestampToWire(DateTime.now());
       await _db.collection(_collection).doc(uid).set({
         'email': email,
         'canAccessStudents': students,
@@ -317,7 +318,7 @@ class AccessService {
       'canAccessBills': bills,
       'canAccessVisitors': visitors,
       'canAccessLeads': leads,
-      'updatedAt': DateTime.now().toIso8601String(),
+      'updatedAt': timestampToWire(DateTime.now()),
       'updatedBy': by,
     });
   }
@@ -372,7 +373,7 @@ class AccessService {
         leads = s['canAccessLeads'] as bool? ?? leads;
         seedDocId = seed.docs.first.id;
       }
-      final now = DateTime.now().toIso8601String();
+      final now = timestampToWire(DateTime.now());
       await _db.collection(_collection).doc(uid).set({
         'email': normalized,
         'canAccessStudents': students,
