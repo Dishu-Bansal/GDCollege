@@ -36,6 +36,9 @@ class _StudentDocDetailScreenState extends State<StudentDocDetailScreen> {
   final _service = FirebaseStudentDocsService();
   late final List<DocSlot> _slots;
   Map<String, StudentDocRecord> _records = {};
+
+  /// Display student ID read from the student doc (not the Firestore id).
+  String _rollNo = '';
   bool _loading = true;
   String? _error;
 
@@ -58,6 +61,7 @@ class _StudentDocDetailScreenState extends State<StudentDocDetailScreen> {
       if (!mounted) return;
       setState(() {
         _records = StudentDocRecord.recordsOf(data);
+        _rollNo = (data['studentId'] ?? '').toString();
         _loading = false;
       });
     } catch (e) {
@@ -122,6 +126,8 @@ class _StudentDocDetailScreenState extends State<StudentDocDetailScreen> {
                             '${widget.studentId}_${slot.key}'),
                         studentId: widget.studentId,
                         studentName: widget.studentName,
+                        rollNo: _rollNo,
+                        yearOfAdmission: widget.yearOfAdmission,
                         course: widget.course,
                         slot: slot,
                         initial:
@@ -216,6 +222,8 @@ class _HeaderCard extends StatelessWidget {
 class _SlotCard extends StatefulWidget {
   final String studentId;
   final String studentName;
+  final String rollNo;
+  final int? yearOfAdmission;
   final String course;
   final DocSlot slot;
   final StudentDocRecord initial;
@@ -226,6 +234,8 @@ class _SlotCard extends StatefulWidget {
     super.key,
     required this.studentId,
     required this.studentName,
+    required this.rollNo,
+    required this.yearOfAdmission,
     required this.course,
     required this.slot,
     required this.initial,
@@ -723,6 +733,8 @@ class _SlotCardState extends State<_SlotCard> {
     return widget.service.buildLog(
       studentId: widget.studentId,
       studentName: widget.studentName,
+      rollNo: widget.rollNo,
+      yearOfAdmission: widget.yearOfAdmission,
       course: widget.course,
       slotKey: widget.slot.key,
       slotLabel: widget.slot.label,

@@ -732,7 +732,9 @@ class _DocLogsTab extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           '${log.slotLabel}'
-                          '${log.course.isNotEmpty ? '  •  ${log.course}' : ''}',
+                          '${log.course.isNotEmpty ? '  •  ${log.course}' : ''}'
+                          '${log.rollNo.isNotEmpty ? '  •  ID ${log.rollNo}' : ''}'
+                          '${log.yearOfAdmission != null ? '  •  Year ${log.yearOfAdmission}' : ''}',
                           style: TextStyle(
                               fontSize: 11,
                               color: Colors.grey.shade600),
