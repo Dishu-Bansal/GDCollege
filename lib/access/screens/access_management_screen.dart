@@ -30,6 +30,7 @@ class _AccessManagementScreenState extends State<AccessManagementScreen> {
   bool _bills = true;
   bool _visitors = true;
   bool _leads = false;
+  bool _fees = false;
   bool _saving = false;
 
   void _pickUser(AppUser? user) {
@@ -42,6 +43,7 @@ class _AccessManagementScreenState extends State<AccessManagementScreen> {
       _bills = user?.canAccessBills ?? true;
       _visitors = user?.canAccessVisitors ?? true;
       _leads = user?.canAccessLeads ?? false;
+      _fees = user?.canAccessFees ?? false;
     });
   }
 
@@ -59,6 +61,7 @@ class _AccessManagementScreenState extends State<AccessManagementScreen> {
         bills: _bills,
         visitors: _visitors,
         leads: _leads,
+        fees: _fees,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -206,6 +209,9 @@ class _AccessManagementScreenState extends State<AccessManagementScreen> {
                     const SizedBox(height: 12),
                     _accessRow('Leads', _leads,
                         (v) => setState(() => _leads = v)),
+                    const SizedBox(height: 12),
+                    _accessRow('Fees', _fees,
+                        (v) => setState(() => _fees = v)),
                     const SizedBox(height: 24),
                     SizedBox(
                       height: 50,

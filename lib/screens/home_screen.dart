@@ -6,6 +6,7 @@ import '../access/app_session.dart';
 import '../access/screens/access_management_screen.dart';
 import '../bill_management/screens/bill_management_screen.dart';
 import '../lead_management/screens/lead_management_screen.dart';
+import '../fees_management/screens/fees_management_screen.dart';
 import '../models/home_analytics.dart';
 import '../providers.dart';
 import '../student_docs/screens/student_docs_screen.dart';
@@ -648,6 +649,13 @@ const _moduleTargets = [
     visible: _showLeads,
     open: LeadManagementScreen.new,
   ),
+  _ModuleTarget(
+    icon: Icons.payments_outlined,
+    label: 'Fees',
+    color: Color(0xFF6D4C41),
+    visible: _showFees,
+    open: FeesManagementScreen.new,
+  ),
 ];
 
 bool _showStudents(AppSession s) => s.canAccessStudents;
@@ -657,6 +665,7 @@ bool _showStock(AppSession s) => s.canAccessStock;
 bool _showBills(AppSession s) => s.canAccessBills;
 bool _showVisitors(AppSession s) => s.canAccessVisitors;
 bool _showLeads(AppSession s) => s.canAccessLeads;
+bool _showFees(AppSession s) => s.canAccessFees;
 
 const _adminTargets = [
   _ModuleTarget(

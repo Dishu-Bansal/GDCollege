@@ -9,6 +9,7 @@ import 'package:gd_college/screens/user_sessions_screen.dart';
 import 'package:gd_college/services/session_service.dart';
 
 import '../bill_management/screens/bill_management_screen.dart';
+import '../fees_management/screens/fees_management_screen.dart';
 import '../lead_management/screens/lead_management_screen.dart';
 import '../staff_management/screens/staff_list_screen.dart';
 import '../stock_management/screens/buildings_screen.dart';
@@ -46,6 +47,7 @@ getSideDrawer(BuildContext context) {
         final showBills = session?.canAccessBills ?? false;
         final showVisitors = session?.canAccessVisitors ?? false;
         final showLeads = session?.canAccessLeads ?? false;
+        final showFees = session?.canAccessFees ?? false;
         return ListView(
           padding: EdgeInsets.zero,
           children: [
@@ -136,6 +138,14 @@ getSideDrawer(BuildContext context) {
                 title: const Text('Leads'),
                 onTap: () {
                   Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LeadManagementScreen()));
+                },
+              ),
+            if (showFees)
+              ListTile(
+                leading: const Icon(Icons.payments_outlined),
+                title: const Text('Fees'),
+                onTap: () {
+                  Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const FeesManagementScreen()));
                 },
               ),
             if (isAdmin)

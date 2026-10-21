@@ -111,6 +111,10 @@ class AccessService {
   /// unless the admin explicitly grants access.
   static const bool _defaultLeads = false;
 
+  /// Fees is a new module: locked down until the admin grants it, so an
+  /// unprovisioned login can never see every screen.
+  static const bool _defaultFees = false;
+
   /// Live access state for the signed-in user (null when signed out).
   ///
   /// Implemented as a *switching* stream: every auth-state change cancels the
@@ -151,6 +155,7 @@ class AccessService {
           canAccessBills: d['canAccessBills'] ?? _defaultBills,
           canAccessVisitors: d['canAccessVisitors'] ?? _defaultVisitors,
           canAccessLeads: d['canAccessLeads'] ?? _defaultLeads,
+          canAccessFees: d['canAccessFees'] ?? _defaultFees,
         );
       }
 
@@ -164,6 +169,7 @@ class AccessService {
       var bills = _defaultBills;
       var visitors = _defaultVisitors;
       var leads = _defaultLeads;
+      var fees = _defaultFees;
       String? seedDocId;
       final seed = await _db
           .collection(_collection)
@@ -179,6 +185,7 @@ class AccessService {
         bills = s['canAccessBills'] as bool? ?? bills;
         visitors = s['canAccessVisitors'] as bool? ?? visitors;
         leads = s['canAccessLeads'] as bool? ?? leads;
+        fees = s['canAccessFees'] as bool? ?? fees;
         seedDocId = seed.docs.first.id;
       }
       final now = timestampToWire(DateTime.now());
@@ -191,6 +198,7 @@ class AccessService {
         'canAccessBills': bills,
         'canAccessVisitors': visitors,
         'canAccessLeads': leads,
+        'canAccessFees': fees,
         'createdAt': now,
         'updatedAt': now,
         'updatedBy': email,
@@ -211,6 +219,7 @@ class AccessService {
         canAccessBills: bills,
         canAccessVisitors: visitors,
         canAccessLeads: leads,
+        canAccessFees: fees,
       );
     }
 
@@ -288,6 +297,7 @@ class AccessService {
         canAccessBills: true,
         canAccessVisitors: true,
         canAccessLeads: true,
+        canAccessFees: true,
       );
 
   static AppSession _lockedSession(String uid, String email) => AppSession(
@@ -301,6 +311,7 @@ class AccessService {
         canAccessBills: false,
         canAccessVisitors: false,
         canAccessLeads: false,
+        canAccessFees: false,
       );
 
   /// All accounts for the admin dropdown, ordered by email.
@@ -323,6 +334,7 @@ class AccessService {
     required bool bills,
     required bool visitors,
     required bool leads,
+    required bool fees,
   }) {
     final by = FirebaseAuth.instance.currentUser?.email ?? '';
     return _db.collection(_collection).doc(uid).update({
@@ -333,6 +345,7 @@ class AccessService {
       'canAccessBills': bills,
       'canAccessVisitors': visitors,
       'canAccessLeads': leads,
+      'canAccessFees': fees,
       'updatedAt': timestampToWire(DateTime.now()),
       'updatedBy': by,
     });
@@ -371,6 +384,7 @@ class AccessService {
       var bills = _defaultBills;
       var visitors = _defaultVisitors;
       var leads = _defaultLeads;
+      var fees = _defaultFees;
       String? seedDocId;
       final seed = await _db
           .collection(_collection)
@@ -386,6 +400,7 @@ class AccessService {
         bills = s['canAccessBills'] as bool? ?? bills;
         visitors = s['canAccessVisitors'] as bool? ?? visitors;
         leads = s['canAccessLeads'] as bool? ?? leads;
+        fees = s['canAccessFees'] as bool? ?? fees;
         seedDocId = seed.docs.first.id;
       }
       final now = timestampToWire(DateTime.now());
@@ -398,6 +413,7 @@ class AccessService {
         'canAccessBills': bills,
         'canAccessVisitors': visitors,
         'canAccessLeads': leads,
+        'canAccessFees': fees,
         'createdAt': now,
         'updatedAt': now,
         'updatedBy': FirebaseAuth.instance.currentUser?.email ?? '',
@@ -415,6 +431,7 @@ class AccessService {
         canAccessBills: bills,
         canAccessVisitors: visitors,
         canAccessLeads: leads,
+        canAccessFees: fees,
       );
     } finally {
       await secondaryAuth.signOut();
