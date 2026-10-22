@@ -401,12 +401,20 @@ class _StaffTabState extends ConsumerState<_StaffTab> {
 
         return Column(
           children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+              child: _FilterField(
+                controller: widget.searchNameCtrl,
+                label: 'Search by name',
+                icon: Icons.search,
+                onChanged: (_) => widget.onChanged(),
+              ),
+            ),
             AnimatedSize(
               duration: const Duration(milliseconds: 280),
               curve: Curves.easeInOut,
               child: widget.filtersVisible
                   ? _FilterPanel(
-                      nameCtrl: widget.searchNameCtrl,
                       selectedCourse: widget.selectedCourse,
                       courses: listOfCourses,
                       selectedYear: widget.selectedYear,
@@ -674,7 +682,6 @@ class _StaffGlobalLogTab extends ConsumerWidget {
 // ── Filter Panel ──────────────────────────────────────────────────────────────
 
 class _FilterPanel extends StatelessWidget {
-  final TextEditingController nameCtrl;
   final String? selectedCourse;
   final List<String> courses;
   final String? selectedYear;
@@ -686,7 +693,6 @@ class _FilterPanel extends StatelessWidget {
   final VoidCallback onClear;
 
   const _FilterPanel({
-    required this.nameCtrl,
     required this.selectedCourse,
     required this.courses,
     required this.selectedYear,
@@ -730,13 +736,6 @@ class _FilterPanel extends StatelessWidget {
                           horizontal: 8, vertical: 4)),
                 ),
             ],
-          ),
-          const SizedBox(height: 10),
-          _FilterField(
-            controller: nameCtrl,
-            label: 'Name',
-            icon: Icons.person_outline,
-            onChanged: (_) => onChanged(),
           ),
           const SizedBox(height: 10),
           Row(

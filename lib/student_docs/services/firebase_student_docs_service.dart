@@ -192,6 +192,61 @@ class FirebaseStudentDocsService {
     return written;
   }
 
+  // ── Subject-name vocabulary ──────────────────────────────────────────
+  /// Shared subject-name list behind the DMC subject autocomplete: every
+  /// name ever saved on any DMC. Read once per detail screen; extended on
+  /// every save via [rememberSubjectNames].
+  ///
+  /// The first call seeds it by scanning all students once, so historical
+  /// names are suggested from day one. Later calls are a single small doc
+  /// read.
+  Future<List<String>> fetchSubjectNames() async {
+    final ref = _db.collection('meta').doc('subjectNames');
+    final snap = await ref.get();
+    final known = (snap.data()?['names'] as List? ?? [])
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (known.isNotEmpty) {
+      known.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      return known;
+    }
+    final students = await _db.collection(_students).get();
+    final seeded = <String>{};
+    for (final d in students.docs) {
+      for (final rec in StudentDocRecord.recordsOf(d.data()).values) {
+        for (final s in rec.subjects) {
+          final name = s.subject.trim();
+          if (name.isNotEmpty) seeded.add(name);
+        }
+      }
+    }
+    final list = seeded.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    if (list.isNotEmpty) {
+      await ref.set({'names': list}, SetOptions(merge: true));
+    }
+    return list;
+  }
+
+  /// Adds any unfamiliar subject names to the shared vocabulary so the
+  /// next DMC suggests them. Best-effort: never throws.
+  Future<void> rememberSubjectNames(List<String> names) async {
+    final fresh = names
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (fresh.isEmpty) return;
+    try {
+      await _db.collection('meta').doc('subjectNames').set(
+        {'names': FieldValue.arrayUnion(fresh)},
+        SetOptions(merge: true),
+      );
+    } catch (e) {
+      debugPrint('rememberSubjectNames failed: $e');
+    }
+  }
+
   // ── Batch reads ──────────────────────────────────────────────────────────
   /// One batch: students of [group] + [course] + [year]. Any of
   /// [course]/[year] may be null to skip that filter. Sorted by student ID
