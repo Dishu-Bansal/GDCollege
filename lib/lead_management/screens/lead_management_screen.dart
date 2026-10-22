@@ -245,20 +245,13 @@ class _LeadsTabState extends ConsumerState<_LeadsTab> {
                           subtitle:
                               'Try a different search or clear the status filters.',
                         )
-                      : ListView.separated(
-                          padding: const EdgeInsets.all(12),
-                          itemCount: filtered.length,
-                          separatorBuilder: (_, _) =>
-                              const SizedBox(height: 10),
-                          itemBuilder: (_, i) => _LeadCard(
-                            lead: filtered[i],
-                            canManage: widget.canManage,
-                            onEdit: () => widget.onEdit(filtered[i]),
-                            onDelete: () =>
-                                _confirmDelete(filtered[i]),
-                            onStatusChanged: (s) =>
-                                _changeStatus(filtered[i], s),
-                          ),
+                      : _LeadsTable(
+                          leads: filtered,
+                          total: list.length,
+                          canManage: widget.canManage,
+                          onEdit: widget.onEdit,
+                          onDelete: _confirmDelete,
+                          onStatusChanged: _changeStatus,
                         ),
             ),
           ],
@@ -424,17 +417,19 @@ Color _statusColor(String status) {
   }
 }
 
-// ── Lead card ────────────────────────────────────────────────────────────────
+// ── Leads table ──────────────────────────────────────────────────────────────
 
-class _LeadCard extends StatelessWidget {
-  final LeadModel lead;
+class _LeadsTable extends StatelessWidget {
+  final List<LeadModel> leads;
+  final int total;
   final bool canManage;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-  final void Function(String) onStatusChanged;
+  final void Function(LeadModel) onEdit;
+  final void Function(LeadModel) onDelete;
+  final void Function(LeadModel, String) onStatusChanged;
 
-  const _LeadCard({
-    required this.lead,
+  const _LeadsTable({
+    required this.leads,
+    required this.total,
     required this.canManage,
     required this.onEdit,
     required this.onDelete,
@@ -443,153 +438,188 @@ class _LeadCard extends StatelessWidget {
 
   String _fmtDate(DateTime d) => '${d.day}/${d.month}/${d.year}';
 
-  @override
-  Widget build(BuildContext context) {
-    final color = _statusColor(lead.status);
+  String _followUpText(LeadModel lead) {
     final next = lead.nextFollowUp;
-    final overdue = next != null &&
+    if (next == null) return '—';
+    var text = _fmtDate(next.date);
+    if (next.note.isNotEmpty) text += ' — ${next.note}';
+    if (lead.followUps.length > 1) {
+      text += ' (+${lead.followUps.length - 1} more)';
+    }
+    return text;
+  }
+
+  bool _isOverdue(LeadModel lead) {
+    final next = lead.nextFollowUp;
+    return next != null &&
         next.date
             .isBefore(DateTime.now().subtract(const Duration(days: 1))) &&
         lead.status != 'Admitted' &&
         lead.status != 'Lost';
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: overdue ? Colors.red.shade300 : Colors.grey.shade200,
-          width: overdue ? 1.5 : 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  lead.name,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 15),
-                ),
-              ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: color.withValues(alpha: 0.3)),
-                ),
-                child: Text(
-                  lead.status,
-                  style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: color),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          if (lead.phone.isNotEmpty)
-            _infoRow(Icons.phone_outlined, lead.phone),
-          if (lead.location.isNotEmpty)
-            _infoRow(Icons.place_outlined, lead.location),
-          if (lead.courses.isNotEmpty)
-            _infoRow(Icons.school_outlined, lead.courses.join(', ')),
-          _infoRow(Icons.source_outlined, 'Source: ${lead.source}'),
-          if (next != null)
-            _infoRow(
-              Icons.event_outlined,
-              'Follow up: ${_fmtDate(next.date)}'
-              '${next.note.isNotEmpty ? ' — ${next.note}' : ''}'
-              '${overdue ? ' (overdue)' : ''}'
-              '${lead.followUps.length > 1 ? ' (+${lead.followUps.length - 1} more)' : ''}',
-              color: overdue ? Colors.red.shade700 : null,
-            ),
-          if (lead.notes.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              lead.notes,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style:
-                  TextStyle(fontSize: 12, color: Colors.grey.shade600),
-            ),
-          ],
-          if (canManage) ...[
-            const SizedBox(height: 10),
-            Divider(height: 1, color: Colors.grey.shade200),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: lead.status,
-                    decoration: const InputDecoration(
-                      labelText: 'Status',
-                      isDense: true,
-                      contentPadding: EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 8),
-                      border: OutlineInputBorder(),
-                    ),
-                    items: leadStatuses
-                        .map((s) =>
-                            DropdownMenuItem(value: s, child: Text(s)))
-                        .toList(),
-                    onChanged: (v) {
-                      if (v != null && v != lead.status) {
-                        onStatusChanged(v);
-                      }
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: onEdit,
-                  icon: const Icon(Icons.edit_outlined, size: 16),
-                  label: const Text('Edit'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF1A3C6E),
-                    side: const BorderSide(color: Color(0xFF1A3C6E)),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline,
-                      size: 18, color: Colors.red),
-                  tooltip: 'Delete lead',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: onDelete,
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
   }
 
-  Widget _infoRow(IconData icon, String text, {Color? color}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          Icon(icon, size: 14, color: color ?? Colors.grey.shade500),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                  fontSize: 13,
-                  color: color ?? Colors.grey.shade800),
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          color: Colors.white,
+          padding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text(
+            leads.length == total
+                ? 'Total leads: $total'
+                : 'Showing ${leads.length} of $total leads',
+            style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF1A3C6E)),
+          ),
+        ),
+        Expanded(
+          child: Container(
+            color: Colors.white,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.vertical,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  headingTextStyle: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                      color: Color(0xFF1A3C6E)),
+                  dataTextStyle: const TextStyle(fontSize: 12),
+                  columns: [
+                    const DataColumn(label: Text('Name')),
+                    const DataColumn(label: Text('Phone')),
+                    const DataColumn(label: Text('Location')),
+                    const DataColumn(label: Text('Courses')),
+                    const DataColumn(label: Text('Source')),
+                    const DataColumn(label: Text('Notes')),
+                    const DataColumn(label: Text('Follow-up')),
+                    const DataColumn(label: Text('Status')),
+                    if (canManage)
+                      const DataColumn(label: Text('Actions')),
+                  ],
+                  rows: [
+                    for (final lead in leads)
+                      DataRow(
+                        color: WidgetStatePropertyAll(
+                          _isOverdue(lead)
+                              ? Colors.red.shade50
+                              : Colors.transparent,
+                        ),
+                        cells: [
+                          DataCell(Text(lead.name,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600))),
+                          DataCell(Text(lead.phone.isEmpty
+                              ? '—'
+                              : lead.phone)),
+                          DataCell(Text(lead.location.isEmpty
+                              ? '—'
+                              : lead.location)),
+                          DataCell(Text(lead.courses.isEmpty
+                              ? '—'
+                              : lead.courses.join(', '))),
+                          DataCell(Text(lead.source)),
+                          DataCell(SizedBox(
+                            width: 200,
+                            child: Text(
+                              lead.notes.isEmpty ? '—' : lead.notes,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          )),
+                          DataCell(Text(
+                            _followUpText(lead),
+                            style: TextStyle(
+                              color: _isOverdue(lead)
+                                  ? Colors.red.shade700
+                                  : null,
+                              fontWeight: _isOverdue(lead)
+                                  ? FontWeight.w600
+                                  : null,
+                            ),
+                          )),
+                          DataCell(canManage
+                              ? DropdownButton<String>(
+                                  value: lead.status,
+                                  isDense: true,
+                                  underline: const SizedBox.shrink(),
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color:
+                                          _statusColor(lead.status)),
+                                  items: leadStatuses
+                                      .map((s) => DropdownMenuItem(
+                                          value: s,
+                                          child: Text(s)))
+                                      .toList(),
+                                  onChanged: (v) {
+                                    if (v != null &&
+                                        v != lead.status) {
+                                      onStatusChanged(lead, v);
+                                    }
+                                  },
+                                )
+                              : Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: _statusColor(lead.status)
+                                        .withValues(alpha: 0.1),
+                                    borderRadius:
+                                        BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    lead.status,
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: _statusColor(
+                                            lead.status)),
+                                  ),
+                                )),
+                          if (canManage)
+                            DataCell(Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(
+                                      Icons.edit_outlined,
+                                      size: 16),
+                                  tooltip: 'Edit lead',
+                                  color:
+                                      const Color(0xFF1A3C6E),
+                                  visualDensity:
+                                      VisualDensity.compact,
+                                  onPressed: () => onEdit(lead),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                      Icons.delete_outline,
+                                      size: 16),
+                                  tooltip: 'Delete lead',
+                                  color: Colors.red,
+                                  visualDensity:
+                                      VisualDensity.compact,
+                                  onPressed: () =>
+                                      onDelete(lead),
+                                ),
+                              ],
+                            )),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
