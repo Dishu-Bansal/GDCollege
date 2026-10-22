@@ -39,6 +39,9 @@ class _StudentDocDetailScreenState extends State<StudentDocDetailScreen> {
 
   /// Display student ID read from the student doc (not the Firestore id).
   String _rollNo = '';
+
+  /// Shared subject-name vocabulary for the DMC autocomplete, loaded once.
+  List<String> _knownSubjects = [];
   bool _loading = true;
   String? _error;
 
@@ -55,13 +58,17 @@ class _StudentDocDetailScreenState extends State<StudentDocDetailScreen> {
       _error = null;
     });
     try {
-      final snap =
-          await db.collection('students').doc(widget.studentId).get();
-      final data = snap.data() ?? {};
+      final results = await Future.wait([
+        db.collection('students').doc(widget.studentId).get(),
+        _service.fetchSubjectNames(),
+      ]);
+      final data =
+          (results[0] as dynamic).data() as Map<String, dynamic>? ?? {};
       if (!mounted) return;
       setState(() {
         _records = StudentDocRecord.recordsOf(data);
         _rollNo = (data['studentId'] ?? '').toString();
+        _knownSubjects = (results[1] as List<String>);
         _loading = false;
       });
     } catch (e) {
@@ -74,7 +81,19 @@ class _StudentDocDetailScreenState extends State<StudentDocDetailScreen> {
   }
 
   void _onSaved(String slotKey, StudentDocRecord record) {
-    setState(() => _records[slotKey] = record);
+    setState(() {
+      _records[slotKey] = record;
+      // Fold freshly saved names into the local autocomplete list so
+      // sibling slot cards suggest them immediately.
+      for (final s in record.subjects) {
+        final n = s.subject.trim();
+        if (n.isNotEmpty &&
+            !_knownSubjects
+                .any((k) => k.toLowerCase() == n.toLowerCase())) {
+          _knownSubjects.add(n);
+        }
+      }
+    });
   }
 
   @override
@@ -129,6 +148,7 @@ class _StudentDocDetailScreenState extends State<StudentDocDetailScreen> {
                         rollNo: _rollNo,
                         yearOfAdmission: widget.yearOfAdmission,
                         course: widget.course,
+                        knownSubjects: _knownSubjects,
                         slot: slot,
                         initial:
                             _records[slot.key] ?? StudentDocRecord(),
@@ -225,6 +245,7 @@ class _SlotCard extends StatefulWidget {
   final String rollNo;
   final int? yearOfAdmission;
   final String course;
+  final List<String> knownSubjects;
   final DocSlot slot;
   final StudentDocRecord initial;
   final FirebaseStudentDocsService service;
@@ -237,6 +258,7 @@ class _SlotCard extends StatefulWidget {
     required this.rollNo,
     required this.yearOfAdmission,
     required this.course,
+    required this.knownSubjects,
     required this.slot,
     required this.initial,
     required this.service,
@@ -713,6 +735,11 @@ class _SlotCardState extends State<_SlotCard> {
         record: _record,
         logs: logs,
       );
+      // Fold the saved subject names into the shared vocabulary so the
+      // next DMC suggests them (best-effort, after the real save).
+      await widget.service.rememberSubjectNames(
+        _record.subjects.map((s) => s.subject).toList(),
+      );
       widget.onSaved(_record);
       _snack('${widget.slot.label} saved.');
     } catch (e) {
@@ -1032,14 +1059,45 @@ class _SlotCardState extends State<_SlotCard> {
               children: [
                 Expanded(
                   flex: 5,
-                  child: TextField(
-                    controller: _subjectRows[i].subjectCtrl,
-                    onChanged: (_) => setState(() {}),
-                    decoration: const InputDecoration(
-                      labelText: 'Subject',
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                    ),
+                  child: Autocomplete<String>(
+                    optionsBuilder: (value) {
+                      final q = value.text.trim().toLowerCase();
+                      if (q.isEmpty) return const Iterable.empty();
+                      return widget.knownSubjects
+                          .where((n) =>
+                              n.toLowerCase().contains(q) &&
+                              n.toLowerCase() != q)
+                          .take(8);
+                    },
+                    displayStringForOption: (o) => o,
+                    onSelected: (sel) {
+                      _subjectRows[i].subjectCtrl.text = sel;
+                      setState(() {});
+                    },
+                    fieldViewBuilder: (context, fieldCtrl, focusNode,
+                        onFieldSubmitted) {
+                      if (fieldCtrl.text !=
+                          _subjectRows[i].subjectCtrl.text) {
+                        fieldCtrl.text =
+                            _subjectRows[i].subjectCtrl.text;
+                        fieldCtrl.selection =
+                            TextSelection.collapsed(
+                                offset: fieldCtrl.text.length);
+                      }
+                      return TextField(
+                        controller: fieldCtrl,
+                        focusNode: focusNode,
+                        onChanged: (v) {
+                          _subjectRows[i].subjectCtrl.text = v;
+                          setState(() {});
+                        },
+                        decoration: const InputDecoration(
+                          labelText: 'Subject',
+                          isDense: true,
+                          border: OutlineInputBorder(),
+                        ),
+                      );
+                    },
                   ),
                 ),
                 const SizedBox(width: 6),
