@@ -475,14 +475,15 @@ class _StudentRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (dmcDone, dmcTotal) = entry.dmcStocked();
-    final terminalDone = entry.terminalStocked();
+    final (dmcStock, dmcTotal) = entry.dmcStocked();
+    final dmcColl = entry.dmcProgress().$1;
+    final termCollected = entry.terminalDone();
+    final termStocked = entry.terminalStocked();
     final terminalLabel =
         docSlotsForCourse(entry.course).any((s) => s.key == 'degree')
             ? 'Degree'
             : 'Certificate';
-    final allDone = entry.dmcProgress().$1 == entry.dmcProgress().$2 &&
-        entry.terminalDone();
+    final allDone = dmcColl == dmcTotal && termCollected;
     return InkWell(
       onTap: onOpen,
       borderRadius: BorderRadius.circular(12),
@@ -559,16 +560,24 @@ class _StudentRow extends StatelessWidget {
                             ? 'Course not set'
                             : entry.course,
                       ),
-                      if (dmcTotal > 0)
+                      if (dmcTotal > 0) ...[
                         _Chip(
-                          'DMC $dmcDone/$dmcTotal',
-                          done: dmcDone == dmcTotal,
+                          'DMC Stocked $dmcStock/$dmcTotal',
+                          done: dmcStock == dmcTotal,
                         ),
+                        _Chip(
+                          'DMC Collected $dmcColl/$dmcTotal',
+                          done: dmcColl == dmcTotal,
+                        ),
+                      ],
                       _Chip(
-                        terminalDone
-                            ? '$terminalLabel Stocked'
-                            : '$terminalLabel Pending',
-                        done: terminalDone,
+                        termCollected
+                            ? '$terminalLabel Collected'
+                            : termStocked
+                                ? '$terminalLabel Stocked'
+                                : '$terminalLabel Pending',
+                        done: termCollected,
+                        pending: !termCollected && !termStocked,
                       ),
                     ],
                   ),
@@ -612,12 +621,19 @@ class _Chip extends StatelessWidget {
   final String text;
   final bool done;
 
-  const _Chip(this.text, {required this.done});
+  /// Pending (nothing on hand yet) renders red; a middle state renders
+  /// yellow; done renders green.
+  final bool pending;
+
+  const _Chip(this.text, {required this.done, this.pending = false});
 
   @override
   Widget build(BuildContext context) {
-    final color =
-        done ? const Color(0xFF2E7D32) : const Color(0xFFEF6C00);
+    final color = done
+        ? const Color(0xFF2E7D32)
+        : pending
+            ? const Color(0xFFC62828)
+            : const Color(0xFFEF6C00);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(

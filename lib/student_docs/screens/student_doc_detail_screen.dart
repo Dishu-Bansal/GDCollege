@@ -98,11 +98,22 @@ class _StudentDocDetailScreenState extends State<StudentDocDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Stocked scans drive the counter: an upload moves it immediately,
-    // without waiting for marks or the collector handover.
-    final done = _slots
+    final dmcSlots = _slots.where((s) => s.isDmc).toList();
+    final termSlots = _slots.where((s) => !s.isDmc).toList();
+    // Stocked scans move the counters immediately, without waiting for
+    // marks or the collector handover; collected means fully complete.
+    final stocked = dmcSlots
         .where((s) => (_records[s.key]?.inStock ?? false))
         .length;
+    final collected = dmcSlots
+        .where((s) =>
+            (_records[s.key]?.complete(isDmc: true) ?? false))
+        .length;
+    final termCollected = termSlots.isNotEmpty &&
+        (_records[termSlots.first.key]?.complete(isDmc: false) ??
+            false);
+    final termStocked = termSlots.isNotEmpty &&
+        (_records[termSlots.first.key]?.inStock ?? false);
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
       appBar: AppBar(
@@ -136,8 +147,17 @@ class _StudentDocDetailScreenState extends State<StudentDocDetailScreen> {
                     _HeaderCard(
                       course: widget.course,
                       year: widget.yearOfAdmission,
-                      done: done,
-                      total: _slots.length,
+                      dmcTotal: dmcSlots.length,
+                      dmcStocked: stocked,
+                      dmcCollected: collected,
+                      hasTerminal: termSlots.isNotEmpty,
+                      terminalCollected: termCollected,
+                      terminalStocked: termStocked,
+                      terminalLabel: termSlots.isEmpty
+                          ? ''
+                          : termSlots.first.key == 'degree'
+                              ? 'Degree'
+                              : 'Certificate',
                     ),
                     const SizedBox(height: 10),
                     for (final slot in _slots) ...[
@@ -167,19 +187,63 @@ class _StudentDocDetailScreenState extends State<StudentDocDetailScreen> {
 class _HeaderCard extends StatelessWidget {
   final String course;
   final int? year;
-  final int done;
-  final int total;
+  final int dmcTotal;
+  final int dmcStocked;
+  final int dmcCollected;
+  final bool hasTerminal;
+  final bool terminalCollected;
+  final bool terminalStocked;
+  final String terminalLabel;
 
   const _HeaderCard({
     required this.course,
     required this.year,
-    required this.done,
-    required this.total,
+    required this.dmcTotal,
+    required this.dmcStocked,
+    required this.dmcCollected,
+    required this.hasTerminal,
+    required this.terminalCollected,
+    required this.terminalStocked,
+    required this.terminalLabel,
   });
+
+  Widget _pill(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+          color: color,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final allDone = done == total;
+    const green = Color(0xFF2E7D32);
+    const yellow = Color(0xFFEF6C00);
+    const red = Color(0xFFC62828);
+    final allDone = (dmcStocked == dmcTotal &&
+            dmcCollected == dmcTotal) &&
+        (!hasTerminal || terminalCollected);
+    final termColor = terminalCollected
+        ? green
+        : terminalStocked
+            ? yellow
+            : red;
+    final termText = terminalCollected
+        ? '$terminalLabel Collected'
+        : terminalStocked
+            ? '$terminalLabel Stocked'
+            : '$terminalLabel Pending';
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -187,11 +251,12 @@ class _HeaderCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: allDone
-              ? const Color(0xFF2E7D32).withValues(alpha: 0.4)
+              ? green.withValues(alpha: 0.4)
               : Colors.grey.shade200,
         ),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
             child: Column(
@@ -211,26 +276,25 @@ class _HeaderCard extends StatelessWidget {
               ],
             ),
           ),
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: (allDone
-                      ? const Color(0xFF2E7D32)
-                      : const Color(0xFFEF6C00))
-                  .withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              '$done / $total stocked',
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-                color: allDone
-                    ? const Color(0xFF2E7D32)
-                    : const Color(0xFFEF6C00),
-              ),
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (dmcTotal > 0) ...[
+                _pill(
+                  'DMC Stocked $dmcStocked/$dmcTotal',
+                  dmcStocked == dmcTotal ? green : yellow,
+                ),
+                const SizedBox(height: 6),
+                _pill(
+                  'DMC Collected $dmcCollected/$dmcTotal',
+                  dmcCollected == dmcTotal ? green : yellow,
+                ),
+              ],
+              if (hasTerminal) ...[
+                if (dmcTotal > 0) const SizedBox(height: 6),
+                _pill(termText, termColor),
+              ],
+            ],
           ),
         ],
       ),
