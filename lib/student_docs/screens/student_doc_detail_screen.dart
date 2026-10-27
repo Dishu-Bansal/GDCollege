@@ -98,9 +98,10 @@ class _StudentDocDetailScreenState extends State<StudentDocDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Stocked scans drive the counter: an upload moves it immediately,
+    // without waiting for marks or the collector handover.
     final done = _slots
-        .where((s) =>
-            (_records[s.key]?.complete(isDmc: s.isDmc) ?? false))
+        .where((s) => (_records[s.key]?.inStock ?? false))
         .length;
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
@@ -221,7 +222,7 @@ class _HeaderCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              '$done / $total complete',
+              '$done / $total stocked',
               style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 13,

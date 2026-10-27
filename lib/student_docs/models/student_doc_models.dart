@@ -259,7 +259,8 @@ class DocBatchEntry {
     required this.records,
   });
 
-  /// DMC slots done / total for the student's course.
+  /// DMC slots done / total for the student's course. "Done" here means
+  /// fully complete (scan + marks + collector) — the row's all-done state.
   (int, int) dmcProgress() {
     final slots = docSlotsForCourse(course).where((s) => s.isDmc).toList();
     final done = slots
@@ -267,6 +268,16 @@ class DocBatchEntry {
             (records[s.key]?.complete(isDmc: true) ?? false))
         .length;
     return (done, slots.length);
+  }
+
+  /// DMC slots stocked / total: slots with an uploaded scan, regardless of
+  /// marks or collector. This is what the list/detail counters display, so
+  /// an uploaded DMC moves the needle immediately.
+  (int, int) dmcStocked() {
+    final slots = docSlotsForCourse(course).where((s) => s.isDmc).toList();
+    final stocked =
+        slots.where((s) => (records[s.key]?.inStock ?? false)).length;
+    return (stocked, slots.length);
   }
 
   /// Whether the terminal (Degree / Certificate) slot is complete.
@@ -277,6 +288,15 @@ class DocBatchEntry {
     return records[terminal.first.key]
             ?.complete(isDmc: false) ??
         false;
+  }
+
+  /// Whether the terminal slot has an uploaded scan (stocked), regardless
+  /// of collector. Drives the Degree Stocked / Pending chip.
+  bool terminalStocked() {
+    final terminal =
+        docSlotsForCourse(course).where((s) => !s.isDmc).toList();
+    if (terminal.isEmpty) return false;
+    return records[terminal.first.key]?.inStock ?? false;
   }
 }
 

@@ -475,13 +475,14 @@ class _StudentRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (dmcDone, dmcTotal) = entry.dmcProgress();
-    final terminalDone = entry.terminalDone();
+    final (dmcDone, dmcTotal) = entry.dmcStocked();
+    final terminalDone = entry.terminalStocked();
     final terminalLabel =
         docSlotsForCourse(entry.course).any((s) => s.key == 'degree')
             ? 'Degree'
             : 'Certificate';
-    final allDone = dmcDone == dmcTotal && terminalDone;
+    final allDone = entry.dmcProgress().$1 == entry.dmcProgress().$2 &&
+        entry.terminalDone();
     return InkWell(
       onTap: onOpen,
       borderRadius: BorderRadius.circular(12),
@@ -558,12 +559,15 @@ class _StudentRow extends StatelessWidget {
                             ? 'Course not set'
                             : entry.course,
                       ),
+                      if (dmcTotal > 0)
+                        _Chip(
+                          'DMC $dmcDone/$dmcTotal',
+                          done: dmcDone == dmcTotal,
+                        ),
                       _Chip(
-                        'DMC $dmcDone/$dmcTotal',
-                        done: dmcDone == dmcTotal,
-                      ),
-                      _Chip(
-                        '$terminalLabel ${terminalDone ? "✓" : "…"}',
+                        terminalDone
+                            ? '$terminalLabel Stocked'
+                            : '$terminalLabel Pending',
                         done: terminalDone,
                       ),
                     ],
