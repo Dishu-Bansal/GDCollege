@@ -36,6 +36,12 @@ class _StudentDocDetailScreenState extends State<StudentDocDetailScreen> {
   final _service = FirebaseStudentDocsService();
   late final List<DocSlot> _slots;
   Map<String, StudentDocRecord> _records = {};
+
+  /// Display student ID read from the student doc (not the Firestore id).
+  String _rollNo = '';
+
+  /// Shared subject-name vocabulary for the DMC autocomplete, loaded once.
+  List<String> _knownSubjects = [];
   bool _loading = true;
   String? _error;
 
@@ -52,12 +58,17 @@ class _StudentDocDetailScreenState extends State<StudentDocDetailScreen> {
       _error = null;
     });
     try {
-      final snap =
-          await db.collection('students').doc(widget.studentId).get();
-      final data = snap.data() ?? {};
+      final results = await Future.wait([
+        db.collection('students').doc(widget.studentId).get(),
+        _service.fetchSubjectNames(),
+      ]);
+      final data =
+          (results[0] as dynamic).data() as Map<String, dynamic>? ?? {};
       if (!mounted) return;
       setState(() {
         _records = StudentDocRecord.recordsOf(data);
+        _rollNo = (data['studentId'] ?? '').toString();
+        _knownSubjects = (results[1] as List<String>);
         _loading = false;
       });
     } catch (e) {
@@ -70,15 +81,39 @@ class _StudentDocDetailScreenState extends State<StudentDocDetailScreen> {
   }
 
   void _onSaved(String slotKey, StudentDocRecord record) {
-    setState(() => _records[slotKey] = record);
+    setState(() {
+      _records[slotKey] = record;
+      // Fold freshly saved names into the local autocomplete list so
+      // sibling slot cards suggest them immediately.
+      for (final s in record.subjects) {
+        final n = s.subject.trim();
+        if (n.isNotEmpty &&
+            !_knownSubjects
+                .any((k) => k.toLowerCase() == n.toLowerCase())) {
+          _knownSubjects.add(n);
+        }
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final done = _slots
-        .where((s) =>
-            (_records[s.key]?.complete(isDmc: s.isDmc) ?? false))
+    final dmcSlots = _slots.where((s) => s.isDmc).toList();
+    final termSlots = _slots.where((s) => !s.isDmc).toList();
+    // Stocked scans move the counters immediately, without waiting for
+    // marks or the collector handover; collected means fully complete.
+    final stocked = dmcSlots
+        .where((s) => (_records[s.key]?.inStock ?? false))
         .length;
+    final collected = dmcSlots
+        .where((s) =>
+            (_records[s.key]?.complete(isDmc: true) ?? false))
+        .length;
+    final termCollected = termSlots.isNotEmpty &&
+        (_records[termSlots.first.key]?.complete(isDmc: false) ??
+            false);
+    final termStocked = termSlots.isNotEmpty &&
+        (_records[termSlots.first.key]?.inStock ?? false);
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
       appBar: AppBar(
@@ -112,8 +147,17 @@ class _StudentDocDetailScreenState extends State<StudentDocDetailScreen> {
                     _HeaderCard(
                       course: widget.course,
                       year: widget.yearOfAdmission,
-                      done: done,
-                      total: _slots.length,
+                      dmcTotal: dmcSlots.length,
+                      dmcStocked: stocked,
+                      dmcCollected: collected,
+                      hasTerminal: termSlots.isNotEmpty,
+                      terminalCollected: termCollected,
+                      terminalStocked: termStocked,
+                      terminalLabel: termSlots.isEmpty
+                          ? ''
+                          : termSlots.first.key == 'degree'
+                              ? 'Degree'
+                              : 'Certificate',
                     ),
                     const SizedBox(height: 10),
                     for (final slot in _slots) ...[
@@ -122,7 +166,10 @@ class _StudentDocDetailScreenState extends State<StudentDocDetailScreen> {
                             '${widget.studentId}_${slot.key}'),
                         studentId: widget.studentId,
                         studentName: widget.studentName,
+                        rollNo: _rollNo,
+                        yearOfAdmission: widget.yearOfAdmission,
                         course: widget.course,
+                        knownSubjects: _knownSubjects,
                         slot: slot,
                         initial:
                             _records[slot.key] ?? StudentDocRecord(),
@@ -140,19 +187,63 @@ class _StudentDocDetailScreenState extends State<StudentDocDetailScreen> {
 class _HeaderCard extends StatelessWidget {
   final String course;
   final int? year;
-  final int done;
-  final int total;
+  final int dmcTotal;
+  final int dmcStocked;
+  final int dmcCollected;
+  final bool hasTerminal;
+  final bool terminalCollected;
+  final bool terminalStocked;
+  final String terminalLabel;
 
   const _HeaderCard({
     required this.course,
     required this.year,
-    required this.done,
-    required this.total,
+    required this.dmcTotal,
+    required this.dmcStocked,
+    required this.dmcCollected,
+    required this.hasTerminal,
+    required this.terminalCollected,
+    required this.terminalStocked,
+    required this.terminalLabel,
   });
+
+  Widget _pill(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+          color: color,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final allDone = done == total;
+    const green = Color(0xFF2E7D32);
+    const yellow = Color(0xFFEF6C00);
+    const red = Color(0xFFC62828);
+    final allDone = (dmcStocked == dmcTotal &&
+            dmcCollected == dmcTotal) &&
+        (!hasTerminal || terminalCollected);
+    final termColor = terminalCollected
+        ? green
+        : terminalStocked
+            ? yellow
+            : red;
+    final termText = terminalCollected
+        ? '$terminalLabel Collected'
+        : terminalStocked
+            ? '$terminalLabel Stocked'
+            : '$terminalLabel Pending';
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -160,11 +251,12 @@ class _HeaderCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: allDone
-              ? const Color(0xFF2E7D32).withValues(alpha: 0.4)
+              ? green.withValues(alpha: 0.4)
               : Colors.grey.shade200,
         ),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
             child: Column(
@@ -184,26 +276,25 @@ class _HeaderCard extends StatelessWidget {
               ],
             ),
           ),
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: (allDone
-                      ? const Color(0xFF2E7D32)
-                      : const Color(0xFFEF6C00))
-                  .withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              '$done / $total complete',
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-                color: allDone
-                    ? const Color(0xFF2E7D32)
-                    : const Color(0xFFEF6C00),
-              ),
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (dmcTotal > 0) ...[
+                _pill(
+                  'DMC Stocked $dmcStocked/$dmcTotal',
+                  dmcStocked == dmcTotal ? green : yellow,
+                ),
+                const SizedBox(height: 6),
+                _pill(
+                  'DMC Collected $dmcCollected/$dmcTotal',
+                  dmcCollected == dmcTotal ? green : yellow,
+                ),
+              ],
+              if (hasTerminal) ...[
+                if (dmcTotal > 0) const SizedBox(height: 6),
+                _pill(termText, termColor),
+              ],
+            ],
           ),
         ],
       ),
@@ -216,7 +307,10 @@ class _HeaderCard extends StatelessWidget {
 class _SlotCard extends StatefulWidget {
   final String studentId;
   final String studentName;
+  final String rollNo;
+  final int? yearOfAdmission;
   final String course;
+  final List<String> knownSubjects;
   final DocSlot slot;
   final StudentDocRecord initial;
   final FirebaseStudentDocsService service;
@@ -226,7 +320,10 @@ class _SlotCard extends StatefulWidget {
     super.key,
     required this.studentId,
     required this.studentName,
+    required this.rollNo,
+    required this.yearOfAdmission,
     required this.course,
+    required this.knownSubjects,
     required this.slot,
     required this.initial,
     required this.service,
@@ -703,6 +800,11 @@ class _SlotCardState extends State<_SlotCard> {
         record: _record,
         logs: logs,
       );
+      // Fold the saved subject names into the shared vocabulary so the
+      // next DMC suggests them (best-effort, after the real save).
+      await widget.service.rememberSubjectNames(
+        _record.subjects.map((s) => s.subject).toList(),
+      );
       widget.onSaved(_record);
       _snack('${widget.slot.label} saved.');
     } catch (e) {
@@ -723,6 +825,8 @@ class _SlotCardState extends State<_SlotCard> {
     return widget.service.buildLog(
       studentId: widget.studentId,
       studentName: widget.studentName,
+      rollNo: widget.rollNo,
+      yearOfAdmission: widget.yearOfAdmission,
       course: widget.course,
       slotKey: widget.slot.key,
       slotLabel: widget.slot.label,
@@ -1020,14 +1124,45 @@ class _SlotCardState extends State<_SlotCard> {
               children: [
                 Expanded(
                   flex: 5,
-                  child: TextField(
-                    controller: _subjectRows[i].subjectCtrl,
-                    onChanged: (_) => setState(() {}),
-                    decoration: const InputDecoration(
-                      labelText: 'Subject',
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                    ),
+                  child: Autocomplete<String>(
+                    optionsBuilder: (value) {
+                      final q = value.text.trim().toLowerCase();
+                      if (q.isEmpty) return const Iterable.empty();
+                      return widget.knownSubjects
+                          .where((n) =>
+                              n.toLowerCase().contains(q) &&
+                              n.toLowerCase() != q)
+                          .take(8);
+                    },
+                    displayStringForOption: (o) => o,
+                    onSelected: (sel) {
+                      _subjectRows[i].subjectCtrl.text = sel;
+                      setState(() {});
+                    },
+                    fieldViewBuilder: (context, fieldCtrl, focusNode,
+                        onFieldSubmitted) {
+                      if (fieldCtrl.text !=
+                          _subjectRows[i].subjectCtrl.text) {
+                        fieldCtrl.text =
+                            _subjectRows[i].subjectCtrl.text;
+                        fieldCtrl.selection =
+                            TextSelection.collapsed(
+                                offset: fieldCtrl.text.length);
+                      }
+                      return TextField(
+                        controller: fieldCtrl,
+                        focusNode: focusNode,
+                        onChanged: (v) {
+                          _subjectRows[i].subjectCtrl.text = v;
+                          setState(() {});
+                        },
+                        decoration: const InputDecoration(
+                          labelText: 'Subject',
+                          isDense: true,
+                          border: OutlineInputBorder(),
+                        ),
+                      );
+                    },
                   ),
                 ),
                 const SizedBox(width: 6),

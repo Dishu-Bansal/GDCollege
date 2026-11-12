@@ -146,10 +146,9 @@ class _Step5CourseAndFeesState extends State<Step5CourseAndFees> {
           ),
           SizedBox(height: 10,),
           TextFormField(
-            decoration: InputDecoration(label: Text('Salary')),
+            decoration: InputDecoration(label: Text('Salary (optional)')),
             controller: _salaryCtrl,
-            validator: (v) =>
-            v == null || v.isEmpty ? 'Salary is required' : null,
+            keyboardType: TextInputType.number,
             onChanged: (v) => widget.staff.salary = v,
           ),
           SizedBox(height: 10,),

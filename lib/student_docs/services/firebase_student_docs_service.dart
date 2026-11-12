@@ -38,6 +38,8 @@ class FirebaseStudentDocsService {
   DocLogEntry buildLog({
     required String studentId,
     required String studentName,
+    String rollNo = '',
+    int? yearOfAdmission,
     required String course,
     required String slotKey,
     required String slotLabel,
@@ -52,6 +54,8 @@ class FirebaseStudentDocsService {
     return DocLogEntry(
       studentId: studentId,
       studentName: studentName,
+      rollNo: rollNo,
+      yearOfAdmission: yearOfAdmission,
       course: course,
       slotKey: slotKey,
       slotLabel: slotLabel,
@@ -116,6 +120,8 @@ class FirebaseStudentDocsService {
       final records = StudentDocRecord.recordsOf(data);
       if (records.isEmpty) continue;
       final course = (data['nameOfCourse'] ?? '').toString();
+      final backfillRoll = (data['studentId'] ?? '').toString();
+      final backfillYear = (data['yearOfAdmission'] as num?)?.toInt();
       final slots = docSlotsForCourse(course);
       final fallback = parseTimestamp(data['updatedAt']);
       for (final entry in records.entries) {
@@ -148,6 +154,8 @@ class FirebaseStudentDocsService {
           buildLog(
             studentId: doc.id,
             studentName: (data['name'] ?? '').toString(),
+            rollNo: backfillRoll,
+            yearOfAdmission: backfillYear,
             course: course,
             slotKey: entry.key,
             slotLabel: label,
@@ -163,6 +171,8 @@ class FirebaseStudentDocsService {
             buildLog(
               studentId: doc.id,
               studentName: (data['name'] ?? '').toString(),
+              rollNo: backfillRoll,
+              yearOfAdmission: backfillYear,
               course: course,
               slotKey: entry.key,
               slotLabel: label,
@@ -182,9 +192,64 @@ class FirebaseStudentDocsService {
     return written;
   }
 
+  // ── Subject-name vocabulary ──────────────────────────────────────────
+  /// Shared subject-name list behind the DMC subject autocomplete: every
+  /// name ever saved on any DMC. Read once per detail screen; extended on
+  /// every save via [rememberSubjectNames].
+  ///
+  /// The first call seeds it by scanning all students once, so historical
+  /// names are suggested from day one. Later calls are a single small doc
+  /// read.
+  Future<List<String>> fetchSubjectNames() async {
+    final ref = _db.collection('meta').doc('subjectNames');
+    final snap = await ref.get();
+    final known = (snap.data()?['names'] as List? ?? [])
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (known.isNotEmpty) {
+      known.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      return known;
+    }
+    final students = await _db.collection(_students).get();
+    final seeded = <String>{};
+    for (final d in students.docs) {
+      for (final rec in StudentDocRecord.recordsOf(d.data()).values) {
+        for (final s in rec.subjects) {
+          final name = s.subject.trim();
+          if (name.isNotEmpty) seeded.add(name);
+        }
+      }
+    }
+    final list = seeded.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    if (list.isNotEmpty) {
+      await ref.set({'names': list}, SetOptions(merge: true));
+    }
+    return list;
+  }
+
+  /// Adds any unfamiliar subject names to the shared vocabulary so the
+  /// next DMC suggests them. Best-effort: never throws.
+  Future<void> rememberSubjectNames(List<String> names) async {
+    final fresh = names
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (fresh.isEmpty) return;
+    try {
+      await _db.collection('meta').doc('subjectNames').set(
+        {'names': FieldValue.arrayUnion(fresh)},
+        SetOptions(merge: true),
+      );
+    } catch (e) {
+      debugPrint('rememberSubjectNames failed: $e');
+    }
+  }
+
   // ── Batch reads ──────────────────────────────────────────────────────────
   /// One batch: students of [group] + [course] + [year]. Any of
-  /// [course]/[year] may be null to skip that filter. Sorted by name
+  /// [course]/[year] may be null to skip that filter. Sorted by student ID
   /// client-side. Each entry carries the parsed `docRecords` map so status
   /// chips render without extra reads.
   ///
@@ -218,9 +283,22 @@ class FirebaseStudentDocsService {
         records: StudentDocRecord.recordsOf(data),
       );
     }).toList();
-    list.sort((a, b) =>
-        a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    list.sort(_compareByStudentId);
     return list;
+  }
+
+  /// Student-ID order: numeric when both IDs parse as numbers (so "2"
+  /// comes before "10"), plain string order otherwise. Empty IDs sort last.
+  static int _compareByStudentId(DocBatchEntry a, DocBatchEntry b) {
+    final ai = a.studentId.trim();
+    final bi = b.studentId.trim();
+    if (ai.isEmpty && bi.isEmpty) return 0;
+    if (ai.isEmpty) return 1;
+    if (bi.isEmpty) return -1;
+    final an = int.tryParse(ai);
+    final bn = int.tryParse(bi);
+    if (an != null && bn != null) return an.compareTo(bn);
+    return ai.toLowerCase().compareTo(bi.toLowerCase());
   }
 
   // ── Record writes ────────────────────────────────────────────────────────
