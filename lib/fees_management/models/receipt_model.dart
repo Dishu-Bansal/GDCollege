@@ -18,9 +18,25 @@ class ReceiptAllocation {
 class ReceiptModel {
   String? id;
   String receiptNumber;
+
+  /// Random 12-digit verification code (the receipt doc id). Empty for
+  /// legacy rows written before coded receipts.
+  String code;
+
+  /// Financial year of payment (`2026-27`, April–March). Drives numbering.
+  String finYear;
+
+  /// 'active' | 'cancelled'. Corrections are cancel + re-issue, never edits.
+  String status;
   String studentId;
   String studentName;
+
+  /// Display roll number.
   String rollNo;
+
+  /// Father name + Aadhaar snapshot, shown on the public verify page.
+  String fatherName;
+  String aadharNumber;
   String college;
   String course;
   int admissionYear;
@@ -34,9 +50,14 @@ class ReceiptModel {
   ReceiptModel({
     this.id,
     this.receiptNumber = '',
+    this.code = '',
+    this.finYear = '',
+    this.status = 'active',
     this.studentId = '',
     this.studentName = '',
     this.rollNo = '',
+    this.fatherName = '',
+    this.aadharNumber = '',
     this.college = '',
     this.course = '',
     this.admissionYear = 0,
@@ -53,9 +74,14 @@ class ReceiptModel {
       ReceiptModel(
         id: id,
         receiptNumber: d['receiptNumber'] ?? '',
+        code: d['code'] ?? id,
+        finYear: d['finYear'] ?? '',
+        status: d['status'] ?? 'active',
         studentId: d['studentId'] ?? '',
         studentName: d['studentName'] ?? '',
         rollNo: d['rollNo'] ?? '',
+        fatherName: d['fatherName'] ?? '',
+        aadharNumber: d['aadharNumber'] ?? '',
         college: d['college'] ?? '',
         course: d['course'] ?? '',
         admissionYear: (d['admissionYear'] as num?)?.toInt() ?? 0,
@@ -74,9 +100,14 @@ class ReceiptModel {
 
   Map<String, dynamic> toFirestore() => {
     'receiptNumber': receiptNumber,
+    'code': code,
+    'finYear': finYear,
+    'status': status,
     'studentId': studentId,
     'studentName': studentName,
     'rollNo': rollNo,
+    'fatherName': fatherName,
+    'aadharNumber': aadharNumber,
     'college': college,
     'course': course,
     'admissionYear': admissionYear,

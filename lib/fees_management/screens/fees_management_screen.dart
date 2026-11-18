@@ -957,7 +957,8 @@ class _ReceiptsTabState extends State<_ReceiptsTab> {
                         const SizedBox(height: 2),
                         Text(
                           '${r.course}${r.college.isNotEmpty ? ' • ${r.college}' : ''}${r.admissionYear > 0 ? ' • ${r.admissionYear}' : ''}'
-                          '${r.rollNo.isNotEmpty ? ' • ID ${r.rollNo}' : ''}',
+                          '${r.rollNo.isNotEmpty ? ' • ID ${r.rollNo}' : ''}'
+                          '${r.code.isNotEmpty ? ' • Code ${r.code}' : ''}',
                           style: TextStyle(
                               fontSize: 11, color: Colors.grey.shade600),
                         ),

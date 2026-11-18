@@ -6,6 +6,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:gd_college/models/user_session.dart';
 import 'package:gd_college/providers.dart';
 import 'package:gd_college/student_management/models/student_model.dart';
+import '../models/receipt_identity.dart';
 import '../models/receipt_model.dart';
 import '../models/student_fee_structure.dart';
 import '../repositories/fees_repository.dart';
@@ -17,6 +18,7 @@ class FirebaseFeesService implements FeesRepository {
   static const _students = 'students';
   static const _receipts = 'receipts';
   static const _receiptLogs = 'receiptLogs';
+  static const _counters = 'counters';
 
   String get _currentUser => UserSession().currentUser?.email ?? '';
 
@@ -46,35 +48,45 @@ class FirebaseFeesService implements FeesRepository {
         .handleError((_) => <ReceiptLog>[]);
   }
 
+  /// Creates a receipt for [studentId] with a server-minted identity: a
+  /// per-college-per-FY serial (`GD/2026-27/0143`) plus a random 12-digit
+  /// verification code that becomes the receipt's doc id.
+  ///
+  /// Counter bump, code-uniqueness check and all writes happen in ONE
+  /// transaction, so serials stay gap-free and codes stay unique even with
+  /// two cashiers collecting at once. Returns the minted receipt.
   @override
-  Future<void> createReceipt({
+  Future<ReceiptModel> createReceipt({
     required String studentId,
     required double amount,
     required String mode,
-    required String receiptNumber,
     String photoUrl = '',
   }) async {
-    if (amount <= 0) return;
+    if (amount <= 0) throw ArgumentError('Amount must be positive');
 
-    // Load the student's fee structure.
+    final now = DateTime.now();
+    final finYear = finYearOf(now);
+
+    // Allocation inputs (plain reads — transactions only allow doc gets).
+    // Two cashiers collecting for the same student at the same instant
+    // could double-fill a head; the serial/code guarantees below are
+    // unaffected and any overlap lands in Advance.
     final studentSnap =
         await _db.collection(_students).doc(studentId).get();
     final student = StudentModel.fromFirestore(
         studentId, studentSnap.data() ?? {});
+    final college = collegeLabelOf(student);
     final fees = feeEntriesOf(student);
-
-    // Sum what has already been paid on each fee type.
     final existing = await _db
         .collection(_receipts)
         .where('studentId', isEqualTo: studentId)
         .get();
     final paidByType = FeesCalc.paidByType(existing.docs
-        .map((d) =>
-            ReceiptModel.fromFirestore(d.id, d.data()))
+        .map((d) => ReceiptModel.fromFirestore(d.id, d.data()))
         .toList());
 
-    // Allocate the amount across the fee heads in order, only filling the
-    // still-pending part of each type.
+    // Allocate the amount across the fee heads in order, only filling
+    // the still-pending part of each type.
     var remaining = amount;
     final allocations = <ReceiptAllocation>[];
     for (final fee in fees) {
@@ -89,36 +101,70 @@ class FirebaseFeesService implements FeesRepository {
     }
     // Anything left over (overpayment) is recorded as an advance.
     if (remaining > 0) {
-      allocations.add(ReceiptAllocation(type: 'Advance', amount: remaining));
+      allocations
+          .add(ReceiptAllocation(type: 'Advance', amount: remaining));
     }
 
-    final now = DateTime.now();
-    await _db.collection(_receipts).add(ReceiptModel(
-      receiptNumber: receiptNumber.trim(),
-      studentId: studentId,
-      studentName: student.name,
-      rollNo: student.studentId,
-      college: collegeLabelOf(student),
-      course: student.nameOfCourse,
-      admissionYear: student.yearOfAdmission ?? 0,
-      amount: amount,
-      mode: mode.trim(),
-      photoUrl: photoUrl,
-      allocations: allocations,
-      createdAt: now,
-      createdBy: _currentUser,
-    ).toFirestore());
+    return _db.runTransaction((tx) async {
+      // Mint the serial: bump the per-college-per-FY counter.
+      final prefix = serialPrefixOf(college);
+      final counterRef =
+          _db.collection(_counters).doc('receipts-$prefix-$finYear');
+      final counterSnap = await tx.get(counterRef);
+      final seq = ((counterSnap.data()?['next'] ?? 0) as num).toInt() + 1;
+      tx.set(counterRef, {
+        'next': seq,
+        'updatedAt': now.toIso8601String(),
+        'updatedBy': _currentUser,
+      });
+      final serial = formatSerial(prefix, finYear, seq);
 
-    await _db.collection(_receiptLogs).add(ReceiptLog(
-      receiptNumber: receiptNumber.trim(),
-      studentName: student.name,
-      action: 'create',
-      changedBy: _currentUser,
-      detail: 'Receipt ${receiptNumber.trim()} for ${student.name} — '
-          '₹${amount.toStringAsFixed(0)} ($mode)'
-          '${allocations.isNotEmpty ? ' → ${allocations.map((a) => '${a.type}: ${a.amount.toStringAsFixed(0)}').join(', ')}' : ''}',
-      timestamp: now,
-    ).toFirestore());
+      // Mint the code: the receipt doc id itself, so creation IS the
+      // uniqueness check. Regenerate on the (near-impossible) collision.
+      var code = generateReceiptCode();
+      for (var attempt = 0; attempt < 5; attempt++) {
+        final probe = await tx.get(_db.collection(_receipts).doc(code));
+        if (!probe.exists) break;
+        code = generateReceiptCode();
+      }
+
+      final receipt = ReceiptModel(
+        id: code,
+        receiptNumber: serial,
+        code: code,
+        finYear: finYear,
+        status: 'active',
+        studentId: studentId,
+        studentName: student.name,
+        rollNo: student.studentId,
+        fatherName: student.fatherName,
+        aadharNumber: student.aadharNumber,
+        college: college,
+        course: student.nameOfCourse,
+        admissionYear: student.yearOfAdmission ?? 0,
+        amount: amount,
+        mode: mode.trim(),
+        photoUrl: photoUrl,
+        allocations: allocations,
+        createdAt: now,
+        createdBy: _currentUser,
+      );
+      tx.set(
+          _db.collection(_receipts).doc(code), receipt.toFirestore());
+      tx.set(
+          _db.collection(_receiptLogs).doc(),
+          ReceiptLog(
+            receiptNumber: serial,
+            studentName: student.name,
+            action: 'create',
+            changedBy: _currentUser,
+            detail: 'Receipt $serial (code $code) for ${student.name} — '
+                '₹${amount.toStringAsFixed(0)} ($mode)'
+                '${allocations.isNotEmpty ? ' → ${allocations.map((a) => '${a.type}: ${a.amount.toStringAsFixed(0)}').join(', ')}' : ''}',
+            timestamp: now,
+          ).toFirestore());
+      return receipt;
+    });
   }
 
   @override

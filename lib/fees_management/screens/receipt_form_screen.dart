@@ -35,7 +35,6 @@ class _ReceiptFormScreenState extends ConsumerState<ReceiptFormScreen> {
   final _studentCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();
   final _modeCtrl = TextEditingController(text: 'Cash');
-  final _receiptNoCtrl = TextEditingController();
 
   Uint8List? _photoBytes;
   bool _saving = false;
@@ -62,7 +61,6 @@ class _ReceiptFormScreenState extends ConsumerState<ReceiptFormScreen> {
     _studentCtrl.dispose();
     _amountCtrl.dispose();
     _modeCtrl.dispose();
-    _receiptNoCtrl.dispose();
     super.dispose();
   }
 
@@ -138,19 +136,19 @@ class _ReceiptFormScreenState extends ConsumerState<ReceiptFormScreen> {
           '${DateTime.now().millisecondsSinceEpoch}.jpg',
         );
       }
-      await _feesService.createReceipt(
+      final receipt = await _feesService.createReceipt(
         studentId: _selectedStudent!.docId!,
         amount: amount,
         mode: _modeCtrl.text.trim(),
-        receiptNumber: _receiptNoCtrl.text.trim(),
         photoUrl: photoUrl,
       );
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
       Navigator.pop(context);
       messenger.showSnackBar(SnackBar(
-          content: Text('Receipt saved — ₹${amount.toStringAsFixed(0)} for '
-              '${_selectedStudent!.name}')));
+          content: Text('Receipt ${receipt.receiptNumber} saved — '
+              '₹${amount.toStringAsFixed(0)} for '
+              '${_selectedStudent!.name} (code ${receipt.code})')));
     } catch (e) {
       setState(() => _saving = false);
       if (mounted) {
@@ -324,13 +322,20 @@ class _ReceiptFormScreenState extends ConsumerState<ReceiptFormScreen> {
                 ),
               ]),
               const SizedBox(height: 12),
-              // Receipt number
-              TextFormField(
-                controller: _receiptNoCtrl,
-                textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(
-                  labelText: 'Receipt Number (optional)',
-                  prefixIcon: Icon(Icons.confirmation_number_outlined),
+              // Receipt serial + verification code are minted on save —
+              // no manual number to type.
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: const Text(
+                  'Receipt no. + verification code are generated automatically on save.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
               ),
               const SizedBox(height: 16),

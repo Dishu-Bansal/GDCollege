@@ -10,14 +10,15 @@ abstract class FeesRepository {
   /// Receipt log, newest first.
   Stream<List<ReceiptLog>> watchAllLogs();
 
-  /// Creates a receipt for [studentId]. The amount is allocated across the
-  /// student's fee entries in order — 1st Year, then 2nd Year, then 3rd
-  /// Year, then other fees — based on what is still pending on each type.
-  Future<void> createReceipt({
+  /// Creates a receipt for [studentId], minting its serial + code on the
+  /// server. The amount is allocated across the student's fee entries in
+  /// order — 1st Year, then 2nd Year, then 3rd Year, then other fees —
+  /// based on what is still pending on each type. Returns the minted
+  /// receipt.
+  Future<ReceiptModel> createReceipt({
     required String studentId,
     required double amount,
     required String mode,
-    required String receiptNumber,
     String photoUrl,
   });
 
