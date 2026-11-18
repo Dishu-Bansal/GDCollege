@@ -244,12 +244,21 @@ class _StudentsTabState extends ConsumerState<_StudentsTab> {
   late final Stream<List<ReceiptModel>> _receiptsStream =
       widget.feesService.watchAllReceipts();
 
+  /// Batch defaults, like the DMC & Degrees page: current admission year
+  /// plus the flagship course (B.ED for GD College, ANM for MLSN).
   /// null means "all".
   String? _courseFilter;
   int? _yearFilter;
   String? _statusFilter; // 'Pending' | 'Paid'
 
   int _page = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _yearFilter = DateTime.now().year;
+    _courseFilter = _defaultCourse;
+  }
 
   @override
   void dispose() {
@@ -264,17 +273,20 @@ class _StudentsTabState extends ConsumerState<_StudentsTab> {
     return set.toList()..sort();
   }
 
+  String get _defaultCourse =>
+      widget.group == StudentGroup.gdCollege ? 'B.ED' : 'ANM';
+
   bool get _hasFilters =>
       _searchCtrl.text.trim().isNotEmpty ||
-      _courseFilter != null ||
-      _yearFilter != null ||
+      _courseFilter != _defaultCourse ||
+      _yearFilter != DateTime.now().year ||
       _statusFilter != null;
 
   void _clearFilters() {
     setState(() {
       _searchCtrl.clear();
-      _courseFilter = null;
-      _yearFilter = null;
+      _courseFilter = _defaultCourse;
+      _yearFilter = DateTime.now().year;
       _statusFilter = null;
       _page = 1;
     });
@@ -298,11 +310,11 @@ class _StudentsTabState extends ConsumerState<_StudentsTab> {
   }
 
   Widget _buildLoaded(List<StudentModel> students) {
-        final years = students
-            .map((s) => s.yearOfAdmission)
-            .whereType<int>()
-            .toSet()
-            .toList()
+        final nowYear = DateTime.now().year;
+        final years = {
+          ...students.map((s) => s.yearOfAdmission).whereType<int>(),
+          nowYear,
+        }.toList()
           ..sort((a, b) => b.compareTo(a));
         return StreamBuilder<List<ReceiptModel>>(
           stream: _receiptsStream,
@@ -387,55 +399,85 @@ class _StudentsTabState extends ConsumerState<_StudentsTab> {
                   ),
                 ),
               ),
+              // Batch bar — DMC & Degrees style: admission-year dropdown
+              // plus course dropdown. Defaults to the current batch.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<int?>(
+                        initialValue: _yearFilter,
+                        decoration: const InputDecoration(
+                          labelText: 'Batch Year',
+                          isDense: true,
+                          border: OutlineInputBorder(),
+                        ),
+                        items: [
+                          const DropdownMenuItem(
+                              value: null, child: Text('All')),
+                          for (final y in years)
+                            DropdownMenuItem(
+                                value: y, child: Text('$y')),
+                        ],
+                        onChanged: (v) => setState(() {
+                          _yearFilter = v;
+                          _page = 1;
+                        }),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: DropdownButtonFormField<String?>(
+                        initialValue: _courseFilter,
+                        decoration: const InputDecoration(
+                          labelText: 'Course',
+                          isDense: true,
+                          border: OutlineInputBorder(),
+                        ),
+                        items: [
+                          const DropdownMenuItem(
+                              value: null, child: Text('All')),
+                          for (final c in _courseOptions)
+                            DropdownMenuItem(
+                                value: c, child: Text(c)),
+                        ],
+                        onChanged: (v) => setState(() {
+                          _courseFilter = v;
+                          _page = 1;
+                        }),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               // Filter chips — one row per group, left-aligned and
               // horizontally scrollable.
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                  _chipRow('Course', [
-                    _chip('All', _courseFilter == null,
-                        () => setState(() {
-                              _courseFilter = null;
-                              _page = 1;
-                            })),
-                    for (final c in _courseOptions)
-                      _chip(c, _courseFilter == c, () => setState(() {
-                            _courseFilter = c;
-                            _page = 1;
-                          })),
-                  ]),
-                  _chipRow('Year', [
-                    _chip('All', _yearFilter == null,
-                        () => setState(() {
-                              _yearFilter = null;
-                              _page = 1;
-                            })),
-                    for (final y in years)
-                      _chip('$y', _yearFilter == y, () => setState(() {
-                            _yearFilter = y;
-                            _page = 1;
-                          })),
-                  ]),
-                  _chipRow('Status', [
-                    _chip('All', _statusFilter == null,
-                        () => setState(() {
-                              _statusFilter = null;
-                              _page = 1;
-                            })),
-                    _chip('Pending', _statusFilter == 'Pending',
-                        () => setState(() {
-                              _statusFilter = 'Pending';
-                              _page = 1;
-                            })),
-                    _chip('Paid', _statusFilter == 'Paid',
-                        () => setState(() {
-                              _statusFilter = 'Paid';
-                              _page = 1;
-                            })),
-                  ]),
-                ]),
+                  children: [
+                    _chipRow('Status', [
+                      _chip('All', _statusFilter == null,
+                          () => setState(() {
+                                _statusFilter = null;
+                                _page = 1;
+                              })),
+                      _chip('Pending', _statusFilter == 'Pending',
+                          () => setState(() {
+                                _statusFilter = 'Pending';
+                                _page = 1;
+                              })),
+                      _chip('Paid', _statusFilter == 'Paid',
+                          () => setState(() {
+                                _statusFilter = 'Paid';
+                                _page = 1;
+                              })),
+                    ]),
+                  ],
+                ),
               ),
               if (_hasFilters)
                 Align(
