@@ -106,17 +106,13 @@ class FirebaseFeesService implements FeesRepository {
     }
 
     return _db.runTransaction((tx) async {
+      // ALL reads first: Firestore transactions forbid reads after writes.
       // Mint the serial: bump the per-college-per-FY counter.
       final prefix = serialPrefixOf(college);
       final counterRef =
           _db.collection(_counters).doc('receipts-$prefix-$finYear');
       final counterSnap = await tx.get(counterRef);
       final seq = ((counterSnap.data()?['next'] ?? 0) as num).toInt() + 1;
-      tx.set(counterRef, {
-        'next': seq,
-        'updatedAt': now.toIso8601String(),
-        'updatedBy': _currentUser,
-      });
       final serial = formatSerial(prefix, finYear, seq);
 
       // Mint the code: the receipt doc id itself, so creation IS the
@@ -127,6 +123,13 @@ class FirebaseFeesService implements FeesRepository {
         if (!probe.exists) break;
         code = generateReceiptCode();
       }
+
+      // ...then all writes.
+      tx.set(counterRef, {
+        'next': seq,
+        'updatedAt': now.toIso8601String(),
+        'updatedBy': _currentUser,
+      });
 
       final receipt = ReceiptModel(
         id: code,
