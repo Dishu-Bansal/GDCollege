@@ -12,6 +12,7 @@ class AppSession {
   final bool canAccessStock;
   final bool canAccessBills;
   final bool canAccessVisitors;
+  final bool canAccessFees;
   final bool canAccessLeads;
 
   const AppSession({
@@ -24,6 +25,7 @@ class AppSession {
     required this.canAccessStock,
     required this.canAccessBills,
     required this.canAccessVisitors,
+    required this.canAccessFees,
     required this.canAccessLeads,
   });
 }
@@ -38,6 +40,7 @@ class AppUser {
   final bool canAccessStock;
   final bool canAccessBills;
   final bool canAccessVisitors;
+  final bool canAccessFees;
   final bool canAccessLeads;
 
   const AppUser({
@@ -49,6 +52,7 @@ class AppUser {
     required this.canAccessStock,
     required this.canAccessBills,
     required this.canAccessVisitors,
+    required this.canAccessFees,
     required this.canAccessLeads,
   });
 
@@ -61,6 +65,7 @@ class AppUser {
         canAccessStock: d['canAccessStock'] ?? true,
         canAccessBills: d['canAccessBills'] ?? true,
         canAccessVisitors: d['canAccessVisitors'] ?? true,
+        canAccessFees: d['canAccessFees'] ?? false,
         canAccessLeads: d['canAccessLeads'] ?? false,
       );
 }
