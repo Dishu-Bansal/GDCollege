@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gd_college/screens/login_screen.dart';
 import 'package:gd_college/services/session_service.dart';
+import 'package:gd_college/fees_management/screens/verify_receipt_screen.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -12,6 +13,21 @@ void main() async {
   SessionService.instance.attach();
 
   runApp(const ProviderScope(child: StudentApp()));
+}
+
+/// A 12-digit receipt code carried in the launch URL, if any — the public
+/// verify route. Accepts `?c=CODE` as well as hash forms (`#/verify/CODE`,
+/// `#/verify?c=CODE`) so QR scans land here however the web build routes.
+String? _initialVerifyCode() {
+  final uri = Uri.base;
+  final q = (uri.queryParameters['c'] ?? '').trim();
+  if (RegExp(r'^\d{12}$').hasMatch(q)) return q;
+  final frag = uri.fragment;
+  final fromParam = RegExp(r'c=(\d{12})').firstMatch(frag);
+  if (fromParam != null) return fromParam.group(1);
+  final fromPath = RegExp(r'verify/(\d{12})').firstMatch(frag);
+  if (fromPath != null) return fromPath.group(1);
+  return null;
 }
 
 class StudentApp extends StatelessWidget {
@@ -62,7 +78,11 @@ class StudentApp extends StatelessWidget {
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         ),
       ),
-      home: Scaffold(body: LoginPage(),),
+      home: _initialVerifyCode() != null
+          ? VerifyReceiptScreen(
+              initialCode: _initialVerifyCode()!,
+            )
+          : Scaffold(body: LoginPage(),),
       navigatorKey: appNavigatorKey,
       builder: (context, child) =>
           SessionActivityDetector(child: child ?? const SizedBox.shrink()),

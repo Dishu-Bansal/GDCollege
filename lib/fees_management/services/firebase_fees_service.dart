@@ -167,6 +167,16 @@ class FirebaseFeesService implements FeesRepository {
     });
   }
 
+  /// Public lookup for the verify page: the receipt whose doc id is the
+  /// 12-digit [code], or null. Needs the public single-doc read rule.
+  Future<ReceiptModel?> fetchReceiptByCode(String code) async {
+    if (code.trim().isEmpty) return null;
+    final snap =
+        await _db.collection(_receipts).doc(code.trim()).get();
+    if (!snap.exists) return null;
+    return ReceiptModel.fromFirestore(snap.id, snap.data() ?? {});
+  }
+
   @override
   Future<String> uploadReceiptPhoto(Uint8List bytes, String fileName) async {
     final ref = _storage.ref('receipts/$fileName');
