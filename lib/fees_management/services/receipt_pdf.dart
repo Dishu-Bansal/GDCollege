@@ -107,7 +107,7 @@ Future<List<int>> buildReceiptPdf(ReceiptModel r) async {
                     const pw.BoxDecoration(color: PdfColors.grey200),
                 children: [
                   _cell('Fee Head', bold: true),
-                  _cell('Amount (₹)', bold: true, right: true),
+                  _cell('Amount (Rs.)', bold: true, right: true),
                 ],
               ),
               for (final a in r.allocations)
@@ -120,7 +120,7 @@ Future<List<int>> buildReceiptPdf(ReceiptModel r) async {
               pw.TableRow(
                 children: [
                   _cell('TOTAL', bold: true),
-                  _cell('₹${r.amount.toStringAsFixed(0)}',
+                  _cell('Rs. ${r.amount.toStringAsFixed(0)}',
                       bold: true, right: true),
                 ],
               ),

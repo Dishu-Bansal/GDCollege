@@ -9,6 +9,7 @@ import 'package:gd_college/student_management/models/student_model.dart';
 import '../models/receipt_model.dart';
 import '../models/student_fee_structure.dart';
 import '../repositories/fees_repository.dart';
+import '../services/receipt_pdf.dart';
 
 /// Records a fee receipt for a student. The student is picked through
 /// College → Course → Admission year → a searchable student list.
@@ -149,6 +150,15 @@ class _ReceiptFormScreenState extends ConsumerState<ReceiptFormScreen> {
           content: Text('Receipt ${receipt.receiptNumber} saved — '
               '₹${amount.toStringAsFixed(0)} for '
               '${_selectedStudent!.name} (code ${receipt.code})')));
+      // Straight to the print dialog — no extra tap to get the paper out.
+      try {
+        await printReceipt(receipt);
+      } catch (e) {
+        messenger.showSnackBar(SnackBar(
+          content: Text('Saved, but print failed: $e. '
+              'Use the print button on the receipt row.'),
+        ));
+      }
     } catch (e) {
       setState(() => _saving = false);
       if (mounted) {
