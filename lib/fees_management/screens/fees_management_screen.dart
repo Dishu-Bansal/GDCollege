@@ -777,16 +777,15 @@ class _StudentsTabState extends ConsumerState<_StudentsTab> {
   }
 
   Widget _pager(int page, int totalPages, int totalCount) {
-    // On wide screens the extended Add FAB floats bottom-right over this
-    // row — keep a matching gap so the page arrows stay tappable.
-    final fabGap =
-        MediaQuery.of(context).size.width < 600 ? 0.0 : 176.0;
+    // Arrows sit in the screen's center (clear of the bottom-right FAB);
+    // the count stays left, balanced by an empty slot on the right.
     return Padding(
-      padding: EdgeInsets.fromLTRB(12, 4, 12 + fabGap, 12),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
       child: Row(children: [
-        Text('$totalCount student${totalCount == 1 ? '' : 's'}',
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-        const Spacer(),
+        Expanded(
+          child: Text('$totalCount student${totalCount == 1 ? '' : 's'}',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        ),
         IconButton(
           icon: const Icon(Icons.chevron_left),
           tooltip: 'Previous page',
@@ -801,6 +800,7 @@ class _StudentsTabState extends ConsumerState<_StudentsTab> {
               ? () => setState(() => _page = page + 1)
               : null,
         ),
+        const Expanded(child: SizedBox()),
       ]),
     );
   }
