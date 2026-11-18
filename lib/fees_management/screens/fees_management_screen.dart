@@ -352,11 +352,18 @@ class _StudentsTabState extends ConsumerState<_StudentsTab> {
               return true;
             }).toList()
               ..sort((a, b) {
-                final byYear = (b.yearOfAdmission ?? 0)
-                    .compareTo(a.yearOfAdmission ?? 0);
-                return byYear != 0
-                    ? byYear
-                    : a.name.toLowerCase().compareTo(b.name.toLowerCase());
+                // Student-ID order, like DMC & Degrees: numeric when both
+                // IDs parse as numbers, plain string order otherwise.
+                // Empty IDs sort last.
+                final ai = a.studentId.trim();
+                final bi = b.studentId.trim();
+                if (ai.isEmpty && bi.isEmpty) return 0;
+                if (ai.isEmpty) return 1;
+                if (bi.isEmpty) return -1;
+                final an = int.tryParse(ai);
+                final bn = int.tryParse(bi);
+                if (an != null && bn != null) return an.compareTo(bn);
+                return ai.toLowerCase().compareTo(bi.toLowerCase());
               });
 
             // Pagination over the filtered set.
