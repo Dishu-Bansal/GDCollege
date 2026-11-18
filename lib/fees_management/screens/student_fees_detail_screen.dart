@@ -7,6 +7,7 @@ import 'package:gd_college/student_management/models/student_model.dart';
 import '../models/receipt_model.dart';
 import '../models/student_fee_structure.dart';
 import '../repositories/fees_repository.dart';
+import '../services/receipt_pdf.dart';
 
 /// Fees view for one student: fee heads with totals, each receipt, and the
 /// current pending amount per head.
@@ -208,6 +209,14 @@ class StudentFeesDetailScreen extends ConsumerWidget {
                                       fontSize: 14,
                                       fontWeight: FontWeight.w800,
                                       color: Color(0xFF2E7D32))),
+                              IconButton(
+                                icon: const Icon(Icons.print_outlined,
+                                    size: 18),
+                                tooltip: 'Print receipt',
+                                color: const Color(0xFF1A3C6E),
+                                visualDensity: VisualDensity.compact,
+                                onPressed: () => printReceipt(r),
+                              ),
                             ]),
                             const SizedBox(height: 4),
                             Text(

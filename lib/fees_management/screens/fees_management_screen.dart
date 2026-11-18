@@ -10,6 +10,7 @@ import 'package:gd_college/widgets/drawer.dart';
 import '../models/receipt_model.dart';
 import '../models/student_fee_structure.dart';
 import '../repositories/fees_repository.dart';
+import '../services/receipt_pdf.dart';
 import 'receipt_form_screen.dart';
 import 'student_fees_detail_screen.dart';
 
@@ -974,6 +975,13 @@ class _ReceiptsTabState extends State<_ReceiptsTab> {
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF2E7D32))),
+                IconButton(
+                  icon: const Icon(Icons.print_outlined, size: 18),
+                  tooltip: 'Print receipt',
+                  color: const Color(0xFF1A3C6E),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => printReceipt(r),
+                ),
               ]),
             );
           },
