@@ -777,8 +777,12 @@ class _StudentsTabState extends ConsumerState<_StudentsTab> {
   }
 
   Widget _pager(int page, int totalPages, int totalCount) {
+    // On wide screens the extended Add FAB floats bottom-right over this
+    // row — keep a matching gap so the page arrows stay tappable.
+    final fabGap =
+        MediaQuery.of(context).size.width < 600 ? 0.0 : 176.0;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+      padding: EdgeInsets.fromLTRB(12, 4, 12 + fabGap, 12),
       child: Row(children: [
         Text('$totalCount student${totalCount == 1 ? '' : 's'}',
             style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
