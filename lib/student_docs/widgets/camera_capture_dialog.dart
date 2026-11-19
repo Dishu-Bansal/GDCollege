@@ -8,15 +8,26 @@ import 'package:flutter/material.dart';
 /// captured JPEG bytes. On web the browser asks for camera permission;
 /// denial or missing hardware surfaces a friendly error instead of a crash.
 class CameraCaptureDialog extends StatefulWidget {
-  const CameraCaptureDialog({super.key});
+  final String title;
+  final String hint;
+
+  const CameraCaptureDialog({
+    super.key,
+    this.title = 'Take Live Photo',
+    this.hint = 'Position the collector in frame, then capture.',
+  });
 
   /// Shows the dialog. Returns the captured photo bytes, or null when the
   /// user cancels / capture is unavailable.
-  static Future<Uint8List?> show(BuildContext context) {
+  static Future<Uint8List?> show(
+    BuildContext context, {
+    String title = 'Take Live Photo',
+    String hint = 'Position the collector in frame, then capture.',
+  }) {
     return showDialog<Uint8List>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const CameraCaptureDialog(),
+      builder: (_) => CameraCaptureDialog(title: title, hint: hint),
     );
   }
 
@@ -93,7 +104,7 @@ class _CameraCaptureDialogState extends State<CameraCaptureDialog> {
     final controller = _controller;
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      title: const Text('Take Live Photo'),
+      title: Text(widget.title),
       content: SizedBox(
         width: 420,
         child: Column(
@@ -128,9 +139,9 @@ class _CameraCaptureDialogState extends State<CameraCaptureDialog> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Position the collector in frame, then capture.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
+            Text(
+              widget.hint,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
         ),
