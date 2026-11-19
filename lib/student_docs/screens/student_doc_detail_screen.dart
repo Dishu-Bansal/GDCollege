@@ -467,6 +467,25 @@ class _SlotCardState extends State<_SlotCard> {
     });
   }
 
+  Future<void> _captureScan() async {
+    final bytes = await CameraCaptureDialog.show(
+      context,
+      title: 'Capture Document Scan',
+      hint: 'Position the document in frame, then capture.',
+    );
+    if (bytes == null) return;
+    if (bytes.length > 5 * 1024 * 1024) {
+      _snack('Captured photo is over 5 MB — try again.', error: true);
+      return;
+    }
+    setState(() {
+      _pendingFile = bytes;
+      _pendingFileName =
+          'scan-${DateTime.now().millisecondsSinceEpoch}.jpg';
+      _deleteFileOnSave = false;
+    });
+  }
+
   Future<void> _deleteFile() async {
     final ok = await _confirm(
         'Delete this document scan on Save? Nothing is removed until '
@@ -1060,14 +1079,29 @@ class _SlotCardState extends State<_SlotCard> {
         ),
       );
     }
-    return OutlinedButton.icon(
-      onPressed: _pickFile,
-      icon: const Icon(Icons.upload_file_outlined, size: 18),
-      label: const Text('Upload scan (PDF / JPG / PNG, ≤5 MB)'),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: const Color(0xFF1A3C6E),
-        side: const BorderSide(color: Color(0xFF1A3C6E)),
-      ),
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        OutlinedButton.icon(
+          onPressed: _pickFile,
+          icon: const Icon(Icons.upload_file_outlined, size: 18),
+          label: const Text('Upload file (PDF / JPG / PNG, ≤5 MB)'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xFF1A3C6E),
+            side: const BorderSide(color: Color(0xFF1A3C6E)),
+          ),
+        ),
+        OutlinedButton.icon(
+          onPressed: _captureScan,
+          icon: const Icon(Icons.photo_camera_outlined, size: 18),
+          label: const Text('Take photo with camera'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xFF1A3C6E),
+            side: const BorderSide(color: Color(0xFF1A3C6E)),
+          ),
+        ),
+      ],
     );
   }
 
