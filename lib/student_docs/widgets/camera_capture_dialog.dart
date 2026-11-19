@@ -53,8 +53,14 @@ class _CameraCaptureDialogState extends State<CameraCaptureDialog> {
         setState(() => _error = 'No camera found on this device.');
         return;
       }
+      // Prefer the back camera (documents, and photographing someone else);
+      // fall back to whatever exists (webUSB cams, front-only devices).
+      final selected = cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.back,
+        orElse: () => cameras.first,
+      );
       final controller = CameraController(
-        cameras.first,
+        selected,
         ResolutionPreset.medium,
         enableAudio: false,
       );
