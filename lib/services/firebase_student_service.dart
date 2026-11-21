@@ -26,15 +26,20 @@ class FirebaseStudentRepository implements StudentRepository {
   /// Payload for one audit-log row. Use with [WriteBatch.set] so the change
   /// and its log commit together (or not at all). Migrations that write a
   /// lone log row can still `add()` this payload directly.
+  ///
+  /// The timestamp is the server's, never the device's — log times must not
+  /// be forgeable by setting a client clock.
   Map<String, dynamic> _logData(
       String studentId, String studentName, String action, String detail) {
-    return AuditLog(
+    final payload = AuditLog(
       personId: studentId,
       personName: studentName,
       action: action,
       changedBy: UserSession().currentUser?.email ?? '',
       detail: detail,
     ).toFirestore();
+    payload['timestamp'] = FieldValue.serverTimestamp();
+    return payload;
   }
 
   // ── N-gram index builder ──────────────────────────────────────────────────
@@ -99,12 +104,15 @@ class FirebaseStudentRepository implements StudentRepository {
 
   @override
   Future<String> create(StudentModel student) async {
-    final now = DateTime.now();
-    student.createdAt = now;
-    student.updatedAt = now;
+    // createdAt/updatedAt are server-stamped below: a client clock must not
+    // decide audit dates. The model is refreshed from the server afterwards.
+    student.createdAt = null;
+    student.updatedAt = null;
     _refreshDocsFlags(student);
     final data = student.toFirestore();
     data['_searchIndex'] = _buildSearchIndex(student);
+    data['createdAt'] = FieldValue.serverTimestamp();
+    data['updatedAt'] = FieldValue.serverTimestamp();
     // The record and its 'create' audit entry share one commit: the student
     // is never created without its log (or logged without being created).
     final docRef = _firestore.collection(_collection).doc();
@@ -114,6 +122,12 @@ class FirebaseStudentRepository implements StudentRepository {
     batch.set(_studentLogs(docRef.id).doc(),
         _logData(docRef.id, student.name, 'create', createDetail));
     await batch.commit();
+    final fresh = await docRef.get();
+    final freshData = fresh.data() as Map<String, dynamic>?;
+    student.createdAt =
+        parseTimestamp(freshData?['createdAt']) ?? DateTime.now();
+    student.updatedAt =
+        parseTimestamp(freshData?['updatedAt']) ?? student.createdAt;
     return docRef.id;
   }
 
@@ -129,7 +143,7 @@ class FirebaseStudentRepository implements StudentRepository {
       oldData = (oldSnap.data() as Map<String, dynamic>?) ?? {};
     }
 
-    student.updatedAt = DateTime.now();
+    student.updatedAt = null;
     student.documentVersion += 1;
     // An edit invalidates any attestation: the reviewer checked the old
     // content. Clear verification (logged below) so stale badges can't linger.
@@ -148,6 +162,8 @@ class FirebaseStudentRepository implements StudentRepository {
     // legacy wall-clock string) is the record's true origin, while the model's
     // copy may be shifted by the editing device's clock/timezone.
     data.remove('createdAt');
+    // updatedAt is the server's, never the device's.
+    data['updatedAt'] = FieldValue.serverTimestamp();
     data['_searchIndex'] = _buildSearchIndex(student);
 
     // The record write and its 'update' audit entry share one commit, so an
@@ -164,6 +180,10 @@ class FirebaseStudentRepository implements StudentRepository {
           _logData(docId, student.name, 'update', detail));
     }
     await batch.commit();
+    final fresh = await _firestore.collection(_collection).doc(docId).get();
+    student.updatedAt = parseTimestamp(
+            (fresh.data() as Map<String, dynamic>?)?['updatedAt']) ??
+        student.updatedAt;
   }
 
   // ── VERIFICATION ────────────────────────────────────────────────────────
@@ -178,8 +198,8 @@ class FirebaseStudentRepository implements StudentRepository {
     batch.update(ref, {
       'isVerified': true,
       'verifiedBy': by,
-      // UTC so the timestamp is unambiguous regardless of the client clock.
-      'verifiedAt': timestampToWire(DateTime.now()),
+      // Server time: verification is an attestation, not a client claim.
+      'verifiedAt': FieldValue.serverTimestamp(),
     });
     batch.set(
         _studentLogs(docId).doc(),
