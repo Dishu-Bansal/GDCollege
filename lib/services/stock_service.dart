@@ -58,10 +58,13 @@ class FirebaseStockRepository implements StockRepository {
 
   @override
   Future<String> addBuilding(String name) async {
-    final doc = await _buildings.add(BuildingModel(
+    final data = BuildingModel(
       name: name,
       createdAt: DateTime.now(),
-    ).toFirestore());
+    ).toFirestore();
+    // Server time: creation is an audit instant, not a client claim.
+    data['createdAt'] = FieldValue.serverTimestamp();
+    final doc = await _buildings.add(data);
     return doc.id;
   }
 
@@ -87,11 +90,14 @@ class FirebaseStockRepository implements StockRepository {
 
   @override
   Future<String> addFloor(String buildingId, String name) async {
-    final doc = await _floors(buildingId).add(FloorModel(
+    final data = FloorModel(
       name: name,
       buildingId: buildingId,
       createdAt: DateTime.now(),
-    ).toFirestore());
+    ).toFirestore();
+    // Server time: creation is an audit instant, not a client claim.
+    data['createdAt'] = FieldValue.serverTimestamp();
+    final doc = await _floors(buildingId).add(data);
     return doc.id;
   }
 
@@ -118,12 +124,15 @@ class FirebaseStockRepository implements StockRepository {
   @override
   Future<String> addRoom(
       String buildingId, String floorId, String name) async {
-    final doc = await _rooms(buildingId, floorId).add(RoomModel(
+    final data = RoomModel(
       name: name,
       floorId: floorId,
       buildingId: buildingId,
       createdAt: DateTime.now(),
-    ).toFirestore());
+    ).toFirestore();
+    // Server time: creation is an audit instant, not a client claim.
+    data['createdAt'] = FieldValue.serverTimestamp();
+    final doc = await _rooms(buildingId, floorId).add(data);
     return doc.id;
   }
 
@@ -190,8 +199,8 @@ class FirebaseStockRepository implements StockRepository {
       String roomId, String url) async {
     await _rooms(buildingId, floorId).doc(roomId).update({
       'photoUrls': FieldValue.arrayUnion([url]),
-      // Feature: Media Freshness — stamp the upload time
-      'lastMediaUploadedAt': timestampToWire(DateTime.now()),
+      // Feature: Media Freshness — stamp the upload time (server time).
+      'lastMediaUploadedAt': FieldValue.serverTimestamp(),
     });
   }
 
@@ -200,8 +209,8 @@ class FirebaseStockRepository implements StockRepository {
       String roomId, String url) async {
     await _rooms(buildingId, floorId).doc(roomId).update({
       'videoUrls': FieldValue.arrayUnion([url]),
-      // Feature: Media Freshness — stamp the upload time
-      'lastMediaUploadedAt': timestampToWire(DateTime.now()),
+      // Feature: Media Freshness — stamp the upload time (server time).
+      'lastMediaUploadedAt': FieldValue.serverTimestamp(),
     });
   }
 
@@ -274,7 +283,6 @@ class FirebaseStockRepository implements StockRepository {
     RoomModel? room,
   }) async {
     final changedBy = UserSession().currentUser?.email ?? '';
-    final now = DateTime.now();
     final batch = _db.batch();
 
     // The catalog photo change is part of the same commit as its log rows:
@@ -284,23 +292,23 @@ class FirebaseStockRepository implements StockRepository {
 
     void queueLog(String bid, String fid, String rid,
         String bName, String fName, String rName) {
-      batch.set(
-          _logs(bid, fid, rid).doc(),
-          StockLog(
+      final logData = StockLog(
             itemId: catalogItemId,
             itemName: itemName,
             type: 'photo',
             quantity: 0,
             previousQty: 0,
             newQty: 0,
-            timestamp: now,
             buildingName: bName,
             floorName: fName,
             roomName: rName,
             changedBy: changedBy,
             oldPhotoUrl: oldPhotoUrl,
             newPhotoUrl: newPhotoUrl,
-          ).toFirestore());
+          ).toFirestore();
+      // Server time: log instants must not depend on the device clock.
+      logData['timestamp'] = FieldValue.serverTimestamp();
+      batch.set(_logs(bid, fid, rid).doc(), logData);
     }
 
     if (building != null && floor != null && room != null) {
@@ -352,6 +360,9 @@ class FirebaseStockRepository implements StockRepository {
   @override
   Future<String> addItem(String buildingId, String floorId, String roomId, StockItem item,
       {String buildingName = '', String floorName = '', String roomName = ''}) async {
+    // In-memory placeholders; the wire maps below carry serverTimestamp and
+    // the model is refreshed from the server after commit (rule: readers of a
+    // just-written instant must see the server value).
     item.createdAt = DateTime.now();
     item.updatedAt = DateTime.now();
 
@@ -359,14 +370,12 @@ class FirebaseStockRepository implements StockRepository {
 
     if(item.id != null) {
       final _itemCatalog = _itemsCatalog.doc(item.id);
-      batch.update(_itemCatalog, {'lastPrice': item.unitPrice, 'totalQuantity': FieldValue.increment(item.currentQuantity), 'updatedAt': timestampToWire(item.updatedAt)});
+      batch.update(_itemCatalog, {'lastPrice': item.unitPrice, 'totalQuantity': FieldValue.increment(item.currentQuantity), 'updatedAt': FieldValue.serverTimestamp()});
 
       final _priceHistory = _itemCatalog.collection("priceHistory");
-      batch.set(_priceHistory.doc(), {'price': item.unitPrice, 'quantity':item.currentQuantity,'timestamp': timestampToWire(item.updatedAt), 'store':item.store, 'bill':item.bill, 'type': 'increase'});
+      batch.set(_priceHistory.doc(), {'price': item.unitPrice, 'quantity':item.currentQuantity,'timestamp': FieldValue.serverTimestamp(), 'store':item.store, 'bill':item.bill, 'type': 'increase'});
       final logRef = _logs(buildingId, floorId, roomId).doc();
-      batch.set(
-          logRef,
-          StockLog(
+      final logData = StockLog(
             itemId: item.id!,
             itemName: item.name,
             type: 'increase',
@@ -378,22 +387,37 @@ class FirebaseStockRepository implements StockRepository {
             floorName: floorName,
             changedBy: UserSession().currentUser?.email ?? '',
             roomName: roomName,
-          ).toFirestore());
-      batch.set(_items(buildingId, floorId, roomId).doc(item.id), item.toFirestore());
+          ).toFirestore();
+      logData['timestamp'] = FieldValue.serverTimestamp();
+      batch.set(logRef, logData);
+      final itemData = item.toFirestore();
+      itemData['createdAt'] = FieldValue.serverTimestamp();
+      itemData['updatedAt'] = FieldValue.serverTimestamp();
+      batch.set(_items(buildingId, floorId, roomId).doc(item.id), itemData);
       await batch.commit();
+      final fresh =
+          await _items(buildingId, floorId, roomId).doc(item.id).get();
+      final freshData = fresh.data();
+      if (freshData != null) {
+        item.createdAt =
+            parseTimestamp(freshData['createdAt']) ?? item.createdAt;
+        item.updatedAt =
+            parseTimestamp(freshData['updatedAt']) ?? item.updatedAt;
+      }
       return item.id!;
     }
     else
       {
         final _itemCatalog = _itemsCatalog.doc();
         final id = _itemCatalog.id;
-        batch.set(_itemCatalog, CatalogItem(id: id, name:  item.name, lastPrice:  item.unitPrice, totalQuantity:  item.currentQuantity, createdAt:  item.createdAt, updatedAt:  item.updatedAt).toFirestore());
+        final catalogData = CatalogItem(id: id, name:  item.name, lastPrice:  item.unitPrice, totalQuantity:  item.currentQuantity, createdAt:  item.createdAt, updatedAt:  item.updatedAt).toFirestore();
+        catalogData['createdAt'] = FieldValue.serverTimestamp();
+        catalogData['updatedAt'] = FieldValue.serverTimestamp();
+        batch.set(_itemCatalog, catalogData);
         final _priceHistory = _itemCatalog.collection("priceHistory");
-        batch.set(_priceHistory.doc(), {'price': item.unitPrice, 'quantity': item.currentQuantity,'timestamp': timestampToWire(item.updatedAt), 'store':item.store, 'bill':item.bill, 'type': 'increase'});
+        batch.set(_priceHistory.doc(), {'price': item.unitPrice, 'quantity': item.currentQuantity,'timestamp': FieldValue.serverTimestamp(), 'store':item.store, 'bill':item.bill, 'type': 'increase'});
         final logRef = _logs(buildingId, floorId, roomId).doc();
-        batch.set(
-            logRef,
-            StockLog(
+        final newLogData = StockLog(
               itemId: id,
               itemName: item.name,
               type: 'increase',
@@ -405,11 +429,25 @@ class FirebaseStockRepository implements StockRepository {
               floorName: floorName,
               changedBy: UserSession().currentUser?.email ?? '',
               roomName: roomName,
-            ).toFirestore());
-        batch.set(_items(buildingId, floorId, roomId).doc(id), item.toFirestore());
+            ).toFirestore();
+        newLogData['timestamp'] = FieldValue.serverTimestamp();
+        batch.set(logRef, newLogData);
+        final newItemData = item.toFirestore();
+        newItemData['createdAt'] = FieldValue.serverTimestamp();
+        newItemData['updatedAt'] = FieldValue.serverTimestamp();
+        batch.set(_items(buildingId, floorId, roomId).doc(id), newItemData);
         // final doc = await _items(buildingId, floorId, roomId)
         //     .add(item.toFirestore());
         await batch.commit();
+        final fresh =
+            await _items(buildingId, floorId, roomId).doc(id).get();
+        final freshData = fresh.data();
+        if (freshData != null) {
+          item.createdAt =
+              parseTimestamp(freshData['createdAt']) ?? item.createdAt;
+          item.updatedAt =
+              parseTimestamp(freshData['updatedAt']) ?? item.updatedAt;
+        }
         return id;
       }
     // final doc = await _items(buildingId, floorId, roomId)
@@ -423,9 +461,18 @@ class FirebaseStockRepository implements StockRepository {
   Future<void> updateItem(String buildingId, String floorId,
       String roomId, StockItem item) async {
     item.updatedAt = DateTime.now();
-    await _items(buildingId, floorId, roomId)
-        .doc(item.id)
-        .update(item.toFirestore());
+    final data = item.toFirestore();
+    // Never re-write the creation instant on an edit: the stored value is the
+    // record's true origin, while the model's copy may be shifted by the
+    // editing device's clock/timezone.
+    data.remove('createdAt');
+    // Server time: update is an audit instant, not a client claim.
+    data['updatedAt'] = FieldValue.serverTimestamp();
+    final ref = _items(buildingId, floorId, roomId).doc(item.id);
+    await ref.update(data);
+    final fresh = await ref.get();
+    item.updatedAt =
+        parseTimestamp(fresh.data()?['updatedAt']) ?? item.updatedAt;
   }
 
   /// Retrieves a single catalog item summary by its ID to prefill edit screens.
@@ -597,7 +644,6 @@ class FirebaseStockRepository implements StockRepository {
     final name = data?['name'] ?? '';
     final unitPrice = (data?['unitPrice'] ?? 0).toDouble();
     final qty = (data?['currentQuantity'] ?? 0) as int;
-    final now = DateTime.now();
 
     final batch = _db.batch();
     batch.delete(itemRef);
@@ -605,20 +651,20 @@ class FirebaseStockRepository implements StockRepository {
       final catalogRef = _itemsCatalog.doc(itemId);
       batch.update(catalogRef, {
         'totalQuantity': FieldValue.increment(-qty),
-        'updatedAt': timestampToWire(now),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
       final _priceHistory = catalogRef.collection("priceHistory");
       batch.set(_priceHistory.doc(), {
         'price': unitPrice,
         'quantity': -qty,
-        'timestamp': timestampToWire(now),
+        'timestamp': FieldValue.serverTimestamp(),
         'store': '',
         'bill': '',
         'type': 'decrease',
       });
     }
     final logRef = _logs(buildingId, floorId, roomId).doc();
-    batch.set(logRef, StockLog(
+    final logData = StockLog(
       itemId: itemId,
       itemName: name,
       type: 'decrease',
@@ -626,9 +672,11 @@ class FirebaseStockRepository implements StockRepository {
       previousQty: qty,
       newQty: 0,
       note: 'Item removed from room',
-      timestamp: now,
       changedBy: UserSession().currentUser?.email ?? '',
-    ).toFirestore());
+    ).toFirestore();
+    // Server time: log instants must not depend on the device clock.
+    logData['timestamp'] = FieldValue.serverTimestamp();
+    batch.set(logRef, logData);
 
     await batch.commit();
   }
@@ -660,11 +708,11 @@ class FirebaseStockRepository implements StockRepository {
     final itemRef = _items(buildingId, floorId, roomId).doc(item.id);
     batch.update(itemRef, {
       'currentQuantity': newQty,
-      'updatedAt': timestampToWire(DateTime.now()),
+      'updatedAt': FieldValue.serverTimestamp(),
     });
 
     final _itemCatalog = _itemsCatalog.doc(item.id);
-    batch.update(_itemCatalog, {'totalQuantity': FieldValue.increment(delta), 'updatedAt': timestampToWire(DateTime.now())});
+    batch.update(_itemCatalog, {'totalQuantity': FieldValue.increment(delta), 'updatedAt': FieldValue.serverTimestamp()});
 
     // Record every adjustment in the item's price-history log: purchases
     // (increases) when a price/store/bill is supplied, and all decreases so
@@ -675,7 +723,7 @@ class FirebaseStockRepository implements StockRepository {
       batch.set(_priceHistory.doc(), {
         'price': unitPrice,
         'quantity': actualDelta,
-        'timestamp': timestampToWire(DateTime.now()),
+        'timestamp': FieldValue.serverTimestamp(),
         'store': store,
         'bill': bill,
         'type': actualDelta > 0 ? 'increase' : 'decrease',
@@ -683,9 +731,7 @@ class FirebaseStockRepository implements StockRepository {
     }
 
     final logRef = _logs(buildingId, floorId, roomId).doc();
-    batch.set(
-        logRef,
-        StockLog(
+    final logData = StockLog(
           itemId: item.id!,
           itemName: item.name,
           type: actualDelta > 0 ? 'increase' : 'decrease',
@@ -697,7 +743,10 @@ class FirebaseStockRepository implements StockRepository {
           floorName: floorName,
           changedBy: UserSession().currentUser?.email ?? '',
           roomName: roomName,
-        ).toFirestore());
+        ).toFirestore();
+    // Server time: log instants must not depend on the device clock.
+    logData['timestamp'] = FieldValue.serverTimestamp();
+    batch.set(logRef, logData);
 
     await batch.commit();
   }
@@ -808,10 +857,11 @@ class FirebaseStockRepository implements StockRepository {
     final inspRef =
         _inspections(building.id!, floor.id!, room.id!).doc();
     final batch = _db.batch();
-    batch.set(inspRef, inspection.toFirestore());
-    batch.set(
-        _logs(building.id!, floor.id!, room.id!).doc(),
-        StockLog(
+    final inspData = inspection.toFirestore();
+    // Server time: inspection start is an audit instant.
+    inspData['startedAt'] = FieldValue.serverTimestamp();
+    batch.set(inspRef, inspData);
+    final startLogData = StockLog(
           itemId: '',
           itemName: 'Inspection',
           type: 'inspection',
@@ -819,13 +869,15 @@ class FirebaseStockRepository implements StockRepository {
           previousQty: 0,
           newQty: 0,
           note: 'Inspection started. ${currentItems.length} items to check.',
-          timestamp: DateTime.now(),
           buildingName: building.name,
           floorName: floor.name,
           roomName: room.name,
           changedBy: UserSession().currentUser?.email ?? '',
           inspectionId: inspRef.id,
-        ).toFirestore());
+        ).toFirestore();
+    startLogData['timestamp'] = FieldValue.serverTimestamp();
+    batch.set(
+        _logs(building.id!, floor.id!, room.id!).doc(), startLogData);
     await batch.commit();
 
     return inspRef.id;
@@ -916,7 +968,6 @@ class FirebaseStockRepository implements StockRepository {
     required InspectionModel inspection,
     required bool syncQuantities,
   }) async {
-    final now = DateTime.now();
     final batch = _db.batch();
 
     // Mark inspection complete
@@ -924,7 +975,7 @@ class FirebaseStockRepository implements StockRepository {
     _inspections(building.id!, floor.id!, room.id!).doc(inspection.id);
     batch.update(inspRef, {
       'status': 'completed',
-      'completedAt': timestampToWire(now),
+      'completedAt': FieldValue.serverTimestamp(),
       'checklistItems':
       inspection.checklistItems.map((e) => e.toMap()).toList(),
       'hasDiscrepancy': inspection.hasDiscrepancy,
@@ -934,7 +985,7 @@ class FirebaseStockRepository implements StockRepository {
     // Stamp the room's last inspection date
     final roomRef =
     _rooms(building.id!, floor.id!).doc(room.id);
-    batch.update(roomRef, {'lastInspectedAt': timestampToWire(now)});
+    batch.update(roomRef, {'lastInspectedAt': FieldValue.serverTimestamp()});
 
     // If syncing, adjust quantities for mismatched items
     if (syncQuantities) {
@@ -947,7 +998,7 @@ class FirebaseStockRepository implements StockRepository {
         _items(building.id!, floor.id!, room.id!).doc(ci.itemId);
         batch.update(itemRef, {
           'currentQuantity': ci.actualQty,
-          'updatedAt': timestampToWire(now),
+          'updatedAt': FieldValue.serverTimestamp(),
         });
 
         // Keep the catalog total and the item log in sync with the correction
@@ -955,12 +1006,12 @@ class FirebaseStockRepository implements StockRepository {
           final catalogRef = _itemsCatalog.doc(ci.itemId);
           batch.update(catalogRef, {
             'totalQuantity': FieldValue.increment(delta),
-            'updatedAt': timestampToWire(now),
+            'updatedAt': FieldValue.serverTimestamp(),
           });
           batch.set(catalogRef.collection("priceHistory").doc(), {
             'price': 0,
             'quantity': delta,
-            'timestamp': timestampToWire(now),
+            'timestamp': FieldValue.serverTimestamp(),
             'store': '',
             'bill': '',
             'type': delta > 0 ? 'increase' : 'decrease',
@@ -968,7 +1019,7 @@ class FirebaseStockRepository implements StockRepository {
         }
 
         final logRef = _logs(building.id!, floor.id!, room.id!).doc();
-        batch.set(logRef, StockLog(
+        final correctionLogData = StockLog(
           itemId: ci.itemId,
           itemName: ci.itemName,
           type: delta > 0 ? 'increase' : 'decrease',
@@ -976,12 +1027,13 @@ class FirebaseStockRepository implements StockRepository {
           previousQty: ci.expectedQty,
           newQty: ci.actualQty,
           note: 'Corrected during inspection #${inspection.id}',
-          timestamp: now,
           buildingName: building.name,
           floorName: floor.name,
           changedBy: UserSession().currentUser?.email ?? '',
           roomName: room.name,
-        ).toFirestore());
+        ).toFirestore();
+        correctionLogData['timestamp'] = FieldValue.serverTimestamp();
+        batch.set(logRef, correctionLogData);
       }
     }
 
@@ -1005,7 +1057,7 @@ class FirebaseStockRepository implements StockRepository {
     }
 
     final inspLogRef = _logs(building.id!, floor.id!, room.id!).doc();
-    batch.set(inspLogRef, StockLog(
+    final inspLogData = StockLog(
       itemId: '',
       itemName: 'Inspection',
       type: 'inspection',
@@ -1013,13 +1065,14 @@ class FirebaseStockRepository implements StockRepository {
       previousQty: 0,
       newQty: 0,
       note: noteParts.join(' '),
-      timestamp: now,
       buildingName: building.name,
       floorName: floor.name,
       roomName: room.name,
       changedBy: UserSession().currentUser?.email ?? '',
       inspectionId: inspection.id,
-    ).toFirestore());
+    ).toFirestore();
+    inspLogData['timestamp'] = FieldValue.serverTimestamp();
+    batch.set(inspLogRef, inspLogData);
 
     await batch.commit();
   }
@@ -1043,7 +1096,6 @@ class FirebaseStockRepository implements StockRepository {
     final clamped = quantity.clamp(0, item.currentQuantity);
     if (clamped == 0) return;
 
-    final now = DateTime.now();
     final batch = _db.batch();
 
     // Decrease source
@@ -1052,14 +1104,16 @@ class FirebaseStockRepository implements StockRepository {
     final newFromQty = item.currentQuantity - clamped;
     batch.update(fromItemRef, {
       'currentQuantity': newFromQty,
-      'updatedAt': timestampToWire(now),
+      'updatedAt': FieldValue.serverTimestamp(),
     });
 
     // Increase destination — find or create the item there
     // We write a new item doc with the same name/price under the destination room
     final toItemRef =
     _items(toBuilding.id!, toFloor.id!, toRoom.id!).doc(item.id);
-    // Use set with merge so quantity adds on top of any existing value
+    // Use set with merge so quantity adds on top of any existing value.
+    // createdAt keeps the source record's origin when known (never rewritten
+    // with a fresh stamp on merge); only a missing origin falls back to now.
     batch.set(
       toItemRef,
       {
@@ -1067,8 +1121,8 @@ class FirebaseStockRepository implements StockRepository {
         'unitPrice': item.unitPrice,
         'currentQuantity': FieldValue.increment(clamped),
         'createdAt': timestampToWire(item.createdAt) ??
-            timestampToWire(now),
-        'updatedAt': timestampToWire(now),
+            FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
       },
       SetOptions(merge: true),
     );
@@ -1076,7 +1130,7 @@ class FirebaseStockRepository implements StockRepository {
     // Source log
     final fromLogRef =
     _logs(fromBuilding.id!, fromFloor.id!, fromRoom.id!).doc();
-    batch.set(fromLogRef, StockLog(
+    final fromLogData = StockLog(
       itemId: item.id!,
       itemName: item.name,
       type: 'decrease',
@@ -1085,17 +1139,18 @@ class FirebaseStockRepository implements StockRepository {
       newQty: newFromQty,
       note: 'Transferred to ${toRoom.name}, ${toFloor.name}, '
           '${toBuilding.name}. $note',
-      timestamp: now,
       buildingName: fromBuilding.name,
       floorName: fromFloor.name,
       changedBy: UserSession().currentUser?.email ?? '',
       roomName: fromRoom.name,
-    ).toFirestore());
+    ).toFirestore();
+    fromLogData['timestamp'] = FieldValue.serverTimestamp();
+    batch.set(fromLogRef, fromLogData);
 
     // Destination log
     final toLogRef =
     _logs(toBuilding.id!, toFloor.id!, toRoom.id!).doc();
-    batch.set(toLogRef, StockLog(
+    final toLogData = StockLog(
       itemId: item.id!,
       itemName: item.name,
       type: 'increase',
@@ -1104,18 +1159,17 @@ class FirebaseStockRepository implements StockRepository {
       newQty: clamped,
       note: 'Transferred from ${fromRoom.name}, ${fromFloor.name}, '
           '${fromBuilding.name}. $note',
-      timestamp: now,
       buildingName: toBuilding.name,
       floorName: toFloor.name,
       changedBy: UserSession().currentUser?.email ?? '',
       roomName: toRoom.name,
-    ).toFirestore());
+    ).toFirestore();
+    toLogData['timestamp'] = FieldValue.serverTimestamp();
+    batch.set(toLogRef, toLogData);
 
     // Transfer record
     final transferRef = _transfers.doc();
-    batch.set(
-        transferRef,
-        StockTransfer(
+    final transferData = StockTransfer(
           fromBuildingId: fromBuilding.id!,
           fromBuildingName: fromBuilding.name,
           fromFloorId: fromFloor.id!,
@@ -1132,8 +1186,10 @@ class FirebaseStockRepository implements StockRepository {
           itemName: item.name,
           quantity: clamped,
           note: note,
-          transferredAt: now,
-        ).toFirestore());
+        ).toFirestore();
+    // Server time: transfer is an audit instant, not a client claim.
+    transferData['transferredAt'] = FieldValue.serverTimestamp();
+    batch.set(transferRef, transferData);
 
     await batch.commit();
   }
@@ -1204,7 +1260,6 @@ class FirebaseStockRepository implements StockRepository {
   }) async {
     if (quantity <= 0 || quantity > item.currentQuantity) return;
 
-    final now = DateTime.now();
     final batch = _db.batch();
 
     // Decrease item quantity
@@ -1213,19 +1268,19 @@ class FirebaseStockRepository implements StockRepository {
     final newQty = item.currentQuantity - quantity;
     batch.update(itemRef, {
       'currentQuantity': newQty,
-      'updatedAt': timestampToWire(now),
+      'updatedAt': FieldValue.serverTimestamp(),
     });
 
     // Decrease the catalog total quantity and lock the assignment in the item log
     final catalogRef = _itemsCatalog.doc(item.id!);
     batch.update(catalogRef, {
       'totalQuantity': FieldValue.increment(-quantity),
-      'updatedAt': timestampToWire(now),
+      'updatedAt': FieldValue.serverTimestamp(),
     });
     batch.set(catalogRef.collection("priceHistory").doc(), {
       'price': item.unitPrice,
       'quantity': -quantity,
-      'timestamp': timestampToWire(now),
+      'timestamp': FieldValue.serverTimestamp(),
       'store': '',
       'bill': '',
       'type': 'decrease',
@@ -1233,7 +1288,7 @@ class FirebaseStockRepository implements StockRepository {
 
     // Stock log
     final logRef = _logs(building.id!, floor.id!, room.id!).doc();
-    batch.set(logRef, StockLog(
+    final logData = StockLog(
       itemId: item.id!,
       itemName: item.name,
       type: 'decrease',
@@ -1241,18 +1296,17 @@ class FirebaseStockRepository implements StockRepository {
       previousQty: item.currentQuantity,
       newQty: newQty,
       note: 'Assigned to $assignedTo. $note',
-      timestamp: now,
       buildingName: building.name,
       floorName: floor.name,
       changedBy: UserSession().currentUser?.email ?? '',
       roomName: room.name,
-    ).toFirestore());
+    ).toFirestore();
+    logData['timestamp'] = FieldValue.serverTimestamp();
+    batch.set(logRef, logData);
 
     // Assignment record
     final assignRef = _assignments.doc();
-    batch.set(
-        assignRef,
-        ConsumableAssignment(
+    final assignData = ConsumableAssignment(
           roomId: room.id!,
           roomName: room.name,
           buildingId: building.id!,
@@ -1261,10 +1315,12 @@ class FirebaseStockRepository implements StockRepository {
           itemName: item.name,
           quantity: quantity,
           assignedTo: assignedTo,
-          assignedAt: now,
           status: 'active',
           note: note,
-        ).toFirestore());
+        ).toFirestore();
+    // Server time: assignment is an audit instant, not a client claim.
+    assignData['assignedAt'] = FieldValue.serverTimestamp();
+    batch.set(assignRef, assignData);
 
     await batch.commit();
   }
@@ -1281,7 +1337,6 @@ class FirebaseStockRepository implements StockRepository {
   }) async {
     if (returnQty <= 0 || returnQty > assignment.outstandingQty) return;
 
-    final now = DateTime.now();
     final batch = _db.batch();
 
     // Increase item quantity
@@ -1290,19 +1345,19 @@ class FirebaseStockRepository implements StockRepository {
     final newQty = item.currentQuantity + returnQty;
     batch.update(itemRef, {
       'currentQuantity': newQty,
-      'updatedAt': timestampToWire(now),
+      'updatedAt': FieldValue.serverTimestamp(),
     });
 
     // Increase the catalog total quantity and log the return in the item log
     final catalogRef = _itemsCatalog.doc(item.id!);
     batch.update(catalogRef, {
       'totalQuantity': FieldValue.increment(returnQty),
-      'updatedAt': timestampToWire(now),
+      'updatedAt': FieldValue.serverTimestamp(),
     });
     batch.set(catalogRef.collection("priceHistory").doc(), {
       'price': item.unitPrice,
       'quantity': returnQty,
-      'timestamp': timestampToWire(now),
+      'timestamp': FieldValue.serverTimestamp(),
       'store': '',
       'bill': '',
       'type': 'increase',
@@ -1310,7 +1365,7 @@ class FirebaseStockRepository implements StockRepository {
 
     // Stock log
     final logRef = _logs(building.id!, floor.id!, room.id!).doc();
-    batch.set(logRef, StockLog(
+    final returnLogData = StockLog(
       itemId: item.id!,
       itemName: item.name,
       type: 'increase',
@@ -1318,12 +1373,13 @@ class FirebaseStockRepository implements StockRepository {
       previousQty: item.currentQuantity,
       newQty: newQty,
       note: 'Returned by ${assignment.assignedTo}',
-      timestamp: now,
       buildingName: building.name,
       floorName: floor.name,
       changedBy: UserSession().currentUser?.email ?? '',
       roomName: room.name,
-    ).toFirestore());
+    ).toFirestore();
+    returnLogData['timestamp'] = FieldValue.serverTimestamp();
+    batch.set(logRef, returnLogData);
 
     // Update assignment
     final newReturnedQty = assignment.returnedQty + returnQty;
@@ -1331,11 +1387,92 @@ class FirebaseStockRepository implements StockRepository {
     final assignRef = _assignments.doc(assignment.id);
     batch.update(assignRef, {
       'returnedQty': newReturnedQty,
-      'returnedAt': timestampToWire(now),
+      'returnedAt': FieldValue.serverTimestamp(),
       'status':
       isFullReturn ? 'returned' : 'partially_returned',
     });
 
     await batch.commit();
+  }
+
+  // ── TIMESTAMP BACKFILL (one-shot, no UI) ────────────────────────────────
+
+  /// Converts legacy ISO-8601 STRING instants in the stock collections into
+  /// native Firestore [Timestamp] values, preserving the exact instant.
+  ///
+  /// New writes already use [FieldValue.serverTimestamp]; this only touches
+  /// docs whose stamped field is still a [String]. Native Timestamps, nulls
+  /// and missing fields are left alone, so it is safe to re-run. Writes go
+  /// out in 500-doc batches and the returned map counts converted docs per
+  /// collection. Not wired to any UI — run manually when needed.
+  Future<Map<String, int>> backfillTimestampsToNative() async {
+    final counts = <String, int>{};
+    var batch = _db.batch();
+    var pending = 0;
+
+    Future<void> commitIfFull() async {
+      if (pending >= 500) {
+        await batch.commit();
+        batch = _db.batch();
+        pending = 0;
+      }
+    }
+
+    /// Native Timestamp for a legacy string instant, or null when [raw] is
+    /// already native/missing (leave it alone).
+    Timestamp? nativeOf(Object? raw) {
+      if (raw is! String) return null;
+      final parsed = parseTimestamp(raw);
+      if (parsed == null) return null;
+      return Timestamp.fromDate(parsed);
+    }
+
+    Future<void> backfillQuery(
+        String key, Query query, List<String> fields) async {
+      final snap = await query.get();
+      for (final d in snap.docs) {
+        final data =
+            Map<String, dynamic>.from(d.data() as Map);
+        final patch = <String, dynamic>{};
+        for (final field in fields) {
+          final native = nativeOf(data[field]);
+          if (native != null) patch[field] = native;
+        }
+        if (patch.isNotEmpty) {
+          batch.update(_db.doc(d.reference.path), patch);
+          pending++;
+          counts[key] = (counts[key] ?? 0) + 1;
+          await commitIfFull();
+        }
+      }
+    }
+
+    // Top-level collections.
+    await backfillQuery('buildings', _buildings, const ['createdAt']);
+    await backfillQuery(
+        'itemsCatalog', _itemsCatalog, const ['createdAt', 'updatedAt']);
+    await backfillQuery(
+        'stockTransfers', _transfers, const ['transferredAt']);
+    await backfillQuery('consumableAssignments', _assignments,
+        const ['assignedAt', 'returnedAt']);
+
+    // Room subcollections via collection groups ('floors', 'rooms', 'items',
+    // 'stockLogs' and 'inspections' exist only under the stock tree, and
+    // 'priceHistory' only under itemsCatalog).
+    await backfillQuery(
+        'floors', _db.collectionGroup('floors'), const ['createdAt']);
+    await backfillQuery('rooms', _db.collectionGroup('rooms'),
+        const ['createdAt', 'lastMediaUploadedAt', 'lastInspectedAt']);
+    await backfillQuery('roomItems', _db.collectionGroup('items'),
+        const ['createdAt', 'updatedAt']);
+    await backfillQuery('stockLogs', _db.collectionGroup('stockLogs'),
+        const ['timestamp']);
+    await backfillQuery('inspections', _db.collectionGroup('inspections'),
+        const ['startedAt', 'completedAt']);
+    await backfillQuery('priceHistory',
+        _db.collectionGroup('priceHistory'), const ['timestamp']);
+
+    if (pending > 0) await batch.commit();
+    return counts;
   }
 }

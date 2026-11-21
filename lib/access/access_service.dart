@@ -181,7 +181,6 @@ class AccessService {
         leads = s['canAccessLeads'] as bool? ?? leads;
         seedDocId = seed.docs.first.id;
       }
-      final now = timestampToWire(DateTime.now());
       await _db.collection(_collection).doc(uid).set({
         'email': email,
         'canAccessStudents': students,
@@ -191,8 +190,9 @@ class AccessService {
         'canAccessBills': bills,
         'canAccessVisitors': visitors,
         'canAccessLeads': leads,
-        'createdAt': now,
-        'updatedAt': now,
+        // Server-authored audit stamps (rule: never trust the device clock).
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
         'updatedBy': email,
       });
       // The uid doc is now the source of truth; drop the consumed
@@ -333,7 +333,7 @@ class AccessService {
       'canAccessBills': bills,
       'canAccessVisitors': visitors,
       'canAccessLeads': leads,
-      'updatedAt': timestampToWire(DateTime.now()),
+      'updatedAt': FieldValue.serverTimestamp(),
       'updatedBy': by,
     });
   }
@@ -388,7 +388,6 @@ class AccessService {
         leads = s['canAccessLeads'] as bool? ?? leads;
         seedDocId = seed.docs.first.id;
       }
-      final now = timestampToWire(DateTime.now());
       await _db.collection(_collection).doc(uid).set({
         'email': normalized,
         'canAccessStudents': students,
@@ -398,8 +397,9 @@ class AccessService {
         'canAccessBills': bills,
         'canAccessVisitors': visitors,
         'canAccessLeads': leads,
-        'createdAt': now,
-        'updatedAt': now,
+        // Server-authored audit stamps (rule: never trust the device clock).
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
         'updatedBy': FirebaseAuth.instance.currentUser?.email ?? '',
       });
       if (seedDocId != null) {
@@ -419,5 +419,63 @@ class AccessService {
     } finally {
       await secondaryAuth.signOut();
     }
+  }
+
+  /// One-time backfill: converts legacy ISO-8601 STRING `createdAt` /
+  /// `updatedAt` values in the `users` collection into native Firestore
+  /// [Timestamp]s, preserving the exact instant.
+  ///
+  /// Reads in 500-doc batches (ordered by document id) and returns a count
+  /// map, e.g. `{usersScanned: 120, usersUpdated: 40, fieldsConverted: 80}`.
+  /// Documents whose fields are already native Timestamps (or absent) are
+  /// left untouched. The `userSessions` collection is already
+  /// native-Timestamp-only, so it is intentionally not covered here.
+  ///
+  /// Not wired to any UI; run once from a console/script.
+  Future<Map<String, int>> backfillTimestampsToNative() async {
+    const fields = <String>['createdAt', 'updatedAt'];
+    var scanned = 0;
+    var updatedDocs = 0;
+    var fieldsConverted = 0;
+    DocumentSnapshot<Map<String, dynamic>>? cursor;
+    while (true) {
+      var query = _db
+          .collection(_collection)
+          .orderBy(FieldPath.documentId)
+          .limit(500);
+      if (cursor != null) query = query.startAfterDocument(cursor);
+      final page = await query.get();
+      if (page.docs.isEmpty) break;
+      final batch = _db.batch();
+      var pageDirty = 0;
+      for (final doc in page.docs) {
+        scanned++;
+        final data = doc.data();
+        final updates = <String, Object?>{};
+        for (final f in fields) {
+          final v = data[f];
+          if (v is String) {
+            final parsed = parseTimestamp(v);
+            if (parsed != null) {
+              updates[f] = Timestamp.fromDate(parsed);
+              fieldsConverted++;
+            }
+          }
+        }
+        if (updates.isNotEmpty) {
+          batch.update(doc.reference, updates);
+          updatedDocs++;
+          pageDirty++;
+        }
+      }
+      if (pageDirty > 0) await batch.commit();
+      if (page.docs.length < 500) break;
+      cursor = page.docs.last;
+    }
+    return {
+      'usersScanned': scanned,
+      'usersUpdated': updatedDocs,
+      'fieldsConverted': fieldsConverted,
+    };
   }
 }

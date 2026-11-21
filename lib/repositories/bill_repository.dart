@@ -32,4 +32,7 @@ abstract class BillRepository {
     DateTime? reimbursementDate,
     String reimbursedBy = '',
   });
+
+  /// Converts legacy ISO-8601 string audit instants to native Timestamps.
+  Future<Map<String, int>> backfillTimestampsToNative();
 }
