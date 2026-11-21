@@ -23,33 +23,51 @@ class FirebaseStaffRepository implements StaffRepository {
   /// Payload for one audit-log row. Use with [WriteBatch.set] so the change
   /// and its log commit together (or not at all). Migrations that write a
   /// lone log row can still `add()` this payload directly.
+  ///
+  /// The timestamp is the server's, never the device's — log times must not
+  /// be forgeable by setting a client clock.
   Map<String, dynamic> _logData(
       String staffId, String staffName, String action, String detail) {
-    return AuditLog(
+    final payload = AuditLog(
       personId: staffId,
       personName: staffName,
       action: action,
       changedBy: UserSession().currentUser?.email ?? '',
       detail: detail,
     ).toFirestore();
+    payload['timestamp'] = FieldValue.serverTimestamp();
+    return payload;
   }
 
   // ─── CREATE ──────────────────────────────────────────────────────────────
 
   @override
   Future<String> create(StaffModel staff) async {
-    final now = DateTime.now();
-    staff.createdAt = now;
-    staff.updatedAt = now;
+    // createdAt/updatedAt are server-stamped below: a client clock must not
+    // decide audit dates. The model is refreshed from the server afterwards.
+    staff.createdAt = null;
+    staff.updatedAt = null;
+    final data = staff.toFirestore();
+    data['createdAt'] = FieldValue.serverTimestamp();
+    data['updatedAt'] = FieldValue.serverTimestamp();
     // The record and its 'create' audit entry share one commit: the staff
     // member is never created without its log (or logged without existing).
     final docRef = _firestore.collection(_collection).doc();
     final createDetail = 'Created: ${staff.name}, ${staff.designation ?? '—'}';
     final batch = _firestore.batch();
-    batch.set(docRef, staff.toFirestore());
+    batch.set(docRef, data);
     batch.set(_staffLogs(docRef.id).doc(),
         _logData(docRef.id, staff.name, 'create', createDetail));
     await batch.commit();
+    // The caller keeps using `staff` (the form re-uses it for the file-URL
+    // update right after create) — refresh the server-stamped instants so it
+    // carries the exact committed values.
+    final fresh = await docRef.get();
+    final freshData = fresh.data() as Map<String, dynamic>?;
+    staff.createdAt =
+        parseTimestamp(freshData?['createdAt']) ?? DateTime.now();
+    staff.updatedAt =
+        parseTimestamp(freshData?['updatedAt']) ?? staff.createdAt;
     return docRef.id;
   }
 
@@ -65,9 +83,15 @@ class FirebaseStaffRepository implements StaffRepository {
       oldData = (oldSnap.data() as Map<String, dynamic>?) ?? {};
     }
 
-    staff.updatedAt = DateTime.now();
+    staff.updatedAt = null;
     staff.documentVersion += 1;
     final data = staff.toFirestore();
+    // Never re-write the creation instant on an edit: the stored value (or a
+    // legacy wall-clock string) is the record's true origin, while the model's
+    // copy may be shifted by the editing device's clock/timezone.
+    data.remove('createdAt');
+    // updatedAt is the server's, never the device's.
+    data['updatedAt'] = FieldValue.serverTimestamp();
 
     // The record write and its 'update' audit entry share one commit.
     final batch = _firestore.batch();
@@ -78,6 +102,10 @@ class FirebaseStaffRepository implements StaffRepository {
           _logData(docId, staff.name, 'update', detail));
     }
     await batch.commit();
+    final fresh = await _firestore.collection(_collection).doc(docId).get();
+    staff.updatedAt = parseTimestamp(
+            (fresh.data() as Map<String, dynamic>?)?['updatedAt']) ??
+        staff.updatedAt;
   }
 
   static const _fieldLabels = {
@@ -199,20 +227,97 @@ class FirebaseStaffRepository implements StaffRepository {
           .get();
       if (existing.docs.isNotEmpty) continue;
 
-      final ts = parseTimestamp(createdAtRaw) ?? DateTime.now();
+      final historical = parseTimestamp(createdAtRaw);
+      final ts = historical ?? DateTime.now();
 
       final detail = 'Created: $name, ${designation.isNotEmpty ? designation : '—'}';
-      await _staffLogs(doc.id).add(AuditLog(
+      final logMap = AuditLog(
         personId: doc.id,
         personName: name,
         action: 'create',
         changedBy: createdBy,
         detail: detail,
         timestamp: ts,
-      ).toFirestore());
+      ).toFirestore();
+      if (historical != null) {
+        // Backdated by design: the log recreates the record's original
+        // creation instant, so it keeps that exact instant as a native
+        // Timestamp instead of taking "now".
+        logMap['timestamp'] = Timestamp.fromDate(ts);
+      } else {
+        // No usable creation instant: this row genuinely happened now.
+        logMap['timestamp'] = FieldValue.serverTimestamp();
+      }
+      await _staffLogs(doc.id).add(logMap);
       migrated++;
     }
     return migrated;
+  }
+
+  /// One-time migration: converts legacy ISO-8601 STRING instants for this
+  /// module's stamped fields into native Firestore [Timestamp] values,
+  /// preserving the exact instant (as [parseTimestamp] interprets it, the
+  /// same reading display/sort code already uses). Covers:
+  /// - `staff`: `createdAt`, `updatedAt`;
+  /// - `staffLogs` (collection group across all staff): `timestamp`.
+  /// User-picked calendar dates (`dob`, `dateOfJoining`, `dateOfRelieving`,
+  /// increment dates) are NOT touched. Already-native values, nulls and
+  /// unparseable strings are left untouched. Writes go in 500-doc batches.
+  /// Returns per-collection docs updated. No UI calls this; run once from
+  /// console/tooling.
+  Future<Map<String, int>> backfillTimestampsToNative() async {
+    final counts = {'staff': 0, 'staffLogs': 0};
+
+    Timestamp? nativeOf(Object? value) {
+      if (value is! String) return null;
+      final parsed = parseTimestamp(value);
+      if (parsed == null) return null;
+      return Timestamp.fromDate(parsed);
+    }
+
+    var batch = _firestore.batch();
+    var pending = 0;
+
+    Future<void> flush() async {
+      if (pending == 0) return;
+      await batch.commit();
+      batch = _firestore.batch();
+      pending = 0;
+    }
+
+    final staff = await _firestore.collection(_collection).get();
+    for (final doc in staff.docs) {
+      final data = doc.data();
+      final updates = <String, Object>{};
+      final stampedCreatedAt = nativeOf(data['createdAt']);
+      if (stampedCreatedAt != null) {
+        updates['createdAt'] = stampedCreatedAt;
+      }
+      final stampedUpdatedAt = nativeOf(data['updatedAt']);
+      if (stampedUpdatedAt != null) {
+        updates['updatedAt'] = stampedUpdatedAt;
+      }
+      if (updates.isNotEmpty) {
+        batch.update(doc.reference, updates);
+        pending++;
+        counts['staff'] = counts['staff']! + 1;
+        if (pending >= 500) await flush();
+      }
+    }
+    await flush();
+
+    final logs = await _firestore.collectionGroup('staffLogs').get();
+    for (final doc in logs.docs) {
+      final stamped = nativeOf(doc.data()['timestamp']);
+      if (stamped == null) continue;
+      batch.update(doc.reference, {'timestamp': stamped});
+      pending++;
+      counts['staffLogs'] = counts['staffLogs']! + 1;
+      if (pending >= 500) await flush();
+    }
+    await flush();
+
+    return counts;
   }
 
   // ─── READ (stream) ───────────────────────────────────────────────────────

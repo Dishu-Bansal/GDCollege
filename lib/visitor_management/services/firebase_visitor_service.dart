@@ -193,27 +193,30 @@ class FirebaseVisitorRepository implements VisitorRepository {
     );
     batch.set(visitRef, visit.toFirestore());
     // The global log row for this check-in — a separate doc from the visit
-    // session. createdAt is the log moment (now); at is the business time.
-    // A one-step completed visit logs a single 'Entry added' row carrying
-    // both times instead of separate entry/exit rows.
+    // session. createdAt is the log moment (server-stamped below so a client
+    // clock can't forge log times); at is the business time. A one-step
+    // completed visit logs a single 'Entry added' row carrying both times
+    // instead of separate entry/exit rows.
+    final entryEvent = VisitorEventModel(
+      type: checkOutAt == null ? 'entry' : 'completed',
+      at: now,
+      createdAt: DateTime.now(),
+      visitId: visitRef.id,
+      personType: visit.personType,
+      personRefId: personRefId,
+      name: visit.name,
+      vehicleNumber: visit.vehicleNumber,
+      purpose: visit.purpose,
+      fromPlace: visit.fromPlace,
+      phone: visit.phone,
+      outAt: checkOutAt,
+      accompanyingPeople: visit.accompanyingPeople,
+      by: visit.checkedInBy,
+    );
+    final entryData = entryEvent.toFirestore();
+    entryData['createdAt'] = FieldValue.serverTimestamp();
     batch.set(
-        _events.doc('${visitRef.id}_entry'),
-        VisitorEventModel(
-          type: checkOutAt == null ? 'entry' : 'completed',
-          at: now,
-          createdAt: DateTime.now(),
-          visitId: visitRef.id,
-          personType: visit.personType,
-          personRefId: personRefId,
-          name: visit.name,
-          vehicleNumber: visit.vehicleNumber,
-          purpose: visit.purpose,
-          fromPlace: visit.fromPlace,
-          phone: visit.phone,
-          outAt: checkOutAt,
-          accompanyingPeople: visit.accompanyingPeople,
-          by: visit.checkedInBy,
-        ).toFirestore());
+        _events.doc('${visitRef.id}_entry'), entryData);
 
     await batch.commit();
   }
@@ -242,25 +245,27 @@ class FirebaseVisitorRepository implements VisitorRepository {
       'checkedOutBy': by,
     });
     // The global log's exit row — a separate doc so it sorts by its own time.
-    // createdAt is the log moment (now); at is the manually picked time.
-    batch.set(
-        _events.doc('${visitId}_exit'),
-        VisitorEventModel(
-          type: 'exit',
-          at: chosen,
-          createdAt: DateTime.now(),
-          visitId: visitId,
-          personType: (data['personType'] ?? 'visitor').toString(),
-          personRefId: (data['personRefId'] ?? '').toString(),
-          name: (data['name'] ?? '').toString(),
-          vehicleNumber: (data['vehicleNumber'] ?? '').toString(),
-          purpose: (data['purpose'] ?? '').toString(),
-          fromPlace: (data['fromPlace'] ?? '').toString(),
-          phone: (data['phone'] ?? '').toString(),
-          accompanyingPeople:
-              List<String>.from(data['accompanyingPeople'] ?? []),
-          by: by,
-        ).toFirestore());
+    // createdAt is the log moment (server-stamped so a client clock can't
+    // forge log times); at is the manually picked time.
+    final exitEvent = VisitorEventModel(
+      type: 'exit',
+      at: chosen,
+      createdAt: DateTime.now(),
+      visitId: visitId,
+      personType: (data['personType'] ?? 'visitor').toString(),
+      personRefId: (data['personRefId'] ?? '').toString(),
+      name: (data['name'] ?? '').toString(),
+      vehicleNumber: (data['vehicleNumber'] ?? '').toString(),
+      purpose: (data['purpose'] ?? '').toString(),
+      fromPlace: (data['fromPlace'] ?? '').toString(),
+      phone: (data['phone'] ?? '').toString(),
+      accompanyingPeople:
+          List<String>.from(data['accompanyingPeople'] ?? []),
+      by: by,
+    );
+    final exitData = exitEvent.toFirestore();
+    exitData['createdAt'] = FieldValue.serverTimestamp();
+    batch.set(_events.doc('${visitId}_exit'), exitData);
 
     // Keep the visitor profile's last check-out in step so the Visitors
     // tab can show it without reading the visit log. Staff check-ins have
@@ -367,6 +372,45 @@ class FirebaseVisitorRepository implements VisitorRepository {
     }
     await flush();
     return written;
+  }
+
+  /// One-time backfill: converts legacy ISO-8601 STRING `createdAt` values
+  /// in `visitEvents` into native Firestore [Timestamp]s preserving the
+  /// exact instant. New writes already land as native Timestamps via
+  /// [FieldValue.serverTimestamp]; this only repairs pre-sweep rows.
+  /// Commits in 500-doc batches. Safe to re-run. Returns converted-doc
+  /// counts per collection. `visits`/`visitors` hold only user-picked or
+  /// derived business times (never server-stamped), so they are skipped.
+  @override
+  Future<Map<String, int>> backfillTimestampsToNative() async {
+    var converted = 0;
+    var batch = _db.batch();
+    var pending = 0;
+    Future<void> flush() async {
+      if (pending == 0) return;
+      await batch.commit();
+      batch = _db.batch();
+      pending = 0;
+    }
+
+    final snap = await _events.get();
+    for (final d in snap.docs) {
+      final data = d.data() as Map<String, dynamic>? ?? {};
+      final raw = data['createdAt'];
+      // Only legacy ISO strings need conversion: native Timestamps (server
+      // stamps, imports, raw DateTime writes) and missing keys are skipped.
+      if (raw is! String) continue;
+      final parsed = parseTimestamp(raw);
+      if (parsed == null) continue;
+      batch.update(d.reference, {
+        'createdAt': Timestamp.fromDate(parsed),
+      });
+      converted++;
+      pending++;
+      if (pending >= 500) await flush();
+    }
+    await flush();
+    return {'visitEvents': converted};
   }
 
   /// Creates [ref] with [expected] when missing, corrects its `at` when it

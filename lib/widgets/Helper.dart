@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../access/access_service.dart';
 import '../providers.dart';
+import '../student_docs/services/firebase_student_docs_service.dart';
 import '../student_management/models/student_model.dart';
 import 'drawer.dart';
+
+/// Maintenance screen: the document-completeness tools plus the one-time
+/// server-time backfills (run once per database after the serverTimestamp
+/// rollout, so legacy ISO-string instants become native Timestamps and
+/// ordering stays correct).
 
 /// Maintenance screen. Only the two document-completeness tools live here:
 /// the read-only audit and the flag backfill.
@@ -16,6 +23,7 @@ class Helper extends ConsumerStatefulWidget {
 class _HelperState extends ConsumerState<Helper> {
   String _docsMsg = 'Audit Student Documents';
   String _backfillMsg = 'Backfill Document Flags';
+  String _tsMsg = 'Backfill Server-Time Stamps';
   bool _running = false;
 
   @override
@@ -47,6 +55,19 @@ class _HelperState extends ConsumerState<Helper> {
                 'Haryana Family ID + residence; ABC ID for 2024+ admissions.\n\n'
                 'The documents audit is read-only; the backfill stamps the '
                 'filter flags (every later edit recomputes them automatically).',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 24),
+              const Divider(),
+              const SizedBox(height: 8),
+              _buildButton(_tsMsg, _runTimestampBackfills),
+              const SizedBox(height: 12),
+              Text(
+                'One-time: converts legacy date-strings to native timestamps '
+                'for Students, Staff, Stock, Bills, Visitors, Leads, Docs and '
+                'Access — run once per database after updating the app, so '
+                'new server-stamped rows sort correctly with old rows.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
@@ -84,6 +105,64 @@ class _HelperState extends ConsumerState<Helper> {
       setMsg('$kind: Error — $e');
     }
     setState(() => _running = false);
+  }
+
+  /// One-time server-time backfill across every module. Runs the per-module
+  /// converters sequentially and reports per-collection counts.
+  Future<void> _runTimestampBackfills() async {
+    if (_running) return;
+    setState(() {
+      _running = true;
+      _tsMsg = 'Converting timestamps...';
+    });
+    try {
+      final total = <String, int>{};
+      void merge(Map<String, int> m) =>
+          m.forEach((k, v) => total[k] = (total[k] ?? 0) + v);
+
+      merge(await ref
+          .read(studentRepositoryProvider)
+          .backfillTimestampsToNative());
+      merge(await ref
+          .read(staffRepositoryProvider)
+          .backfillTimestampsToNative());
+      merge(await ref
+          .read(stockRepositoryProvider)
+          .backfillTimestampsToNative());
+      merge(await ref
+          .read(billRepositoryProvider)
+          .backfillTimestampsToNative());
+      merge(await ref
+          .read(visitorRepositoryProvider)
+          .backfillTimestampsToNative());
+      merge(await ref
+          .read(leadRepositoryProvider)
+          .backfillTimestampsToNative());
+      merge(
+          await FirebaseStudentDocsService().backfillTimestampsToNative());
+      merge(await AccessService().backfillTimestampsToNative());
+
+      final summary = total.entries
+          .where((e) => e.value > 0)
+          .map((e) => '${e.key}: ${e.value}')
+          .join(', ');
+      if (!mounted) return;
+      setState(() {
+        _running = false;
+        _tsMsg = summary.isEmpty
+            ? 'Backfill Server-Time Stamps (nothing to convert)'
+            : 'Backfill done — $summary';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _running = false;
+        _tsMsg = 'Backfill Server-Time Stamps';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Timestamp backfill failed: $e')),
+      );
+    }
   }
 
   /// Read-only completeness audit over every student, driven by the stored

@@ -48,11 +48,9 @@ class FirebaseBillRepository implements BillRepository {
         Uint8List? photoBytes,
         String? photoName,
       }) async {
-    final now = DateTime.now();
     final docRef = _bills.doc(); // pre-generate the id for storage paths
     bill.id = docRef.id;
-    bill.createdAt = now;
-    bill.updatedAt = now;
+    // createdAt/updatedAt are server-stamped in the write map below.
     bill.createdBy = _currentUser;
     bill.updatedBy = _currentUser;
 
@@ -62,8 +60,11 @@ class FirebaseBillRepository implements BillRepository {
 
     // The bill and its 'create' log share one commit: the bill is never
     // saved without its log (or logged without being saved).
+    final billData = bill.toFirestore();
+    billData['createdAt'] = FieldValue.serverTimestamp();
+    billData['updatedAt'] = FieldValue.serverTimestamp();
     final batch = _db.batch();
-    batch.set(docRef, bill.toFirestore());
+    batch.set(docRef, billData);
     batch.set(
         _billLogs.doc(),
         _logData(
@@ -73,6 +74,12 @@ class FirebaseBillRepository implements BillRepository {
             'Bill created. ${bill.items.length} item(s), total '
                 '₹${bill.totalAmount.toStringAsFixed(2)}.'));
     await batch.commit();
+    // Refresh audit instants from the server so the in-memory model (used
+    // for sort/display right after creation) carries the committed values.
+    final fresh = await docRef.get();
+    final freshData = fresh.data();
+    bill.createdAt = parseTimestamp(freshData?['createdAt']) ?? bill.createdAt;
+    bill.updatedAt = parseTimestamp(freshData?['updatedAt']) ?? bill.updatedAt;
     // Service bills have no physical product: their items stay on the bill
     // only and are never added to stock.
     if (!bill.isService) {
@@ -88,11 +95,10 @@ class FirebaseBillRepository implements BillRepository {
         String? photoName,
         bool removePhoto = false,
       }) async {
-    final now = DateTime.now();
     final id = bill.id;
     if (id == null) return;
 
-    bill.updatedAt = now;
+    // updatedAt is server-stamped in the write map below.
     bill.updatedBy = _currentUser;
 
     if (photoBytes != null && photoName != null) {
@@ -112,8 +118,12 @@ class FirebaseBillRepository implements BillRepository {
         : const <BillItem>[];
 
     // The bill and its 'update' log share one commit.
+    // createdAt is left as the model serialised it (the record's original
+    // instant, not a new "now"); only updatedAt is re-stamped by the server.
+    final updateData = bill.toFirestore();
+    updateData['updatedAt'] = FieldValue.serverTimestamp();
     final batch = _db.batch();
-    batch.set(_bills.doc(id), bill.toFirestore());
+    batch.set(_bills.doc(id), updateData);
     batch.set(
         _billLogs.doc(),
         _logData(
@@ -123,6 +133,11 @@ class FirebaseBillRepository implements BillRepository {
             'Bill updated. ${bill.items.length} item(s), total '
                 '₹${bill.totalAmount.toStringAsFixed(2)}.'));
     await batch.commit();
+    // Refresh the audit instant so the in-memory model carries the value
+    // the server actually committed.
+    final refreshed = await _bills.doc(id).get();
+    bill.updatedAt =
+        parseTimestamp(refreshed.data()?['updatedAt']) ?? bill.updatedAt;
     if (!bill.isService) {
       await _syncBillItemsToPending(bill,
           updateMode: true, previousItems: previousItems);
@@ -145,7 +160,8 @@ class FirebaseBillRepository implements BillRepository {
 
     final updates = <String, dynamic>{
       'paid': true,
-      'updatedAt': timestampToWire(now),
+      // Audit instant: the server's time, never the device's.
+      'updatedAt': FieldValue.serverTimestamp(),
       'updatedBy': _currentUser,
     };
     String logDetail;
@@ -220,15 +236,20 @@ class FirebaseBillRepository implements BillRepository {
 
   /// Payload for one bill-log row. Use with [WriteBatch.set] so the bill
   /// change and its log commit together (or not at all).
+  ///
+  /// The timestamp is the server's, never the device's — log times must not
+  /// be forgeable by setting a client clock.
   Map<String, dynamic> _logData(
       String billId, String billNumber, String action, String detail) {
-    return BillLog(
+    final payload = BillLog(
       billId: billId,
       billNumber: billNumber,
       action: action,
       changedBy: _currentUser,
       detail: detail,
     ).toFirestore();
+    payload['timestamp'] = FieldValue.serverTimestamp();
+    return payload;
   }
 
   // ── Stock integration: Extras > Pending > Pending ──────────────────────────
@@ -236,7 +257,9 @@ class FirebaseBillRepository implements BillRepository {
   /// Finds or creates the 'Extras' building > 'Pending' floor > 'Pending' room.
   Future<({String buildingId, String floorId, String roomId})>
   _ensurePendingRoom() async {
-    final now = timestampToWire(DateTime.now());
+    // Audit instants on stock scaffolding docs written from this service:
+    // server time, never the device clock.
+    final serverNow = FieldValue.serverTimestamp();
 
     String buildingId;
     final buildings = await _db
@@ -246,7 +269,7 @@ class FirebaseBillRepository implements BillRepository {
         .get();
     if (buildings.docs.isEmpty) {
       buildingId = (await _db.collection('buildings').add(
-          {'name': 'Extras', 'createdAt': now})).id;
+          {'name': 'Extras', 'createdAt': serverNow})).id;
     } else {
       buildingId = buildings.docs.first.id;
     }
@@ -264,7 +287,7 @@ class FirebaseBillRepository implements BillRepository {
           .collection('buildings')
           .doc(buildingId)
           .collection('floors')
-          .add({'name': 'Pending', 'buildingId': buildingId, 'createdAt': now}))
+          .add({'name': 'Pending', 'buildingId': buildingId, 'createdAt': serverNow}))
           .id;
     } else {
       floorId = floors.docs.first.id;
@@ -291,7 +314,7 @@ class FirebaseBillRepository implements BillRepository {
         'name': 'Pending',
         'buildingId': buildingId,
         'floorId': floorId,
-        'createdAt': now,
+        'createdAt': serverNow,
       }))
           .id;
     } else {
@@ -428,5 +451,55 @@ class FirebaseBillRepository implements BillRepository {
         }
       }
     }
+  }
+
+  // ── Timestamp backfill ────────────────────────────────────────────────────
+
+  /// Converts legacy ISO-8601 STRING audit instants on this module's
+  /// collections into native Firestore [Timestamp] values, preserving the
+  /// exact instant. Safe to re-run: docs already holding Timestamps are
+  /// skipped. Writes in 500-doc batches. Returns docs touched per
+  /// collection. Not wired to any UI; run manually when needed.
+  Future<Map<String, int>> backfillTimestampsToNative() async {
+    final counts = <String, int>{'bills': 0, 'billLogs': 0};
+
+    Future<void> backfillCollection(
+      Query<Map<String, dynamic>> query,
+      String countKey,
+      List<String> fields,
+    ) async {
+      final snap = await query.get();
+      var batch = _db.batch();
+      var pending = 0;
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final updates = <String, dynamic>{};
+        for (final field in fields) {
+          final raw = data[field];
+          // Only legacy strings convert; native Timestamps (and nulls)
+          // are left untouched.
+          if (raw is String) {
+            final parsed = parseTimestamp(raw);
+            if (parsed != null) {
+              updates[field] = Timestamp.fromDate(parsed);
+            }
+          }
+        }
+        if (updates.isEmpty) continue;
+        batch.update(doc.reference, updates);
+        pending++;
+        counts[countKey] = (counts[countKey] ?? 0) + 1;
+        if (pending == 500) {
+          await batch.commit();
+          batch = _db.batch();
+          pending = 0;
+        }
+      }
+      if (pending > 0) await batch.commit();
+    }
+
+    await backfillCollection(_bills, 'bills', ['createdAt', 'updatedAt']);
+    await backfillCollection(_billLogs, 'billLogs', ['timestamp']);
+    return counts;
   }
 }

@@ -698,6 +698,66 @@ class FirebaseStudentRepository implements StudentRepository {
     return touched;
   }
 
+  /// Converts legacy ISO-8601 string audit instants (`createdAt`,
+  /// `updatedAt`, `verifiedAt`, log `timestamp`) to native Firestore
+  /// Timestamps, preserving the exact instant. User-picked calendar dates
+  /// (`dob`, fee details) are NOT touched. Safe to re-run.
+  @override
+  Future<Map<String, int>> backfillTimestampsToNative() async {
+    final counts = {'students': 0, 'studentLogs': 0};
+
+    Timestamp? nativeOf(Object? value) {
+      if (value is! String) return null;
+      final parsed = parseTimestamp(value);
+      if (parsed == null) return null;
+      return Timestamp.fromDate(parsed);
+    }
+
+    var batch = _firestore.batch();
+    var pending = 0;
+
+    Future<void> flush() async {
+      if (pending == 0) return;
+      await batch.commit();
+      batch = _firestore.batch();
+      pending = 0;
+    }
+
+    final snap = await _firestore.collection(_collection).get();
+    for (final d in snap.docs) {
+      final data = d.data();
+      final updates = <String, Object>{};
+      final stampedCreatedAt = nativeOf(data['createdAt']);
+      if (stampedCreatedAt != null) updates['createdAt'] = stampedCreatedAt;
+      final stampedUpdatedAt = nativeOf(data['updatedAt']);
+      if (stampedUpdatedAt != null) updates['updatedAt'] = stampedUpdatedAt;
+      final stampedVerifiedAt = nativeOf(data['verifiedAt']);
+      if (stampedVerifiedAt != null) {
+        updates['verifiedAt'] = stampedVerifiedAt;
+      }
+      if (updates.isNotEmpty) {
+        batch.update(d.reference, updates);
+        pending++;
+        counts['students'] = counts['students']! + 1;
+        if (pending >= 500) await flush();
+      }
+    }
+    await flush();
+
+    final logs = await _firestore.collectionGroup('studentLogs').get();
+    for (final d in logs.docs) {
+      final stamped = nativeOf(d.data()['timestamp']);
+      if (stamped == null) continue;
+      batch.update(d.reference, {'timestamp': stamped});
+      pending++;
+      counts['studentLogs'] = counts['studentLogs']! + 1;
+      if (pending >= 500) await flush();
+    }
+    await flush();
+
+    return counts;
+  }
+
   // ─── FILE UPLOAD ─────────────────────────────────────────────────────────
   /// Upload a file to Firebase Storage and return its download URL.
   @override

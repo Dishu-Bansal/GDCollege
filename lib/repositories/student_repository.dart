@@ -113,4 +113,8 @@ abstract class StudentRepository {
   /// Stamps missingDocs/missingDocsCount on every student doc (Helper
   /// backfill for pre-flag records). Safe to re-run.
   Future<int> backfillDocsFlags();
+
+  /// Converts legacy ISO-8601 string audit instants (`createdAt`,
+  /// `updatedAt`, log `timestamp`) to native Timestamps. Safe to re-run.
+  Future<Map<String, int>> backfillTimestampsToNative();
 }

@@ -35,6 +35,8 @@ class FirebaseStudentDocsService {
 
   /// Builds a log entry stamped with the current user (or [changedByOverride]
   /// for backfilled rows, where the original actor is stored on the record).
+  /// The [at] instant is a local placeholder: live rows committed via
+  /// [commitSlotSave] take server time in the write map.
   DocLogEntry buildLog({
     required String studentId,
     required String studentName,
@@ -69,9 +71,43 @@ class FirebaseStudentDocsService {
     );
   }
 
+  /// Reads the currently stored slot record, or null when the student doc or
+  /// the slot entry is missing/unreadable. Used to tell fresh stamps apart
+  /// from historical ones so unrelated edits never move old dates.
+  Future<StudentDocRecord?> _storedSlot(
+      DocumentReference<Map<String, dynamic>> ref, String slotKey) async {
+    try {
+      final snap = await ref.get();
+      final data = snap.data();
+      if (data == null) return null;
+      return StudentDocRecord.recordsOf(data)[slotKey];
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// True when [incoming] is a freshly stamped instant: set now while a
+  /// different instant (or nothing) was stored. Untouched historical values
+  /// compare equal and return false, so they keep their exact instant.
+  bool _isNewStamp(DateTime? incoming, DateTime? stored) {
+    if (incoming == null) return false;
+    if (stored == null) return true;
+    return incoming.microsecondsSinceEpoch !=
+        stored.microsecondsSinceEpoch;
+  }
+
   /// Atomically persists one slot record together with its log rows: the
   /// student-doc update and every `docLogs` set go in a SINGLE batch, so a
   /// log can never exist without its change (or vice versa).
+  ///
+  /// Audit instants take Firestore server time: `updatedAt` and every live
+  /// log `timestamp` are always [FieldValue.serverTimestamp()], and
+  /// `fileUploadedAt` / `collectedAt` take server time when newly stamped
+  /// (previously absent or changed since the stored slot). Historical stamps
+  /// that pass through untouched keep whatever the model serialised.
+  /// After commit the written slot is re-read and the server-resolved
+  /// instants are folded back onto [record] (the caller's live object), so
+  /// sort/display code immediately sees exact values.
   Future<void> commitSlotSave({
     required String studentId,
     required String slotKey,
@@ -82,18 +118,54 @@ class FirebaseStudentDocsService {
     if (record.hasFile &&
         record.collector.name.trim().isNotEmpty &&
         record.collectedAt == null) {
+      // Local placeholder until the server stamp below resolves; refreshed
+      // from the re-read after commit.
       record.collectedAt = DateTime.now();
     }
+    final studentRef = _db.collection(_students).doc(studentId);
+    final needsCheck =
+        record.fileUploadedAt != null || record.collectedAt != null;
+    final stored =
+        needsCheck ? await _storedSlot(studentRef, slotKey) : null;
+    final recordMap = record.toMap();
+    if (_isNewStamp(record.fileUploadedAt, stored?.fileUploadedAt)) {
+      recordMap['fileUploadedAt'] = FieldValue.serverTimestamp();
+    }
+    if (_isNewStamp(record.collectedAt, stored?.collectedAt)) {
+      recordMap['collectedAt'] = FieldValue.serverTimestamp();
+    }
     final batch = _db.batch();
-    batch.update(_db.collection(_students).doc(studentId), {
-      'docRecords.$slotKey': record.toMap(),
-      // UTC so the student's "last updated" instant is timezone-unambiguous.
-      'updatedAt': timestampToWire(DateTime.now()),
+    batch.update(studentRef, {
+      'docRecords.$slotKey': recordMap,
+      // Server time so the student's "last updated" instant never depends
+      // on the writing device's clock.
+      'updatedAt': FieldValue.serverTimestamp(),
     });
     for (final log in logs) {
-      batch.set(_db.collection('docLogs').doc(), log.toMap());
+      // Live stock/issue/update events happened now: server time,
+      // overriding the client placeholder the model serialised.
+      final logMap = log.toMap();
+      logMap['timestamp'] = FieldValue.serverTimestamp();
+      batch.set(_db.collection('docLogs').doc(), logMap);
     }
     await batch.commit();
+
+    // The caller keeps using `record` (sort/display) — refresh the
+    // server-stamped instants so it shows the exact committed values.
+    try {
+      final fresh = await studentRef.get();
+      final freshData = fresh.data();
+      if (freshData != null) {
+        final freshRec =
+            StudentDocRecord.recordsOf(freshData)[slotKey];
+        if (freshRec != null) {
+          record.fileUploadedAt = freshRec.fileUploadedAt;
+          record.collectedAt = freshRec.collectedAt;
+        }
+      }
+    } catch (_) {
+      // Offline/permission edge: the caller keeps the local placeholders.
+    }
   }
 
   /// One-time backfill: synthesizes `docLogs` rows for records that predate
@@ -190,6 +262,84 @@ class FirebaseStudentDocsService {
     }
     await flush();
     return written;
+  }
+
+  /// One-time migration: converts legacy ISO-8601 STRING instants for this
+  /// module's stamped fields into native Firestore [Timestamp] values,
+  /// preserving the exact instant (as [parseTimestamp] interprets it, the
+  /// same reading display/sort code already uses). Covers:
+  /// - `students`: `updatedAt`, plus per-slot
+  ///   `docRecords.<slotKey>.fileUploadedAt` / `.collectedAt`;
+  /// - `docLogs`: `timestamp`.
+  /// `meta/subjectNames` holds no timestamps and is skipped. Already-native
+  /// values, nulls and unparseable strings are left untouched. Writes go in
+  /// 500-doc batches. Returns per-collection docs updated. No UI calls this;
+  /// run once from console/tooling.
+  Future<Map<String, int>> backfillTimestampsToNative() async {
+    final counts = {'students': 0, 'docLogs': 0};
+
+    Timestamp? nativeOf(Object? value) {
+      if (value is! String) return null;
+      final parsed = parseTimestamp(value);
+      if (parsed == null) return null;
+      return Timestamp.fromDate(parsed);
+    }
+
+    var batch = _db.batch();
+    var pending = 0;
+
+    Future<void> flush() async {
+      if (pending == 0) return;
+      await batch.commit();
+      batch = _db.batch();
+      pending = 0;
+    }
+
+    final students = await _db.collection(_students).get();
+    for (final doc in students.docs) {
+      final data = doc.data();
+      final updates = <String, Object>{};
+      final stampedUpdatedAt = nativeOf(data['updatedAt']);
+      if (stampedUpdatedAt != null) {
+        updates['updatedAt'] = stampedUpdatedAt;
+      }
+      final rawRecords = data['docRecords'];
+      if (rawRecords is Map) {
+        for (final entry in rawRecords.entries) {
+          if (entry.value is! Map) continue;
+          final slot = entry.key.toString();
+          final rec = (entry.value as Map).cast<String, dynamic>();
+          final stampedUploaded = nativeOf(rec['fileUploadedAt']);
+          if (stampedUploaded != null) {
+            updates['docRecords.$slot.fileUploadedAt'] = stampedUploaded;
+          }
+          final stampedCollected = nativeOf(rec['collectedAt']);
+          if (stampedCollected != null) {
+            updates['docRecords.$slot.collectedAt'] = stampedCollected;
+          }
+        }
+      }
+      if (updates.isNotEmpty) {
+        batch.update(doc.reference, updates);
+        pending++;
+        counts['students'] = counts['students']! + 1;
+        if (pending >= 500) await flush();
+      }
+    }
+    await flush();
+
+    final logs = await _db.collection('docLogs').get();
+    for (final doc in logs.docs) {
+      final stamped = nativeOf(doc.data()['timestamp']);
+      if (stamped == null) continue;
+      batch.update(doc.reference, {'timestamp': stamped});
+      pending++;
+      counts['docLogs'] = counts['docLogs']! + 1;
+      if (pending >= 500) await flush();
+    }
+    await flush();
+
+    return counts;
   }
 
   // ── Subject-name vocabulary ──────────────────────────────────────────

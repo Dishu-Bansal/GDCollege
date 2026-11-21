@@ -192,4 +192,7 @@ abstract class StockRepository {
     required ConsumableAssignment assignment,
     required int returnQty,
   });
+
+  /// Converts legacy ISO-8601 string audit instants to native Timestamps.
+  Future<Map<String, int>> backfillTimestampsToNative();
 }

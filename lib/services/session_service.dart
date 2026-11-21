@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -124,8 +123,9 @@ class SessionService with WidgetsBindingObserver {
     final doc = await _firestore.collection('userSessions').add({
       'userId': user.uid,
       'email': user.email ?? '',
-      'loginAt': Timestamp.fromDate(now),
-      'lastActiveAt': Timestamp.fromDate(now),
+      // Server-authored audit stamps (rule: never trust the device clock).
+      'loginAt': FieldValue.serverTimestamp(),
+      'lastActiveAt': FieldValue.serverTimestamp(),
       'endAt': null,
       'endReason': null,
       'platform': kIsWeb ? 'web' : Platform.operatingSystem,
@@ -171,7 +171,8 @@ class SessionService with WidgetsBindingObserver {
     if (id == null) return;
     try {
       await _firestore.collection('userSessions').doc(id).update({
-        'endAt': Timestamp.fromDate(DateTime.now()),
+        // Server-authored end stamp (rule: never trust the device clock).
+        'endAt': FieldValue.serverTimestamp(),
         'endReason': reason,
       });
     } catch (_) {
@@ -186,7 +187,8 @@ class SessionService with WidgetsBindingObserver {
       if (id == null || UserSession().currentUser == null) return;
       try {
         await _firestore.collection('userSessions').doc(id).update({
-          'lastActiveAt': Timestamp.fromDate(DateTime.now()),
+          // Server-authored heartbeat stamp (rule: never trust the device clock).
+          'lastActiveAt': FieldValue.serverTimestamp(),
         });
       } catch (_) {
         // Offline / gone tab — the next successful write bounds the segment.

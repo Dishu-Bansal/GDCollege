@@ -57,4 +57,9 @@ abstract class VisitorRepository {
   /// for completed ones. Safe to re-run (deterministic doc ids). Returns the
   /// number of event docs written.
   Future<int> backfillVisitEvents();
+
+  /// One-time backfill: converts legacy ISO-8601 STRING `createdAt` values
+  /// in `visitEvents` to native Firestore Timestamps (exact instant kept).
+  /// Safe to re-run. Returns converted-doc counts per collection.
+  Future<Map<String, int>> backfillTimestampsToNative();
 }
